@@ -1020,3 +1020,111 @@ fn to_status_response(note: &Note, instance_url: &str) -> StatusResponse {
         emojis: Vec::new(),
     }
 }
+
+#[derive(Debug, serde::Deserialize)]
+pub struct SearchByTagQuery {
+    pub tag: String,
+    pub limit: Option<usize>,
+    pub since_id: Option<String>,
+    pub until_id: Option<String>,
+    pub reply: Option<bool>,
+    pub renote: Option<bool>,
+    pub with_files: Option<bool>,
+    pub poll: Option<bool>,
+}
+
+/// タグベースのノート検索
+pub async fn search_by_tag(
+    auth_user: Option<AuthUser>,
+    State(state): State<AppState>,
+    Query(query): Query<SearchByTagQuery>,
+) -> Result<Json<Vec<StatusResponse>>> {
+    let limit = query.limit.unwrap_or(10).min(100);
+    let tag = query.tag.to_lowercase();
+
+    let mut query_str = "SELECT * FROM note WHERE $tag INSIDE tags".to_string();
+    query_str.push_str(" AND visibility IN ['public', 'home']");
+
+    if query.reply == Some(false) { query_str.push_str(" AND reply_id IS NONE"); }
+    if query.renote == Some(false) { query_str.push_str(" AND renote_id IS NONE"); }
+    if query.with_files == Some(true) { query_str.push_str(" AND file_ids != []"); }
+    if query.poll == Some(true) { query_str.push_str(" AND poll IS NOT NONE"); }
+    if let Some(since) = &query.since_id { query_str.push_str(" AND id > $since_id"); }
+    if let Some(until) = &query.until_id { query_str.push_str(" AND id < $until_id"); }
+
+    query_str.push_str(" ORDER BY created_at DESC LIMIT $limit");
+
+    let mut surreal_query = state.surreal()
+        .query(&query_str)
+        .bind(("tag", tag))
+        .bind(("limit", limit));
+    if let Some(s) = &query.since_id { surreal_query = surreal_query.bind(("since_id", s.clone())); }
+    if let Some(u) = &query.until_id { surreal_query = surreal_query.bind(("until_id", u.clone())); }
+
+    let notes: Vec<Note> = surreal_query
+        .await
+        .map_err(|e| AppError::Database(e))?
+        .take(0)
+        .map_err(|e| AppError::Database(e))?
+        .unwrap_or_default();
+
+    let instance_url = state.config().instance_url.clone();
+    Ok(Json(notes.iter().map(|n| to_status_response(n, &instance_url)).collect()))
+}
+
+/// リノート解除
+pub async fn unrenote(
+    State(state): State<AppState>,
+    auth_user: axum::Extension<AuthUser>,
+    Path(id): Path<String>,
+) -> Result<Json<StatusResponse>> {
+    let note_id = id.parse::<Ulid>()
+        .map_err(|_| AppError::Validation("Invalid note ID".to_string()))?;
+
+    // Find the user's renote of this note
+    let renote: Option<Note> = state.surreal()
+        .query("SELECT * FROM note WHERE actor_id = $user_id AND renote_id = $note_id AND text IS NONE LIMIT 1")
+        .bind(("user_id", auth_user.user_id.to_string()))
+        .bind(("note_id", note_id.to_string()))
+        .await
+        .map_err(|e| AppError::Database(e))?
+        .take(0)
+        .ok()
+        .flatten();
+
+    let renote = renote.ok_or_else(|| AppError::NotFound("Renote not found".to_string()))?;
+
+    // Delete the renote
+    state.surreal()
+        .query("DELETE note WHERE id = $id")
+        .bind(("id", renote.id.to_string()))
+        .await
+        .map_err(|e| AppError::Database(e))?;
+
+    // Decrement renote count on original note
+    state.surreal()
+        .query("UPDATE note SET renote_count = renote_count - 1 WHERE id = $id AND renote_count > 0")
+        .bind(("id", note_id.to_string()))
+        .await
+        .ok();
+
+    // Decrement user note count
+    state.surreal()
+        .query("UPDATE user SET notes_count = notes_count - 1 WHERE id = $id AND notes_count > 0")
+        .bind(("id", auth_user.user_id.to_string()))
+        .await
+        .ok();
+
+    // Return the original note
+    let original: Option<Note> = state.surreal()
+        .query("SELECT * FROM note WHERE id = $id")
+        .bind(("id", note_id.to_string()))
+        .await
+        .map_err(|e| AppError::Database(e))?
+        .take(0)
+        .ok()
+        .flatten();
+
+    let original = original.ok_or_else(|| AppError::NotFound("Note not found".to_string()))?;
+    Ok(Json(to_status_response(&original, &state.config().instance_url)))
+}

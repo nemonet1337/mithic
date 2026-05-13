@@ -1,3 +1,4 @@
+use argon2::{Argon2, PasswordHash, PasswordVerifier};
 use axum::{
     extract::{Path, Query, State},
     Json,
@@ -61,6 +62,12 @@ pub struct UpdateCredentialsRequest {
 #[derive(Debug, Deserialize)]
 pub struct RelationsQuery {
     pub id: Vec<String>,
+}
+
+impl RelationsQuery {
+    pub fn ids(&self) -> &Vec<String> {
+        &self.id
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -519,11 +526,12 @@ pub async fn delete_account(
     let actor = actor.ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
 
     // パスワード検証（Actorのpassword_hashフィールドを使用）
-    if let Some(password_hash) = &actor.password_hash {
-        use bcrypt::verify;
-        let valid = verify(&req.password, password_hash)
-            .map_err(|_| AppError::Internal("Password verification failed".to_string()))?;
-
+    if let Some(password_hash_str) = &actor.password_hash {
+        let parsed_hash = PasswordHash::new(password_hash_str)
+            .map_err(|_| AppError::Internal("Invalid password hash".to_string()))?;
+        let valid = Argon2::default()
+            .verify_password(req.password.as_bytes(), &parsed_hash)
+            .is_ok();
         if !valid {
             return Err(AppError::Forbidden("Incorrect password".to_string()));
         }
@@ -606,8 +614,8 @@ pub async fn get_relations(
     Query(query): Query<RelationsQuery>,
 ) -> Result<Json<Vec<RelationResponse>>> {
     let user_ids: Vec<Ulid> = query
-        .ids
-        .split(',')
+        .id
+        .iter()
         .filter_map(|id| id.parse::<Ulid>().ok())
         .collect();
 
@@ -709,8 +717,6 @@ pub async fn get_relations(
             muting = true;
         }
 
-        let account = fetch_actor_by_id(&state, &target_id).await?;
-
         responses.push(RelationResponse {
             id: target_id.to_string(),
             following,
@@ -753,10 +759,7 @@ pub async fn get_followers(
 
     let mut accounts = Vec::new();
     for follow in follows {
-        let follower_id = follow.in_user.parse::<Ulid>()
-            .map_err(|_| AppError::Validation("Invalid follower ID".to_string()))?;
-
-        if let Ok(account) = fetch_actor_by_id(&state, &follower_id).await {
+        if let Ok(account) = fetch_actor_by_id(&state, follow.follower_id).await {
             accounts.push(to_account_response(&account, &state.config().instance_url));
         }
     }
@@ -793,10 +796,7 @@ pub async fn get_following(
 
     let mut accounts = Vec::new();
     for follow in follows {
-        let followee_id = follow.out_user.parse::<Ulid>()
-            .map_err(|_| AppError::Validation("Invalid followee ID".to_string()))?;
-
-        if let Ok(account) = fetch_actor_by_id(&state, &followee_id).await {
+        if let Ok(account) = fetch_actor_by_id(&state, follow.followee_id).await {
             accounts.push(to_account_response(&account, &state.config().instance_url));
         }
     }
@@ -1066,7 +1066,7 @@ pub async fn get_i(
     State(state): State<AppState>,
     auth_user: axum::Extension<AuthUser>,
 ) -> Result<Json<serde_json::Value>> {
-    let user = fetch_actor_by_id(&state, &auth_user.user_id).await?;
+    let user = fetch_actor_by_id(&state, auth_user.user_id).await?;
 
     let account_response = to_account_response(&user, &state.config().instance_url);
 
@@ -1088,6 +1088,66 @@ pub async fn get_i(
         "header": account_response.header,
         "header_static": account_response.header_static,
     })))
+}
+
+/// ユーザー検索
+pub async fn search_users(
+    State(state): State<AppState>,
+    Query(query): Query<std::collections::HashMap<String, String>>,
+) -> Result<Json<Vec<AccountResponse>>> {
+    let q = query.get("q")
+        .ok_or_else(|| AppError::Validation("q parameter required".to_string()))?;
+    let limit: usize = query.get("limit").and_then(|l| l.parse().ok()).unwrap_or(20);
+    let offset: usize = query.get("offset").and_then(|o| o.parse().ok()).unwrap_or(0);
+
+    let search_term = q.to_lowercase();
+    let users: Vec<Actor> = state.surreal()
+        .query("SELECT * FROM user WHERE username_lower CONTAINS $q OR name CONTAINS $q ORDER BY followers_count DESC LIMIT $limit START $offset")
+        .bind(("q", search_term))
+        .bind(("limit", limit))
+        .bind(("offset", offset))
+        .await
+        .map_err(|e| AppError::Database(e))?
+        .take(0)
+        .map_err(|e| AppError::Database(e))?
+        .unwrap_or_default();
+
+    let instance_url = state.config().instance_url.clone();
+    Ok(Json(users.iter().map(|u| to_account_response(u, &instance_url)).collect()))
+}
+
+/// ユーザー名の空き確認
+pub async fn check_username_available(
+    State(state): State<AppState>,
+    Query(query): Query<std::collections::HashMap<String, String>>,
+) -> Result<Json<serde_json::Value>> {
+    let username = query.get("username")
+        .ok_or_else(|| AppError::Validation("username parameter required".to_string()))?;
+    let username_lower = username.to_lowercase();
+
+    // Check current users
+    let existing_user: Option<serde_json::Value> = state.surreal()
+        .query("SELECT id FROM user WHERE username_lower = $username")
+        .bind(("username", username_lower.clone()))
+        .await
+        .map_err(|e| AppError::Database(e))?
+        .take(0)
+        .map_err(|e| AppError::Database(e))?;
+
+    if existing_user.is_some() {
+        return Ok(Json(serde_json::json!({ "available": false })));
+    }
+
+    // Check used usernames
+    let used: Option<serde_json::Value> = state.surreal()
+        .query("SELECT id FROM used_username WHERE username = $username")
+        .bind(("username", username_lower))
+        .await
+        .map_err(|e| AppError::Database(e))?
+        .take(0)
+        .map_err(|e| AppError::Database(e))?;
+
+    Ok(Json(serde_json::json!({ "available": used.is_none() })))
 }
 
 /// フォロー数を更新

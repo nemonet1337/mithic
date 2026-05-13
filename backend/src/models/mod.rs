@@ -13,6 +13,7 @@ pub mod instance;
 pub mod hashtag;
 pub mod mute;
 pub mod note;
+pub mod note_unread;
 pub mod notification;
 pub mod oauth;
 pub mod poll;
@@ -20,7 +21,10 @@ pub mod push_subscription;
 pub mod reaction;
 pub mod relay;
 pub mod renote;
+pub mod used_username;
 pub mod user_list;
+pub mod user_note_pining;
+pub mod user_publickey;
 
 pub use actor::{Actor, ActorId, ActorType, UpdateProfileRequest};
 pub use block::{Block, BlockId, BlockResponse, CreateBlockRequest, BlockListQuery};
@@ -46,3 +50,7 @@ pub use emoji::{Emoji, EmojiId, EmojiCategory, CreateEmojiRequest, UpdateEmojiRe
 pub use export::{Export, ExportId, ExportRequest, ExportStatus, ExportScope, Import, ImportId, ImportRequest, ImportStatus, UserExportData};
 pub use file::{DriveFile, DriveFolder, FileId, FileType};
 pub use filter::{Filter, FilterId, FilterResponse, CreateFilterRequest, UpdateFilterRequest};
+pub use note_unread::{NoteUnread, NoteUnreadId};
+pub use used_username::{UsedUsername, UsedUsernameId};
+pub use user_note_pining::{UserNotePining, UserNotePiningId};
+pub use user_publickey::{UserPublicKey, UserPublicKeyId};

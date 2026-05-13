@@ -368,6 +368,66 @@ impl NoteService {
     }
 }
 
+/// ノートを既読にする
+pub async fn mark_note_as_read(
+    surreal: &SurrealClient,
+    note_id: NoteId,
+    user_id: ActorId,
+) -> Result<()> {
+    surreal
+        .query("DELETE note_unread WHERE note_id = $note_id AND user_id = $user_id")
+        .bind(("note_id", note_id.to_string()))
+        .bind(("user_id", user_id.to_string()))
+        .await
+        .map_err(|e| AppError::Database(e))?;
+    Ok(())
+}
+
+/// 全ノートを既読にする
+pub async fn mark_all_notes_as_read(surreal: &SurrealClient, user_id: ActorId) -> Result<()> {
+    surreal
+        .query("DELETE note_unread WHERE user_id = $user_id")
+        .bind(("user_id", user_id.to_string()))
+        .await
+        .map_err(|e| AppError::Database(e))?;
+    Ok(())
+}
+
+/// ノートを未読に追加する
+pub async fn mark_note_as_unread(
+    surreal: &SurrealClient,
+    note_id: NoteId,
+    user_id: ActorId,
+    is_specified: bool,
+    is_mention: bool,
+) -> Result<()> {
+    let unread_id = Ulid::new();
+    surreal
+        .query("CREATE note_unread:$id SET note_id = $note_id, user_id = $user_id, is_specified = $is_specified, is_mention = $is_mention, created_at = time::now()")
+        .bind(("id", unread_id.to_string()))
+        .bind(("note_id", note_id.to_string()))
+        .bind(("user_id", user_id.to_string()))
+        .bind(("is_specified", is_specified))
+        .bind(("is_mention", is_mention))
+        .await
+        .map_err(|e| AppError::Database(e))?;
+    Ok(())
+}
+
+/// ハッシュタグ統計を更新する
+pub async fn update_hashtag(surreal: &SurrealClient, tag: &str, user_id: ActorId) -> Result<()> {
+    let tag_lower = tag.to_lowercase();
+
+    // Upsert hashtag record
+    surreal
+        .query("IF (SELECT count() FROM hashtag WHERE name = $name)[0].count = 0 THEN CREATE hashtag SET name = $name, count = 1, created_at = time::now() ELSE UPDATE hashtag SET count = count + 1 WHERE name = $name END")
+        .bind(("name", tag_lower))
+        .await
+        .map_err(|e| AppError::Database(e))?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

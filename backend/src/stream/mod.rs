@@ -8,7 +8,7 @@ pub mod channels;
 pub mod connection;
 
 pub use channel::{Channel, ChannelMessage};
-pub use channels::{AdminChannel, GlobalTimelineChannel, HashtagChannel, HomeTimelineChannel, QueueStatsChannel, ServerStatsChannel};
+pub use channels::{AdminChannel, ApLogChannel, DriveChannel, GlobalTimelineChannel, HashtagChannel, HomeTimelineChannel, QueueStatsChannel, ServerStatsChannel, UserListChannel};
 pub use connection::StreamConnection;
 
 use serde::{Deserialize, Serialize};
@@ -96,7 +96,7 @@ impl ChannelRegistry {
         params: Option<serde_json::Value>,
     ) -> Option<Arc<dyn Channel + Send + Sync>> {
         let channel: Arc<dyn Channel + Send + Sync> = match channel_type {
-            "homeTimeline" => Arc::new(HomeTimelineChannel::new(id.clone(), user_id)),
+            "homeTimeline" => Arc::new(HomeTimelineChannel::new(id.clone(), user_id.clone())),
             "globalTimeline" => Arc::new(GlobalTimelineChannel::new(id.clone())),
             "hashtag" => {
                 let tag = params
@@ -109,6 +109,16 @@ impl ChannelRegistry {
             "admin" => Arc::new(AdminChannel::new(id.clone())),
             "queueStats" => Arc::new(QueueStatsChannel::new(id.clone())),
             "serverStats" => Arc::new(ServerStatsChannel::new(id.clone())),
+            "drive" => Arc::new(DriveChannel::new(id.clone(), user_id.clone())),
+            "apLog" => Arc::new(ApLogChannel::new(id.clone())),
+            "userList" => {
+                let list_id = params
+                    .as_ref()
+                    .and_then(|p| p.get("listId").and_then(|v| v.as_str()))
+                    .unwrap_or("")
+                    .to_string();
+                Arc::new(UserListChannel::new(id.clone(), list_id, user_id.clone()))
+            }
             _ => return None,
         };
 

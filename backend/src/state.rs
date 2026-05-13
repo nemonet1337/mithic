@@ -8,7 +8,7 @@ use crate::{
     config::AppConfig,
     db::{DragonflyClient, SurrealClient},
     middleware::RateLimiter,
-    services::{AntennaService, BookmarkService, ChartService, EmojiService, ExportService, FilterService, InstanceService, OAuthService, RelayService, WebPushService},
+    services::{AntennaService, BookmarkService, ChartService, EmojiService, ExportService, FederationService, FilterService, InstanceService, OAuthService, RelayService, WebPushService},
 };
 
 /// アプリケーション状態
@@ -22,7 +22,9 @@ struct AppStateInner {
     pub surreal: Surreal<Any>,
     pub dragonfly: RedisConnection,
     pub config: AppConfig,
+    pub http_client: reqwest::Client,
     pub web_push: WebPushService,
+    pub federation_service: FederationService,
     pub relay_service: RelayService,
     pub chart_service: ChartService,
     pub antenna_service: AntennaService,
@@ -42,11 +44,23 @@ impl AppState {
         config: AppConfig,
     ) -> anyhow::Result<Self> {
         let web_push = WebPushService::new(&config)?;
-        
+
+        let http_client = reqwest::Client::builder()
+            .pool_max_idle_per_host(32)
+            .pool_idle_timeout(std::time::Duration::from_secs(90))
+            .build()
+            .unwrap_or_default();
+
         // Wrap clients for RelayService
         let surreal_client = crate::db::SurrealClient(surreal.clone());
         let dragonfly_client = crate::db::DragonflyClient(dragonfly.clone());
-        
+
+        let federation_service = FederationService::new(
+            surreal_client.clone(),
+            dragonfly_client.clone(),
+            config.instance_url.clone(),
+        );
+
         let relay_service = RelayService::new(
             surreal_client.clone(),
             dragonfly_client.clone(),
@@ -100,7 +114,9 @@ impl AppState {
                 surreal,
                 dragonfly,
                 config,
+                http_client,
                 web_push,
+                federation_service,
                 relay_service,
                 chart_service,
                 antenna_service,
@@ -169,6 +185,14 @@ impl AppState {
 
     pub fn rate_limiter(&self) -> &RateLimiter {
         &self.inner.rate_limiter
+    }
+
+    pub fn http_client(&self) -> &reqwest::Client {
+        &self.inner.http_client
+    }
+
+    pub fn federation_service(&self) -> &FederationService {
+        &self.inner.federation_service
     }
 }
 
