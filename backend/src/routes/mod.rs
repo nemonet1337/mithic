@@ -62,6 +62,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/users/:username/outbox", get(activitypub::outbox))
         .route("/users/:username/followers", get(activitypub::followers))
         .route("/users/:username/following", get(activitypub::following))
+        .route("/users/:username/collections/featured", get(activitypub::get_featured))
         .route("/notes/:note_id", get(activitypub::get_note))
         .route("/notes/:note_id/activity", get(activitypub::get_note_activity))
         .layer(axum::middleware::from_fn(content_negotiation_middleware));
@@ -112,6 +113,8 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/v1/statuses/:id/unfavourite", post(statuses::unfavourite_status))
         .route("/api/v1/statuses/:id/reblog", post(statuses::reblog_status))
         .route("/api/v1/statuses/:id/unreblog", post(statuses::unreblog_status))
+        .route("/api/v1/statuses/:id/unrenote", post(statuses::unrenote))
+        .route("/api/v1/notes/search-by-tag", get(statuses::search_by_tag))
         .route("/api/v1/statuses/:id/pin", post(statuses::pin_note))
         .route("/api/v1/statuses/:id/unpin", post(statuses::unpin_note))
         .route("/api/v1/statuses/:id/react", post(statuses::react_note))
@@ -128,9 +131,14 @@ pub fn create_router(state: AppState) -> Router {
         // ドライブ
         .route("/api/v1/drive/files", get(drive::get_drive_files))
         .route("/api/v1/drive/files", post(drive::upload_file))
+        .route("/api/v1/drive/files/check-existence", get(drive::check_existence))
+        .route("/api/v1/drive/files/find-by-hash", get(drive::find_by_hash))
+        .route("/api/v1/drive/files/find", get(drive::find_files))
+        .route("/api/v1/drive/files/upload-from-url", post(drive::upload_from_url))
         .route("/api/v1/drive/files/:id", get(drive::get_drive_file))
         .route("/api/v1/drive/files/:id", patch(drive::update_drive_file))
         .route("/api/v1/drive/files/:id", delete(drive::delete_drive_file))
+        .route("/api/v1/drive/files/:id/attached-notes", get(drive::get_attached_notes))
         .route("/api/v1/drive", get(drive::get_drive_usage))
         // ドライブフォルダ
         .route("/api/v1/drive/folders", get(drive_folders::list_folders))
@@ -175,22 +183,57 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/v1/antennas/:id", delete(antennas::delete_antenna))
         // 管理用ユーザーAPI
         .route("/api/v1/admin/users", get(admin::show_users))
+        .route("/api/v1/admin/accounts/create", post(admin::create_user_account))
         .route("/api/v1/admin/users/:user_id", delete(admin::delete_user_account))
         .route("/api/v1/admin/users/:user_id/suspend", post(admin::suspend_user))
         .route("/api/v1/admin/users/:user_id/unsuspend", post(admin::unsuspend_user))
+        .route("/api/v1/admin/change-password", post(admin::admin_change_password))
+        .route("/api/v1/admin/update-remote-user", post(admin::update_remote_user))
+        // 管理用メタ
+        .route("/api/v1/admin/update-meta", post(admin::update_meta))
+        // 管理用データベース
+        .route("/api/v1/admin/get-table-stats", post(admin::get_table_stats))
+        .route("/api/v1/admin/vacuum", post(admin::vacuum))
+        .route("/api/v1/admin/resync-chart", post(admin::resync_chart))
+        // 管理用キュー
         .route("/api/v1/admin/queue/clear", post(admin::clear_queue))
+        .route("/api/v1/admin/queue/stats", get(admin::get_queue_stats))
+        .route("/api/v1/admin/queue/jobs", get(admin::get_queue_jobs))
+        .route("/api/v1/admin/queue/deliver-delayed", get(admin::get_deliver_delayed))
+        .route("/api/v1/admin/queue/inbox-delayed", get(admin::get_inbox_delayed))
+        // 管理用絵文字
+        .route("/api/v1/admin/emoji/add", post(admin::add_emoji))
+        .route("/api/v1/admin/emoji/:id/update", post(admin::update_emoji))
+        .route("/api/v1/admin/emoji/:id/remove", post(admin::remove_emoji))
+        // 管理用フェデレーション
+        .route("/api/v1/admin/federation/update-instance", post(admin::federation_update_instance))
+        .route("/api/v1/admin/federation/remove-all-following", post(admin::federation_remove_all_following))
+        .route("/api/v1/admin/federation/delete-all-files", post(admin::federation_delete_all_files))
+        // 管理用ドライブ
         .route("/api/v1/admin/drive/files", get(admin::get_all_drive_files))
         .route("/api/v1/admin/drive/files/delete-all", post(admin::delete_all_files_of_a_user))
+        .route("/api/v1/admin/drive/clean-remote-files", post(admin::drive_clean_remote_files))
+        .route("/api/v1/admin/drive/cleanup", post(admin::drive_cleanup))
+        .route("/api/v1/admin/drive/show-file", get(admin::drive_show_file))
         // チャート
-        .route("/api/v1/charts/notes", get(charts::notes_chart))
-        .route("/api/v1/charts/users", get(charts::users_chart))
-        .route("/api/v1/charts/active-users", get(charts::active_users_chart))
+        .route("/api/v1/charts/notes", get(charts::get_notes_chart))
+        .route("/api/v1/charts/users", get(charts::get_users_chart))
+        .route("/api/v1/charts/active-users", get(charts::get_users_chart))
+        .route("/api/v1/charts/drive", get(charts::get_drive_chart))
+        .route("/api/v1/charts/federation", get(charts::get_federation_chart))
+        .route("/api/v1/charts/user/notes", get(charts::get_my_notes_chart))
+        .route("/api/v1/charts/user/following", get(charts::get_my_following_chart))
+        .route("/api/v1/charts/user/drive", get(charts::get_my_drive_chart))
+        .route("/api/v1/charts/user/reactions", get(charts::get_my_notes_chart))
+        .route("/api/v1/stats/user", get(charts::get_my_stats))
         // 絵文字
         .route("/api/v1/custom/emojis", get(emojis::get_emojis))
         .route("/api/v1/admin/emojis/:id/copy", post(emojis::copy_emoji))
         .route("/api/v1/admin/emojis/remote", get(emojis::list_remote_emojis))
         // 検索
         .route("/api/v1/search", get(search::search))
+        .route("/api/v1/users/search", get(users::search_users))
+        .route("/api/v1/username/available", get(users::check_username_available))
         // ハッシュタグ
         .route("/api/v1/tags/:tag", get(hashtags::get_hashtag))
         // エクスポート

@@ -190,6 +190,40 @@ impl FollowRequestService {
         Ok(())
     }
 
+    /// 全フォローリクエストを一括承認
+    pub async fn accept_all_requests(state: &AppState, followee_id: ActorId) -> Result<usize> {
+        // Get all pending requests
+        let requests: Vec<FollowRequest> = state
+            .surreal()
+            .query("SELECT * FROM follow_request WHERE followee_id = $followee_id")
+            .bind(("followee_id", followee_id.to_string()))
+            .await
+            .map_err(|e| AppError::Database(e))?
+            .take(0)
+            .map_err(|e| AppError::Database(e))?;
+
+        let count = requests.len();
+
+        for request in &requests {
+            // Create follow relation
+            state.surreal()
+                .query("RELATE user:$follower->follow->user:$followee SET created_at = time::now(), is_accepted = true")
+                .bind(("follower", request.follower_id.to_string()))
+                .bind(("followee", request.followee_id.to_string()))
+                .await
+                .map_err(|e| AppError::Database(e))?;
+        }
+
+        // Delete all requests at once
+        state.surreal()
+            .query("DELETE follow_request WHERE followee_id = $followee_id")
+            .bind(("followee_id", followee_id.to_string()))
+            .await
+            .map_err(|e| AppError::Database(e))?;
+
+        Ok(count)
+    }
+
     /// フォローリクエストが存在するか確認
     pub async fn exists(
         state: &AppState,

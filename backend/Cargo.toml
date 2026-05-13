@@ -55,8 +55,7 @@ sigh = "1.0.3"
 pest = "2"
 pest_derive = "2"
 
-# WebSocket
-tokio-tungstenite = "0.29"
+# WebSocket (axum 0.8 built-in WebSocket used; tokio-tungstenite is NOT used per architecture spec)
 futures-util = "0.3"
 
 # Web Push

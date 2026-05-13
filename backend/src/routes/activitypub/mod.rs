@@ -6,7 +6,7 @@ pub mod notes;
 pub mod outbox;
 pub mod webfinger;
 
-pub use actor::get_actor;
+pub use actor::{get_actor, get_featured};
 pub use followers::followers;
 pub use following::following;
 pub use inbox::{inbox, shared_inbox};

@@ -56,6 +56,74 @@ pub struct Image {
     pub url: String,
 }
 
+/// Featured collection (pinned notes) エンドポイント
+pub async fn get_featured(
+    State(state): State<AppState>,
+    Path(username): Path<String>,
+) -> Result<Json<serde_json::Value>> {
+    let mut result = state
+        .surreal()
+        .query("SELECT * FROM user WHERE username_lower = $username")
+        .bind(("username", username.to_lowercase()))
+        .await
+        .map_err(|e| AppError::Database(e))?;
+
+    let actor: Option<Actor> = result.take(0).map_err(|e| {
+        AppError::Internal(format!("Failed to deserialize actor: {}", e))
+    })?;
+
+    let actor = actor.ok_or_else(|| AppError::NotFound("Actor not found".to_string()))?;
+
+    let instance_url = &state.config().instance_url;
+    let actor_url = format!("{}/users/{}", instance_url, username);
+
+    // Get pinned notes
+    let pinned_notes: Vec<serde_json::Value> = state
+        .surreal()
+        .query("SELECT * FROM user_note_pining WHERE user_id = $user_id")
+        .bind(("user_id", actor.id.to_string()))
+        .await
+        .map_err(|e| AppError::Database(e))?
+        .take(0)
+        .map_err(|e| AppError::Database(e))?
+        .unwrap_or_default();
+
+    let mut items = Vec::new();
+    for pining in &pinned_notes {
+        if let Some(note_id) = pining.get("note_id").and_then(|v| v.as_str()) {
+            let note: Option<crate::models::Note> = state
+                .surreal()
+                .query("SELECT * FROM note WHERE id = $id")
+                .bind(("id", note_id.to_string()))
+                .await
+                .map_err(|e| AppError::Database(e))?
+                .take(0)
+                .ok()
+                .flatten();
+
+            if let Some(note) = note {
+                items.push(serde_json::json!({
+                    "@context": "https://www.w3.org/ns/activitystreams",
+                    "type": "Note",
+                    "id": format!("{}/notes/{}", instance_url, note.id),
+                    "content": note.text.unwrap_or_default(),
+                    "attributedTo": actor_url,
+                    "published": note.created_at.to_rfc3339(),
+                    "to": ["https://www.w3.org/ns/activitystreams#Public"],
+                }));
+            }
+        }
+    }
+
+    Ok(Json(serde_json::json!({
+        "@context": "https://www.w3.org/ns/activitystreams",
+        "id": format!("{}/collections/featured", actor_url),
+        "type": "OrderedCollection",
+        "totalItems": items.len(),
+        "orderedItems": items,
+    })))
+}
+
 /// Actor取得エンドポイント
 pub async fn get_actor(
     State(state): State<AppState>,
