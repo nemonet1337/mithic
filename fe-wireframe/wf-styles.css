@@ -1,0 +1,483 @@
+/* Wireframe styles — sketchy mid-fi for SNS exploration */
+
+:root {
+  --paper: #f4f1ea;
+  --ink: #1a1714;
+  --ink-2: #4a4640;
+  --ink-3: #8a847a;
+  --line: #1a1714;
+  --line-soft: rgba(26,23,20,0.18);
+  --hatch: rgba(26,23,20,0.06);
+  --card: #fbf9f3;
+  --card-2: #ece8de;
+  --accent: #ff3d8b;
+  --accent-2: #ffc6dd;
+  --accent-soft: #ffe1ec;
+  --warn: #ffb24a;
+  --radius: 10px;
+  --radius-sm: 6px;
+  --shadow: 3px 3px 0 var(--ink);
+  --shadow-soft: 2px 2px 0 var(--line-soft);
+  --font-hand: "Patrick Hand", "Kalam", "Comic Sans MS", cursive;
+  --font-body: "DM Sans", -apple-system, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "IBM Plex Mono", ui-monospace, monospace;
+}
+
+.dark {
+  --paper: #16140f;
+  --ink: #f3efe6;
+  --ink-2: #c9c3b6;
+  --ink-3: #7a746a;
+  --line: #f3efe6;
+  --line-soft: rgba(243,239,230,0.22);
+  --hatch: rgba(243,239,230,0.06);
+  --card: #1f1c16;
+  --card-2: #2a261e;
+  --accent: #ff5fa0;
+  --accent-2: #c25080;
+  --accent-soft: #4a2638;
+  --shadow: 3px 3px 0 var(--ink);
+}
+
+.wf {
+  font-family: var(--font-body);
+  color: var(--ink);
+  background: var(--paper);
+  font-size: 13px;
+  line-height: 1.45;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  position: relative;
+}
+
+.wf-hand { font-family: var(--font-hand); }
+.wf-mono { font-family: var(--font-mono); }
+
+/* Cards — shadcn-shaped with a sketchy edge */
+.wf-card {
+  background: var(--card);
+  border: 1.25px solid var(--line);
+  border-radius: var(--radius);
+  position: relative;
+}
+.wf-card.outline { background: transparent; }
+.wf-card.raised { box-shadow: var(--shadow); }
+.wf-card.dashed { border-style: dashed; border-color: var(--line-soft); }
+
+/* Box — shorthand */
+.wf-box {
+  border: 1.25px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+}
+.wf-box.dashed { border-style: dashed; border-color: var(--line-soft); }
+.wf-box.muted { background: var(--card-2); }
+.wf-box.fill-ink { background: var(--ink); color: var(--paper); }
+.wf-box.fill-accent { background: var(--accent); color: #fff; border-color: var(--ink); }
+.wf-box.fill-accent2 { background: var(--accent-2); color: var(--ink); border-color: var(--ink); }
+
+/* Buttons — shadcn rectangle */
+.wf-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1.25px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.wf-btn.primary { background: var(--ink); color: var(--paper); }
+.wf-btn.accent { background: var(--accent); color: #fff; border-color: var(--ink); }
+.wf-btn.accent2 { background: var(--accent-2); color: var(--ink); }
+.wf-btn.ghost { background: transparent; border-color: var(--line-soft); }
+.wf-btn.sm { padding: 3px 8px; font-size: 11px; border-radius: 6px; }
+.wf-btn.lg { padding: 10px 16px; font-size: 14px; border-radius: 10px; }
+.wf-btn.icon { padding: 6px; aspect-ratio: 1; justify-content: center; }
+.wf-btn.full { width: 100%; justify-content: center; }
+
+/* Pill */
+.wf-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  background: var(--card);
+}
+.wf-pill.ink { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.wf-pill.accent { background: var(--accent); color: #fff; border-color: var(--ink); }
+.wf-pill.accent2 { background: var(--accent-2); color: var(--ink); border-color: var(--ink); }
+
+/* Input */
+.wf-input {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 10px;
+  border: 1.25px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.wf-input.dashed { border-style: dashed; border-color: var(--line-soft); }
+.wf-input.lg { height: 40px; font-size: 13px; }
+
+/* Avatar — placeholder circle with diagonal stripes */
+.wf-av {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1.25px solid var(--line);
+  background:
+    repeating-linear-gradient(45deg, var(--hatch) 0 4px, transparent 4px 8px),
+    var(--card-2);
+  flex: 0 0 auto;
+}
+.wf-av.sm { width: 24px; height: 24px; }
+.wf-av.lg { width: 56px; height: 56px; }
+.wf-av.xl { width: 88px; height: 88px; border-width: 1.5px; }
+.wf-av.accent { background: var(--accent); border-color: var(--ink); }
+.wf-av.accent2 { background: var(--accent-2); border-color: var(--ink); }
+.wf-av.ink { background: var(--ink); }
+
+/* Image / media placeholder */
+.wf-media {
+  border: 1.25px dashed var(--line-soft);
+  border-radius: var(--radius-sm);
+  background:
+    repeating-linear-gradient(135deg, var(--hatch) 0 6px, transparent 6px 14px),
+    var(--card-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-3);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+/* Skeleton text bars — for "lorem ipsum" feel */
+.wf-line {
+  display: block;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--line-soft);
+}
+.wf-line.tall { height: 10px; }
+.wf-line.thin { height: 6px; }
+
+/* Tags / hashtag */
+.wf-tag {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--accent);
+}
+.dark .wf-tag { color: var(--accent); }
+
+/* Section labels */
+.wf-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--ink-3);
+}
+
+/* Sketch divider */
+.wf-divider {
+  height: 1.25px;
+  background: var(--line-soft);
+  border: 0;
+  margin: 0;
+}
+
+/* Layout helpers */
+.wf-row { display: flex; align-items: center; gap: 8px; }
+.wf-col { display: flex; flex-direction: column; }
+.wf-stack { display: flex; flex-direction: column; gap: 8px; }
+.wf-grow { flex: 1 1 auto; min-width: 0; }
+.wf-spread { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+
+/* Sidebar nav item */
+.wf-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.wf-nav.active {
+  background: var(--ink);
+  color: var(--paper);
+}
+.wf-nav .glyph {
+  width: 18px;
+  height: 18px;
+  border: 1.25px solid currentColor;
+  border-radius: 5px;
+  flex: 0 0 auto;
+}
+
+/* Hand-drawn underline accent */
+.wf-uline {
+  background-image: linear-gradient(var(--accent), var(--accent));
+  background-size: 100% 4px;
+  background-position: 0 92%;
+  background-repeat: no-repeat;
+  padding-bottom: 2px;
+}
+
+/* Scrollable region inside an artboard */
+.wf-scroll {
+  overflow: hidden; /* artboards don't scroll; we just clip */
+}
+
+/* Tab strip */
+.wf-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1.25px solid var(--line-soft);
+}
+.wf-tabs .t {
+  padding: 8px 12px;
+  font-size: 12px;
+  font-family: var(--font-body);
+  color: var(--ink-3);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1.25px;
+}
+.wf-tabs .t.on {
+  color: var(--ink);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+/* ── mithic spine (sidebar) ──────────────────────────────────── */
+.wf-spine {
+  display: flex;
+  flex-direction: column;
+  padding: 12px 10px;
+  gap: 4px;
+  flex: 0 0 auto;
+  border-right: 1.25px solid var(--line-soft);
+  background:
+    linear-gradient(to right, var(--card-2) 0 22px, transparent 22px);
+  position: relative;
+}
+.wf-spine::before {
+  content: '';
+  position: absolute;
+  left: 22px; top: 0; bottom: 0;
+  width: 0; border-left: 1.25px solid var(--line-soft);
+}
+.wf-spine.compact {
+  padding: 10px 6px;
+  background: var(--card-2);
+}
+.wf-spine.compact::before { display: none; }
+.wf-spine-icon {
+  display: flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px;
+  border-radius: 6px;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.wf-spine-icon:hover { background: rgba(0,0,0,0.05); }
+.wf-spine-icon.on {
+  background: var(--ink); color: var(--paper);
+}
+.wf-stamp-btn.compact {
+  padding: 0;
+  width: 36px; height: 36px;
+  align-items: center; justify-content: center;
+  margin: 6px auto;
+}
+.wf-mark {
+  display: flex; align-items: baseline; gap: 4px;
+  padding: 4px 0 8px 0;
+  font-family: var(--font-mono);
+}
+.wf-mark-bracket { font-size: 22px; color: var(--ink); line-height: 1; }
+.wf-mark-glyph { font-size: 22px; font-weight: 700; color: var(--accent); line-height: 1; font-style: italic; }
+.wf-mark-text { margin-left: 6px; font-family: var(--font-hand); font-size: 22px; line-height: 1; }
+.wf-spine-rule { height: 1.25px; background: var(--ink); margin: 4px 0 8px; }
+.wf-spine-icon-inline { display: inline-flex; color: var(--ink-2); }
+.wf-spine-item.on .wf-spine-icon-inline { color: var(--ink); }
+.wf-spine-item {
+  display: grid;
+  grid-template-columns: 18px 18px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px 6px 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-2);
+  letter-spacing: 0.12em;
+  border-bottom: 1px dashed transparent;
+}
+.wf-spine-num {
+  font-size: 9px;
+  color: var(--ink-3);
+  text-align: right;
+}
+.wf-spine-label { font-weight: 500; }
+.wf-spine-marker { color: var(--accent); font-size: 8px; }
+.wf-spine-item.on {
+  color: var(--ink);
+  background:
+    linear-gradient(to right, var(--accent-2) 0 4px, transparent 4px);
+  border-bottom-color: var(--line-soft);
+}
+.wf-spine-item.on .wf-spine-num { color: var(--ink); }
+
+.wf-stamp-btn {
+  appearance: none;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+  padding: 10px 12px;
+  border: 1.25px solid var(--ink);
+  background: var(--accent);
+  color: #fff;
+  border-radius: 6px;
+  margin: 8px 0;
+  cursor: pointer;
+  box-shadow: 3px 3px 0 var(--ink);
+  text-align: left;
+  font-family: var(--font-body);
+}
+.wf-stamp-btn:hover { transform: translate(-1px, -1px); box-shadow: 4px 4px 0 var(--ink); }
+.wf-spine-foot {
+  display: flex; align-items: center; gap: 8px;
+  padding-top: 10px;
+  border-top: 1.25px dashed var(--line-soft);
+}
+
+/* ── post entry (postmark style) ─────────────────────────────── */
+.wf-entry {
+  display: flex; gap: 14px;
+  padding: 12px 14px;
+  background: var(--card);
+  border: 1.25px solid var(--line);
+  border-radius: 4px;
+  position: relative;
+}
+.wf-entry.flat {
+  background: transparent;
+  border: 0;
+  border-bottom: 1.25px dashed var(--line-soft);
+  border-radius: 0;
+  padding-left: 0; padding-right: 0;
+}
+.wf-stamp {
+  flex: 0 0 auto;
+  width: 56px; min-height: 56px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  border: 1.5px solid var(--ink);
+  border-radius: 50%;
+  font-family: var(--font-mono);
+  letter-spacing: 0.06em;
+  color: var(--ink);
+  background: var(--card);
+  position: relative;
+}
+.wf-stamp::before {
+  content: '';
+  position: absolute; inset: 4px;
+  border: 1px dashed var(--line-soft);
+  border-radius: 50%;
+}
+.wf-stamp-date { font-size: 9px; font-weight: 600; letter-spacing: 0.04em; }
+.wf-stamp-time { font-size: 8px; color: var(--ink-3); margin-top: 1px; letter-spacing: 0.02em; }
+.wf-stamp.accent { background: var(--accent); color: #fff; border-color: var(--ink); }
+.wf-stamp.accent .wf-stamp-time { color: rgba(255,255,255,0.8); }
+.wf-stamp.accent2 { background: var(--accent-2); color: var(--ink); }
+.wf-stamp.ink { background: var(--ink); color: var(--paper); }
+
+/* Segmented tab strip — for ホーム/ローカル/グローバル */
+.wf-seg-tl {
+  display: inline-flex;
+  border: 1.25px solid var(--ink);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--card);
+  box-shadow: 2px 2px 0 var(--ink);
+}
+.wf-seg-tl .seg {
+  appearance: none;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 14px;
+  border: 0;
+  border-right: 1.25px solid var(--line-soft);
+  background: transparent;
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.wf-seg-tl .seg:last-child { border-right: 0; }
+.wf-seg-tl .seg.on {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+/* Compose attachment thumbnails */
+.wf-thumb {
+  position: relative;
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 4px;
+  border: 1.25px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+}
+.wf-thumb.dashed { border-style: dashed; border-color: var(--line-soft); background: transparent; }
+.wf-thumb-meta { font-family: var(--font-mono); font-size: 8px; color: var(--ink-3); padding: 0 2px; max-width: 72px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wf-thumb-x {
+  position: absolute; top: -6px; right: -6px;
+  width: 18px; height: 18px;
+  border: 1.25px solid var(--ink); border-radius: 50%;
+  background: var(--card); color: var(--ink);
+  font-size: 10px; line-height: 1; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.wf-thumb-drop {
+  width: 72px; height: 72px;
+  border-radius: 6px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  color: var(--ink-3);
+}
+
+/* Glyph - simple iconography placeholders (squares, circles, diamonds) */
+.glyph-sq { width: 14px; height: 14px; border: 1.25px solid currentColor; border-radius: 3px; display: inline-block; }
+.glyph-ci { width: 14px; height: 14px; border: 1.25px solid currentColor; border-radius: 50%; display: inline-block; }
+.glyph-di { width: 12px; height: 12px; border: 1.25px solid currentColor; transform: rotate(45deg); display: inline-block; }
+.glyph-tr {
+  width: 0; height: 0;
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+  border-bottom: 12px solid currentColor;
+  display: inline-block;
+}
+.glyph-plus {
+  width: 14px; height: 14px; display: inline-block; position: relative;
+}
+.glyph-plus::before, .glyph-plus::after {
+  content: ''; position: absolute; background: currentColor;
+}
+.glyph-plus::before { left: 6px; top: 0; width: 2px; height: 14px; }
+.glyph-plus::after { top: 6px; left: 0; height: 2px; width: 14px; }

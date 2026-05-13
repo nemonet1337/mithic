@@ -1,0 +1,20 @@
+[build]
+target = "index.html"
+dist = "dist"
+public_url = "/"
+
+[watch]
+watch = ["src", "style", "index.html", "Cargo.toml", "../shared/src"]
+
+[serve]
+addresses = ["127.0.0.1"]
+port = 1420
+open = false
+
+[[proxy]]
+backend = "http://127.0.0.1:3000/api/"
+rewrite = "/api/"
+
+[[proxy]]
+backend = "ws://127.0.0.1:3000/ws"
+ws = true
