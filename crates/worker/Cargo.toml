@@ -1,0 +1,22 @@
+[package]
+name = "mithic-worker"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "mithic-worker"
+path = "src/main.rs"
+
+[dependencies]
+mithic-config     = { workspace = true }
+mithic-core       = { workspace = true }
+mithic-db         = { workspace = true }
+mithic-federation = { workspace = true }
+tokio             = { workspace = true }
+tracing           = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow            = { workspace = true }
+dotenvy           = { workspace = true }
