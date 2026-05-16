@@ -22,6 +22,7 @@
 # Rust
 /cargo
 /backend/target
+/target
 
 # Flutter
 /flutter/.dart_tool
@@ -32,9 +33,6 @@
 
 # old-src
 /old-src
-
-# mithic wireframes
-/mithic-wireframe
 
 # claude
 .claude
