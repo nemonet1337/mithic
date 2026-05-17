@@ -1,5 +1,6 @@
 use leptos::prelude::*;
 use leptos_router::components::A;
+use leptos_router::hooks::use_navigate;
 
 use crate::models::{Note, NoteVisibility, User};
 use crate::store::{AuthStore, ComposeStore, NotificationStore};
@@ -7,20 +8,17 @@ use crate::store::{AuthStore, ComposeStore, NotificationStore};
 #[component]
 pub fn Protected(children: Children) -> impl IntoView {
     let auth = expect_context::<AuthStore>();
+    let auth_for_redirect = auth.clone();
+    let navigate = use_navigate();
+    Effect::new(move |_| {
+        if !auth_for_redirect.is_authenticated() {
+            navigate("/login", Default::default());
+        }
+    });
     if auth.is_authenticated() {
         children().into_any()
     } else {
-        view! {
-            <Shell active="home" right_rail=false>
-                <section class="wf-card raised auth-gate">
-                    <span class="wf-label">[ AUTH REQUIRED ]</span>
-                    <h1 class="wf-hand auth-gate-title">"ログインが必要です"</h1>
-                    <p>"タイムライン、通知、DM、設定を表示するにはログインしてください。"</p>
-                    <A href="/login" attr:class="wf-btn primary">"ログインへ"</A>
-                </section>
-            </Shell>
-        }
-        .into_any()
+        view! { <></> }.into_any()
     }
 }
 
@@ -79,7 +77,7 @@ pub fn Sidebar(#[prop(into)] active: String) -> impl IntoView {
         ("home", "ホーム", "01", "/"),
         ("search", "検索", "02", "/search"),
         ("notif", "通知", "03", "/notifications"),
-        ("dm", "メッセージ", "04", "/messages"),
+        ("dm", "メッセージ", "04", "/dm"),
         ("profile", "プロフィール", "05", "/you"),
         ("settings", "設定", "06", "/settings"),
     ];
@@ -138,7 +136,7 @@ pub fn BottomNav() -> impl IntoView {
             <A href="/search">"⌕"</A>
             <button on:click=move |_| compose.open()>"＋"</button>
             <A href="/notifications">"◌"</A>
-            <A href="/messages">"✉"</A>
+            <A href="/dm">"✉"</A>
         </nav>
     }
 }
