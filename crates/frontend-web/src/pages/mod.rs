@@ -181,7 +181,7 @@ pub fn NotificationsPage() -> impl IntoView {
             <div class="wf-spread notification-actions">
                 <span class="wf-hand" style="font-size:24px">"アクティビティ"</span>
                 <div class="wf-row">
-                    <Show when=move || notification_store.unread_notifications.get() > 0>
+                    <Show when=move || (notification_store.unread_notifications.get() > 0)>
                         <span class="wf-pill accent">
                             "未読 " {move || notification_store.unread_notifications.get().to_string()}
                         </span>

@@ -13,7 +13,7 @@ gloo-net = { version = "0.6", features = ["http", "websocket"] }
 gloo-timers = { version = "0.3", features = ["futures"] }
 gloo-storage = "0.3"
 leptos_icons = "0.4"
-icondata = { version = "0.3", features = ["fi"] }
+icondata = "0.3"
 serde.workspace = true
 serde_json.workspace = true
 shared = { path = "../shared" }
@@ -43,6 +43,7 @@ web-sys = { version = "0.3", features = [
     "Window",
 ] }
 console_error_panic_hook = "0.1"
+getrandom = { version = "0.3", features = ["wasm_js"] }
 
 [features]
 default = ["csr"]

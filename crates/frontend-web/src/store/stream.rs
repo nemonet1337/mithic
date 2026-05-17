@@ -46,7 +46,7 @@ pub fn connect_stream(
     onopen.forget();
 
     // メッセージ受信
-    let onmessage = Closure::<dyn FnMut(MessageEvent)>::wrap(Box::new(move |event| {
+    let onmessage = Closure::<dyn FnMut(MessageEvent)>::wrap(Box::new(move |event: MessageEvent| {
         if let Some(text) = event.data().as_string() {
             match serde_json::from_str::<StreamEvent>(&text) {
                 Ok(StreamEvent::Note { note }) => notes.update(|items| items.insert(0, note)),

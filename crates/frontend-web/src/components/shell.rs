@@ -88,7 +88,7 @@ pub fn Sidebar(#[prop(into)] active: String) -> impl IntoView {
                             <span class="wf-spine-num">{num}</span>
                             <span class="wf-spine-icon-inline">{nav_icon(item_id)}</span>
                             <span class="wf-spine-label">{label}</span>
-                            <Show when=move || badge.get() > 0>
+                            <Show when=move || (badge.get() > 0)>
                                 <span class="nav-badge">{move || badge.get().to_string()}</span>
                             </Show>
                         </A>

@@ -10,5 +10,8 @@
 # old-src
 /old-src
 
+# wireframe
+/wireframes
+
 # claude
 .claude
