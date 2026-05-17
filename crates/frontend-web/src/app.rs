@@ -4,8 +4,9 @@ use leptos_router::path;
 
 use crate::components::{ComposeModal, Protected};
 use crate::pages::{
-    DmConversationPage, DmPage, GlobalTimelinePage, HomePage, LocalTimelinePage, LoginPage,
-    NotFoundPage, NotificationsPage, ProfilePage, SearchPage, SettingsPage, StatusDetailPage,
+    AdminPage, DmConversationPage, DmPage, GlobalTimelinePage, HomePage, LocalTimelinePage,
+    LoginPage, NotFoundPage, NotificationsPage, ProfilePage, SearchPage, SettingsPage, SignupPage,
+    StatusDetailPage,
 };
 use crate::store::{AuthStore, ComposeStore, NotificationStore};
 
@@ -23,14 +24,16 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("local") view=|| view! { <Protected><LocalTimelinePage /></Protected> } />
                     <Route path=path!("global") view=|| view! { <Protected><GlobalTimelinePage /></Protected> } />
                     <Route path=path!("notifications") view=|| view! { <Protected><NotificationsPage /></Protected> } />
-                    <Route path=path!("messages") view=|| view! { <Protected><DmPage /></Protected> } />
-                    <Route path=path!("messages/:id") view=|| view! { <Protected><DmConversationPage /></Protected> } />
+                    <Route path=path!("dm") view=|| view! { <Protected><DmPage /></Protected> } />
+                    <Route path=path!("dm/:conversation") view=|| view! { <Protected><DmConversationPage /></Protected> } />
                     <Route path=path!("settings") view=|| view! { <Protected><SettingsPage /></Protected> } />
                     <Route path=path!("settings/:section") view=|| view! { <Protected><SettingsPage /></Protected> } />
-                    <Route path=path!("notes/:id") view=StatusDetailPage />
-                    <Route path=path!("search") view=SearchPage />
+                    <Route path=path!("notes/:id") view=|| view! { <Protected><StatusDetailPage /></Protected> } />
+                    <Route path=path!("search") view=|| view! { <Protected><SearchPage /></Protected> } />
                     <Route path=path!("login") view=LoginPage />
-                    <Route path=path!(":handle") view=ProfilePage />
+                    <Route path=path!("signup") view=SignupPage />
+                    <Route path=path!("profile/:username") view=|| view! { <Protected><ProfilePage /></Protected> } />
+                    <Route path=path!("admin") view=|| view! { <Protected><AdminPage /></Protected> } />
                 </Routes>
                 <ComposeModal />
             </div>
