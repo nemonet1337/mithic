@@ -1,9 +1,10 @@
+use gloo_storage::{LocalStorage, Storage};
 use leptos::prelude::*;
 use leptos_router::components::A;
-use leptos_router::hooks::{use_params_map, use_query_map};
+use leptos_router::hooks::{use_navigate, use_params_map, use_query_map};
 
 use crate::components::{Avatar, AvatarSize, MfmText, PostCard, Shell, TopBar};
-use crate::models::{sample_notes, sample_notifications, sample_user, NotificationType};
+use crate::models::{sample_notes, sample_notifications, sample_user, Note, NotificationType};
 use crate::store::{stream::connect_stream, AuthStore, NotificationStore};
 
 const TIMELINE_TABS: [(&str, &str); 3] = [
@@ -36,31 +37,94 @@ pub fn GlobalTimelinePage() -> impl IntoView {
 
 #[component]
 fn TimelinePage(kind: TimelineKind) -> impl IntoView {
-    let notes = RwSignal::new(sample_notes());
-    let auth = expect_context::<AuthStore>();
+    let auth        = expect_context::<AuthStore>();
     let notifications = expect_context::<NotificationStore>();
+    let notes       = RwSignal::<Vec<Note>>::new(vec![]);
+    let is_loading  = RwSignal::new(false);
+    let has_more    = RwSignal::new(true);
+
+    let kind_str = match kind {
+        TimelineKind::Home   => "home",
+        TimelineKind::Local  => "local",
+        TimelineKind::Global => "global",
+    };
     let active = match kind {
-        TimelineKind::Home => "/",
-        TimelineKind::Local => "/local",
+        TimelineKind::Home   => "/",
+        TimelineKind::Local  => "/local",
         TimelineKind::Global => "/global",
     };
     let title = match kind {
-        TimelineKind::Home => "ホーム",
-        TimelineKind::Local => "ローカル",
+        TimelineKind::Home   => "ホーム",
+        TimelineKind::Local  => "ローカル",
         TimelineKind::Global => "グローバル",
     };
 
+    // 初回ロード
+    Effect::new(move |_| {
+        let token = auth.token.get();
+        if let Some(tok) = token {
+            is_loading.set(true);
+            wasm_bindgen_futures::spawn_local(async move {
+                match crate::api::notes::fetch_timeline(&tok, kind_str, None).await {
+                    Ok(fetched) => {
+                        notes.set(fetched);
+                        is_loading.set(false);
+                    }
+                    Err(e) => {
+                        web_sys::console::error_1(&e.to_string().into());
+                        is_loading.set(false);
+                    }
+                }
+            });
+        }
+    });
+
+    // WebSocket でリアルタイム先頭挿入
     Effect::new(move |_| {
         if let Some(token) = auth.token.get() {
             connect_stream(token, notes, notifications.unread_notifications);
         }
     });
 
+    let load_more = move || {
+        let token  = auth.token.get_untracked();
+        let oldest = notes.with_untracked(|v| v.last().map(|n| n.id.clone()));
+        if let (Some(tok), Some(id)) = (token, oldest) {
+            is_loading.set(true);
+            wasm_bindgen_futures::spawn_local(async move {
+                match crate::api::notes::fetch_timeline(&tok, kind_str, Some(&id)).await {
+                    Ok(mut more) => {
+                        if more.is_empty() { has_more.set(false); }
+                        notes.update(|v| v.append(&mut more));
+                        is_loading.set(false);
+                    }
+                    Err(e) => {
+                        web_sys::console::error_1(&e.to_string().into());
+                        is_loading.set(false);
+                    }
+                }
+            });
+        }
+    };
+
     view! {
         <Shell active="home">
             <TopBar title=title folio="01" tabs=TIMELINE_TABS.to_vec() active_tab=active />
             <section class="timeline-list">
-                {move || notes.get().into_iter().map(|note| view! { <PostCard note=note /> }).collect_view()}
+                <For
+                    each=move || notes.get()
+                    key=|note| note.id.clone()
+                    children=|note| view! { <PostCard note=note /> }
+                />
+                <Show when=move || is_loading.get()>
+                    <div class="timeline-loading">"読み込み中…"</div>
+                </Show>
+                <Show when=move || !is_loading.get() && has_more.get() && !notes.get().is_empty()>
+                    <button class="wf-btn ghost full load-more-btn"
+                        on:click=move |_| load_more()>
+                        "さらに読み込む"
+                    </button>
+                </Show>
             </section>
         </Shell>
     }
