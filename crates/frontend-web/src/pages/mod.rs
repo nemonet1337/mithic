@@ -399,35 +399,137 @@ pub fn ProfilePage() -> impl IntoView {
 #[component]
 pub fn SettingsPage() -> impl IntoView {
     let groups = vec![
-        (
-            "アカウント",
-            vec!["プロフィール", "メール", "パスワード", "連携アカウント"],
-        ),
+        ("アカウント",   vec!["プロフィール", "メール", "パスワード", "連携アカウント", "2段階認証"]),
         ("プライバシー", vec!["公開範囲", "ブロック", "ミュート"]),
-        ("通知", vec!["プッシュ", "メール", "メンション"]),
-        ("表示", vec!["テーマ", "言語", "タイムゾーン"]),
-        ("データ", vec!["エクスポート", "削除"]),
-        ("2段階認証", vec!["TOTP", "SMS"]),
+        ("通知",         vec!["プッシュ", "メール", "メンション"]),
+        ("表示",         vec!["テーマ", "言語", "密度", "タイムゾーン"]),
+        ("連携",         vec!["外部サービス", "APIトークン"]),
     ];
+
+    let show_delete_confirm = RwSignal::new(false);
+
+    let theme = RwSignal::new(
+        LocalStorage::get::<String>("mithic.theme").unwrap_or_else(|_| "light".into())
+    );
+
+    let set_theme = move |t: &'static str| {
+        theme.set(t.into());
+        let _ = LocalStorage::set("mithic.theme", t);
+        if let Some(el) = web_sys::window()
+            .and_then(|w| w.document())
+            .and_then(|d| d.body())
+        {
+            match t {
+                "dark" => { let _ = el.class_list().add_1("dark"); }
+                _      => { let _ = el.class_list().remove_1("dark"); }
+            }
+        }
+    };
+
     view! {
         <Shell active="settings" right_rail=false>
             <div class="settings-layout">
                 <aside class="settings-nav">
                     <span class="wf-hand settings-title">"設定"</span>
                     {groups.into_iter().map(|(group, items)| view! {
-                        <section><span class="wf-label">{group}</span><div class="wf-stack settings-group">{items.into_iter().map(|item| view! { <A href=format!("/settings/{}", item) attr:class="settings-link">{item}<span>"›"</span></A> }).collect_view()}</div></section>
+                        <section>
+                            <span class="wf-label">{group}</span>
+                            <div class="wf-stack settings-group">
+                                {items.into_iter().map(|item| view! {
+                                    <A href=format!("/settings/{}", item) attr:class="settings-link">
+                                        {item}<span>"›"</span>
+                                    </A>
+                                }).collect_view()}
+                            </div>
+                        </section>
                     }).collect_view()}
                 </aside>
                 <main class="settings-content">
                     <span class="wf-label">"アカウント / プロフィール"</span>
                     <h1 class="wf-hand settings-main-title">"プロフィール設定"</h1>
                     <div class="settings-form">
-                        <div class="wf-row"><div class="wf-av xl accent" /><div class="wf-col"><button class="wf-btn sm">"画像を変更"</button><button class="wf-btn sm ghost">"削除"</button></div></div>
+                        <div class="wf-row">
+                            <div class="wf-av xl accent" />
+                            <div class="wf-col">
+                                <button class="wf-btn sm">"画像を変更"</button>
+                                <button class="wf-btn sm ghost">"削除"</button>
+                            </div>
+                        </div>
                         <Field label="表示名" value="Hana K." />
                         <Field label="ハンドル" value="@hana" />
-                        <label class="field"><span class="wf-label">"自己紹介"</span><textarea>"UI設計と植物。決めない自由を残す。"</textarea></label>
-                        <div class="wf-row form-actions"><button class="wf-btn ghost">"キャンセル"</button><button class="wf-btn primary">"保存"</button></div>
+                        <label class="field">
+                            <span class="wf-label">"自己紹介"</span>
+                            <textarea>"UI設計と植物。決めない自由を残す。"</textarea>
+                        </label>
+                        <div class="wf-row form-actions">
+                            <button class="wf-btn ghost">"キャンセル"</button>
+                            <button class="wf-btn primary">"保存"</button>
+                        </div>
                     </div>
+
+                    // テーマ切り替え
+                    <div class="wf-spread wf-card" style="padding:12px;margin-top:16px">
+                        <span style="font-size:13px">"テーマ"</span>
+                        <div class="wf-row" style="gap:4px">
+                            <button
+                                class=move || if theme.get() == "light" { "wf-btn sm primary" } else { "wf-btn sm ghost" }
+                                on:click=move |_| set_theme("light")>
+                                "ライト"
+                            </button>
+                            <button
+                                class=move || if theme.get() == "dark" { "wf-btn sm primary" } else { "wf-btn sm ghost" }
+                                on:click=move |_| set_theme("dark")>
+                                "ダーク"
+                            </button>
+                            <button
+                                class=move || if theme.get() == "auto" { "wf-btn sm primary" } else { "wf-btn sm ghost" }
+                                on:click=move |_| set_theme("auto")>
+                                "自動"
+                            </button>
+                        </div>
+                    </div>
+
+                    // 危険な操作
+                    <section class="wf-card dashed settings-danger-zone">
+                        <span class="wf-label" style="color:var(--accent)">"ZONE · DANGER"</span>
+                        <p style="font-size:12px;color:var(--ink-2);margin:8px 0">
+                            "これらの操作は取り消せません。慎重に行ってください。"
+                        </p>
+                        <div class="wf-row" style="gap:8px">
+                            <button class="wf-btn ghost sm">"アカウントを一時停止"</button>
+                            <button class="wf-btn sm"
+                                style="border-color:var(--accent);color:var(--accent)"
+                                on:click=move |_| show_delete_confirm.set(true)>
+                                "アカウントを削除する"
+                            </button>
+                        </div>
+                    </section>
+
+                    // 削除確認ダイアログ
+                    <Show when=move || show_delete_confirm.get()>
+                        <div class="compose-backdrop" on:click=move |_| show_delete_confirm.set(false)>
+                            <div class="wf-card raised"
+                                style="width:380px;padding:20px"
+                                on:click=move |e| e.stop_propagation()>
+                                <div class="wf-row" style="margin-bottom:8px">
+                                    <span class="wf-pill accent" style="font-size:9px">"[ DANGER ]"</span>
+                                </div>
+                                <h2 class="wf-hand" style="font-size:24px;margin:4px 0 6px">
+                                    "アカウントを削除しますか？"
+                                </h2>
+                                <p style="font-size:12px;color:var(--ink-2);margin:0 0 16px;line-height:1.5">
+                                    "この操作は取り消せません。投稿・フォロー関係・すべてのデータが完全に削除されます。"
+                                </p>
+                                <div class="wf-row" style="justify-content:flex-end;gap:6px">
+                                    <button class="wf-btn ghost"
+                                        on:click=move |_| show_delete_confirm.set(false)>
+                                        "キャンセル"
+                                    </button>
+                                    <button class="wf-btn accent">"削除する"</button>
+                                </div>
+                            </div>
+                        </div>
+                    </Show>
                 </main>
             </div>
         </Shell>
