@@ -373,38 +373,324 @@ fn Field(#[prop(into)] label: String, #[prop(into)] value: String) -> impl IntoV
 
 #[component]
 pub fn LoginPage() -> impl IntoView {
-    let auth = expect_context::<AuthStore>();
+    let auth     = expect_context::<AuthStore>();
+    let handle   = RwSignal::new(String::new());
+    let password = RwSignal::new(String::new());
+    let remember = RwSignal::new(false);
+    let show_pw  = RwSignal::new(false);
+    let error    = RwSignal::<Option<String>>::new(None);
+    let loading  = RwSignal::new(false);
+    let navigate = use_navigate();
+
+    let on_submit = move |_| {
+        let h = handle.get();
+        let p = password.get();
+
+        if h.trim().is_empty() {
+            error.set(Some("ハンドルまたはメールアドレスを入力してください".into()));
+            return;
+        }
+        if p.len() < 8 {
+            error.set(Some("パスワードは8文字以上です".into()));
+            return;
+        }
+        error.set(None);
+        loading.set(true);
+
+        let auth2 = auth.clone();
+        let nav2  = navigate.clone();
+        wasm_bindgen_futures::spawn_local(async move {
+            use crate::api::auth::{LoginRequest, login};
+            let req = LoginRequest { handle: h, password: p, remember: remember.get() };
+            match login(&req).await {
+                Ok(pair) => {
+                    auth2.login(pair.access_token, pair.user);
+                    nav2("/", Default::default());
+                }
+                Err(e) => {
+                    error.set(Some(e.message));
+                    loading.set(false);
+                }
+            }
+        });
+    };
+
     view! {
-        <Shell active="home" right_rail=false>
-            <section class="login-panel wf-card raised">
-                <span class="wf-label">"[ MITHIC LOGIN ]"</span>
-                <h1 class="wf-hand login-title">"おかえりなさい"</h1>
-                <label class="field"><span class="wf-label">"ハンドル"</span><input placeholder="@hana" /></label>
-                <label class="field"><span class="wf-label">"パスワード"</span><input type="password" placeholder="••••••••" /></label>
-                <button class="wf-btn accent full" on:click=move |_| auth.login("dev-token".into(), sample_user("you", "You"))>"ログイン"</button>
-                <A href="/" attr:class="wf-btn ghost full">"タイムラインへ"</A>
-            </section>
-        </Shell>
+        <div class="auth-split">
+            <aside class="auth-aside">
+                <div class="auth-aside-hatch" />
+                <span class="auth-aside-tag">"[ LOG IN · 01 ]"</span>
+                <h1 class="wf-hand auth-aside-title">
+                    "ようこそ、"<br />
+                    <span class="wf-uline">"mithic"</span>" へ。"
+                </h1>
+                <p class="auth-aside-sub">"決めない自由を残したまま、再開しましょう。"</p>
+                <div class="auth-postmark">
+                    <div class="auth-postmark-inner" />
+                    <span class="wf-mono" style="font-size:9px;letter-spacing:.14em">"EST."</span>
+                    <span class="wf-hand" style="font-size:22px;line-height:1">"2024"</span>
+                    <span class="wf-mono" style="font-size:8px;letter-spacing:.1em;margin-top:2px">"TOKYO"</span>
+                </div>
+                <div class="wf-mono" style="font-size:9px;color:var(--ink-3);margin-top:18px">
+                    "— mithic · signal not noise —"
+                </div>
+            </aside>
+
+            <div class="auth-form-area">
+                <div class="auth-form-inner wf-stack" style="gap:12px">
+                    <div class="auth-mark">
+                        <span class="wf-mark-bracket" style="font-size:28px">"["</span>
+                        <span class="wf-mark-glyph"  style="font-size:28px">"m"</span>
+                        <span class="wf-mark-bracket" style="font-size:28px">"]"</span>
+                        <span class="wf-hand" style="font-size:30px;margin-left:6px">"mithic"</span>
+                    </div>
+
+                    <span class="wf-label">"[ 既存アカウント / SIGN IN ]"</span>
+                    <h2 class="wf-hand" style="font-size:28px;margin:4px 0 0">"ログイン"</h2>
+
+                    <Show when=move || error.get().is_some()>
+                        <div class="auth-error">
+                            <span class="wf-pill accent" style="font-size:9px">"[ ERROR ]"</span>
+                            {move || error.get().unwrap_or_default()}
+                        </div>
+                    </Show>
+
+                    <div>
+                        <div class="wf-spread" style="margin-bottom:4px">
+                            <span class="wf-label">"サーバ"</span>
+                            <span class="wf-mono" style="font-size:9px;color:var(--ink-3)">"変更 ▾"</span>
+                        </div>
+                        <div class="wf-input lg">
+                            <span class="wf-mono" style="color:var(--ink-3);margin-right:6px">"@"</span>
+                            <span style="flex:1;color:var(--ink)">"mithic.social"</span>
+                            <span class="wf-pill accent2" style="font-size:9px">"● 接続中"</span>
+                        </div>
+                    </div>
+
+                    <label class="field">
+                        <span class="wf-label">"ハンドル / メール"</span>
+                        <input class="wf-input lg"
+                            placeholder="@hana"
+                            prop:value=move || handle.get()
+                            on:input=move |e| handle.set(event_target_value(&e))
+                        />
+                    </label>
+
+                    <div>
+                        <div class="wf-spread" style="margin-bottom:4px">
+                            <span class="wf-label">"パスワード"</span>
+                            <span class="wf-mono" style="font-size:9px;color:var(--accent)">"忘れた場合"</span>
+                        </div>
+                        <div class="wf-input lg">
+                            <input
+                                style="flex:1;border:0;background:transparent;outline:0;color:var(--ink)"
+                                prop:type=move || if show_pw.get() { "text" } else { "password" }
+                                placeholder="••••••••"
+                                prop:value=move || password.get()
+                                on:input=move |e| password.set(event_target_value(&e))
+                            />
+                            <button class="wf-btn icon ghost sm" on:click=move |_| show_pw.update(|v| *v = !*v)>
+                                {move || if show_pw.get() { "🔒" } else { "👁" }}
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="wf-spread">
+                        <label class="wf-row" style="gap:6px;font-size:11px;cursor:pointer">
+                            <input type="checkbox"
+                                prop:checked=move || remember.get()
+                                on:change=move |_| remember.update(|v| *v = !*v)
+                            />
+                            "このデバイスを記憶"
+                        </label>
+                        <span class="wf-pill" style="font-size:10px">"🔐 2FA有効"</span>
+                    </div>
+
+                    <button class="wf-btn accent full lg"
+                        disabled=move || loading.get()
+                        on:click=on_submit>
+                        {move || if loading.get() { "認証中…" } else { "ログイン →" }}
+                    </button>
+
+                    <p style="font-size:11px;color:var(--ink-3);text-align:center">
+                        "はじめての方は "
+                        <A href="/signup" attr:class="wf-tag">"新規登録 →"</A>
+                    </p>
+                </div>
+            </div>
+        </div>
     }
 }
 
 #[component]
 pub fn SignupPage() -> impl IntoView {
+    let signup_handle    = RwSignal::new(String::new());
+    let display_name     = RwSignal::new(String::new());
+    let email            = RwSignal::new(String::new());
+    let password         = RwSignal::new(String::new());
+    let password_confirm = RwSignal::new(String::new());
+    let agreed_age       = RwSignal::new(false);
+    let agreed_tos       = RwSignal::new(false);
+    let handle_available = RwSignal::<Option<bool>>::new(None);
+    let error            = RwSignal::<Option<String>>::new(None);
+
+    // ハンドル可用性チェック (簡易デバウンス)
+    Effect::new(move |_| {
+        let h = signup_handle.get();
+        if h.len() < 3 { handle_available.set(None); return; }
+        wasm_bindgen_futures::spawn_local(async move {
+            gloo_timers::future::sleep(std::time::Duration::from_millis(500)).await;
+            if signup_handle.get_untracked() != h { return; }
+            match crate::api::users::check_handle(&h).await {
+                Ok(r)  => handle_available.set(Some(r.available)),
+                Err(_) => handle_available.set(None),
+            }
+        });
+    });
+
+    let pw_strength = Memo::new(move |_| {
+        let p = password.get();
+        let mut score = 0u8;
+        if p.len() >= 8  { score += 1; }
+        if p.len() >= 12 { score += 1; }
+        if p.chars().any(|c| c.is_ascii_uppercase())    { score += 1; }
+        if p.chars().any(|c| c.is_ascii_punctuation())  { score += 1; }
+        score
+    });
+
+    let can_proceed = Memo::new(move |_| {
+        handle_available.get() == Some(true)
+        && !display_name.get().is_empty()
+        && email.get().contains('@')
+        && password.get().len() >= 8
+        && password.get() == password_confirm.get()
+        && agreed_age.get()
+        && agreed_tos.get()
+    });
+
     view! {
-        <div class="auth-layout">
-            <section class="auth-aside">
-                <span class="wf-label">"[ SIGN UP · 01 ]"</span>
-                <h1 class="wf-hand auth-title">"アカウントを作成しましょう。"</h1>
-            </section>
-            <section class="auth-panel wf-card raised">
-                <span class="wf-label">"[ STEP 1/3 ]"</span>
-                <h2 class="wf-hand">"登録情報"</h2>
-                <input class="wf-input" placeholder="@handle" />
-                <input class="wf-input" placeholder="表示名" />
-                <input class="wf-input" placeholder="メールアドレス" />
-                <input class="wf-input" type="password" placeholder="パスワード" />
-                <button class="wf-btn accent">"次へ →"</button>
-            </section>
+        <div class="auth-split">
+            <aside class="auth-aside">
+                <div class="auth-aside-hatch" />
+                <span class="auth-aside-tag">"[ SIGN UP · 01 ]"</span>
+                <h1 class="wf-hand auth-aside-title">"アカウントを作成しましょう。"</h1>
+                <p class="auth-aside-sub">"mithic はオープンな分散型 SNS です。ActivityPub でつながります。"</p>
+                <div class="wf-mono" style="font-size:9px;color:var(--ink-3);margin-top:auto">
+                    "— mithic · signal not noise —"
+                </div>
+            </aside>
+
+            <div class="auth-form-area">
+                <div class="auth-form-inner wf-stack" style="gap:12px">
+                    <div class="signup-progress">
+                        <div class="signup-progress-seg done" />
+                        <div class="signup-progress-seg" />
+                        <div class="signup-progress-seg" />
+                    </div>
+
+                    <span class="wf-label">"[ STEP 1/3 · 登録情報 ]"</span>
+                    <h2 class="wf-hand" style="font-size:28px;margin:4px 0 0">"新規登録"</h2>
+
+                    <Show when=move || error.get().is_some()>
+                        <div class="auth-error">
+                            <span class="wf-pill accent" style="font-size:9px">"[ ERROR ]"</span>
+                            {move || error.get().unwrap_or_default()}
+                        </div>
+                    </Show>
+
+                    <div>
+                        <div class="wf-spread" style="margin-bottom:4px">
+                            <span class="wf-label">"ハンドル"</span>
+                            {move || match handle_available.get() {
+                                Some(true)  => view! { <span class="wf-pill accent2" style="font-size:9px">"✓ 利用可"</span> }.into_any(),
+                                Some(false) => view! { <span class="wf-pill accent"  style="font-size:9px">"✗ 使用中"</span> }.into_any(),
+                                None        => view! { <span></span> }.into_any(),
+                            }}
+                        </div>
+                        <input class="wf-input lg"
+                            placeholder="@hana"
+                            prop:value=move || signup_handle.get()
+                            on:input=move |e| signup_handle.set(event_target_value(&e))
+                        />
+                    </div>
+
+                    <label class="field">
+                        <span class="wf-label">"表示名"</span>
+                        <input class="wf-input lg"
+                            placeholder="Hana K."
+                            prop:value=move || display_name.get()
+                            on:input=move |e| display_name.set(event_target_value(&e))
+                        />
+                    </label>
+
+                    <label class="field">
+                        <span class="wf-label">"メールアドレス"</span>
+                        <input class="wf-input lg"
+                            type="email"
+                            placeholder="hana@example.com"
+                            prop:value=move || email.get()
+                            on:input=move |e| email.set(event_target_value(&e))
+                        />
+                    </label>
+
+                    <div>
+                        <span class="wf-label">"パスワード"</span>
+                        <input class="wf-input lg"
+                            type="password"
+                            placeholder="••••••••"
+                            prop:value=move || password.get()
+                            on:input=move |e| password.set(event_target_value(&e))
+                        />
+                        <div class="pw-strength-bar">
+                            {move || (1..=4u8).map(|i| {
+                                let strength = pw_strength.get();
+                                let cls = if strength >= i {
+                                    format!("pw-strength-seg active-{i}")
+                                } else {
+                                    "pw-strength-seg".into()
+                                };
+                                view! { <div class=cls /> }
+                            }).collect_view()}
+                        </div>
+                    </div>
+
+                    <label class="field">
+                        <span class="wf-label">"パスワード確認"</span>
+                        <input class="wf-input lg"
+                            type="password"
+                            placeholder="••••••••"
+                            prop:value=move || password_confirm.get()
+                            on:input=move |e| password_confirm.set(event_target_value(&e))
+                        />
+                    </label>
+
+                    <label class="wf-row" style="gap:6px;font-size:11px;cursor:pointer">
+                        <input type="checkbox"
+                            prop:checked=move || agreed_age.get()
+                            on:change=move |_| agreed_age.update(|v| *v = !*v)
+                        />
+                        "私は13歳以上です"
+                    </label>
+
+                    <label class="wf-row" style="gap:6px;font-size:11px;cursor:pointer">
+                        <input type="checkbox"
+                            prop:checked=move || agreed_tos.get()
+                            on:change=move |_| agreed_tos.update(|v| *v = !*v)
+                        />
+                        "利用規約に同意します"
+                    </label>
+
+                    <button class="wf-btn accent full lg"
+                        disabled=move || !can_proceed.get()>
+                        "次へ →"
+                    </button>
+
+                    <p style="font-size:11px;color:var(--ink-3);text-align:center">
+                        "既にアカウントをお持ちの方は "
+                        <A href="/login" attr:class="wf-tag">"ログイン →"</A>
+                    </p>
+                </div>
+            </div>
         </div>
     }
 }
