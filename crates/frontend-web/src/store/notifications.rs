@@ -9,8 +9,8 @@ pub struct NotificationStore {
 impl NotificationStore {
     pub fn new() -> Self {
         Self {
-            unread_notifications: RwSignal::new(2),
-            unread_messages: RwSignal::new(1),
+            unread_notifications: RwSignal::new(0),
+            unread_messages: RwSignal::new(0),
         }
     }
 
