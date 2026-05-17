@@ -178,30 +178,98 @@ pub fn NotificationsPage() -> impl IntoView {
     let notifications = sample_notifications();
     view! {
         <Shell active="notif">
-            <TopBar title="通知" folio="03" />
             <div class="wf-spread notification-actions">
-                <div class="wf-tabs"><span class="t on">"すべて"</span><span class="t">"@メンション"</span><span class="t">"いいね"</span><span class="t">"フォロー"</span></div>
-                <button class="wf-btn sm" on:click=move |_| notification_store.mark_notifications_read()>"すべて既読"</button>
+                <span class="wf-hand" style="font-size:24px">"アクティビティ"</span>
+                <div class="wf-row">
+                    <Show when=move || notification_store.unread_notifications.get() > 0>
+                        <span class="wf-pill accent">
+                            "未読 " {move || notification_store.unread_notifications.get().to_string()}
+                        </span>
+                    </Show>
+                    <button class="wf-btn sm ghost"
+                        on:click=move |_| notification_store.mark_notifications_read()>
+                        "既読に"
+                    </button>
+                </div>
+            </div>
+            <div class="wf-tabs" style="padding:0 16px">
+                <span class="t on">"すべて"</span>
+                <span class="t">"@メンション"</span>
+                <span class="t">"いいね"</span>
+                <span class="t">"フォロー"</span>
             </div>
             <section class="timeline-list">
                 {notifications.into_iter().map(|notification| {
                     let sender = notification.sender.clone();
-                    let note = notification.note.clone();
+                    let note   = notification.note.clone();
                     let unread_class = if notification.is_read { "notification-card" } else { "notification-card unread" };
-                    let kind = match notification.notification_type {
-                        NotificationType::Reaction => format!("{} がリアクションしました", notification.reaction.unwrap_or_default()),
-                        NotificationType::Reply => "返信が届きました".to_string(),
-                        NotificationType::Follow => "フォローされました".to_string(),
-                        _ => "新しい通知".to_string(),
+                    let (kind_label, action_view) = match notification.notification_type {
+                        NotificationType::Reaction => (
+                            format!("{} があなたの投稿に", notification.reaction.as_deref().unwrap_or("リアクション")),
+                            view! {}.into_any(),
+                        ),
+                        NotificationType::Reply => (
+                            "が返信しました".into(),
+                            view! {
+                                <div class="wf-row notif-actions">
+                                    <button class="wf-btn sm ghost">"返信"</button>
+                                    <button class="wf-btn sm">"開く"</button>
+                                </div>
+                            }.into_any(),
+                        ),
+                        NotificationType::Follow => (
+                            "があなたをフォローしました".into(),
+                            view! {
+                                <button class="wf-btn sm primary">"フォローバック"</button>
+                            }.into_any(),
+                        ),
+                        NotificationType::Renote => (
+                            "がリノートしました".into(),
+                            view! {}.into_any(),
+                        ),
+                        NotificationType::Mention => (
+                            "があなたをメンションしました".into(),
+                            view! {}.into_any(),
+                        ),
+                        NotificationType::Quote => (
+                            "があなたを引用しました".into(),
+                            view! {}.into_any(),
+                        ),
+                        NotificationType::FollowRequest => (
+                            "がフォローリクエストを送りました".into(),
+                            view! {
+                                <div class="wf-row notif-actions">
+                                    <button class="wf-btn sm">"承認"</button>
+                                    <button class="wf-btn sm ghost">"拒否"</button>
+                                </div>
+                            }.into_any(),
+                        ),
+                        NotificationType::FollowRequestAccepted => (
+                            "があなたのフォローリクエストを承認しました".into(),
+                            view! {}.into_any(),
+                        ),
+                        NotificationType::PollEnded => (
+                            "のアンケートが終了しました".into(),
+                            view! {}.into_any(),
+                        ),
+                        NotificationType::UserSignup => (
+                            "が登録しました".into(),
+                            view! {}.into_any(),
+                        ),
                     };
                     view! {
                         <article class=unread_class>
                             <div class="unread-dot" />
                             {sender.map(|user| view! { <Avatar user=user size=AvatarSize::Sm /> }).into_view()}
                             <div class="wf-grow">
-                                <div class="wf-spread"><strong>{kind}</strong><span class="wf-mono muted-text">{notification.created_at}</span></div>
-                                {note.map(|note| view! { <blockquote class="notif-preview"><MfmText text=note.content /></blockquote> }).into_view()}
-                                <div class="wf-row notif-actions"><button class="wf-btn sm ghost">"返信"</button><button class="wf-btn sm">"開く"</button></div>
+                                <div class="wf-spread">
+                                    <strong>{kind_label}</strong>
+                                    <span class="wf-mono muted-text">{notification.created_at}</span>
+                                </div>
+                                {note.map(|n| view! {
+                                    <blockquote class="notif-preview"><MfmText text=n.content /></blockquote>
+                                }).into_view()}
+                                {action_view}
                             </div>
                         </article>
                     }
