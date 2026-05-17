@@ -3,8 +3,8 @@ use leptos_router::components::A;
 use leptos_router::hooks::{use_params_map, use_query_map};
 
 use crate::components::{Avatar, AvatarSize, MfmText, PostCard, Shell, TopBar};
-use crate::models::{NotificationType, sample_notes, sample_notifications, sample_user};
-use crate::store::{AuthStore, NotificationStore, stream::connect_stream};
+use crate::models::{sample_notes, sample_notifications, sample_user, NotificationType};
+use crate::store::{stream::connect_stream, AuthStore, NotificationStore};
 
 const TIMELINE_TABS: [(&str, &str); 3] = [
     ("フォロー中", "/"),
@@ -176,7 +176,7 @@ pub fn DmPage() -> impl IntoView {
 #[component]
 pub fn DmConversationPage() -> impl IntoView {
     let params = use_params_map();
-    let conversation_id = params.read().get("id");
+    let conversation_id = params.read().get("conversation");
     view! { <DmScaffold conversation_id=conversation_id /> }
 }
 
@@ -199,7 +199,7 @@ fn DmScaffold(conversation_id: Option<String>) -> impl IntoView {
                     ].into_iter().map(|(id, name, handle, last, time, unread)| {
                         let active = selected == id;
                         view! {
-                            <A href=format!("/messages/{id}") attr:class=move || if active { "dm-row active" } else { "dm-row" }>
+                            <A href=format!("/dm/{id}") attr:class=move || if active { "dm-row active" } else { "dm-row" }>
                                 <div class="wf-av sm accent" />
                                 <div class="wf-col wf-grow"><div class="wf-spread"><span class="wf-hand dm-name">{name}</span><span class="wf-mono muted-text">{time}</span></div><span class="dm-last">{handle} "· " {last}</span></div>
                                 <Show when=move || unread><span class="unread-dot static-dot" /></Show>
@@ -235,7 +235,12 @@ fn MessageBubble(#[prop(default = false)] mine: bool, #[prop(into)] text: String
 #[component]
 pub fn ProfilePage() -> impl IntoView {
     let params = use_params_map();
-    let handle = move || params.read().get("handle").unwrap_or_else(|| "hana".into());
+    let handle = move || {
+        params
+            .read()
+            .get("username")
+            .unwrap_or_else(|| "hana".into())
+    };
     let user = sample_user("hana", "Hana K.");
     view! {
         <Shell active="profile">
@@ -314,6 +319,40 @@ pub fn LoginPage() -> impl IntoView {
                 <label class="field"><span class="wf-label">"パスワード"</span><input type="password" placeholder="••••••••" /></label>
                 <button class="wf-btn accent full" on:click=move |_| auth.login("dev-token".into(), sample_user("you", "You"))>"ログイン"</button>
                 <A href="/" attr:class="wf-btn ghost full">"タイムラインへ"</A>
+            </section>
+        </Shell>
+    }
+}
+
+#[component]
+pub fn SignupPage() -> impl IntoView {
+    view! {
+        <div class="auth-layout">
+            <section class="auth-aside">
+                <span class="wf-label">"[ SIGN UP · 01 ]"</span>
+                <h1 class="wf-hand auth-title">"アカウントを作成しましょう。"</h1>
+            </section>
+            <section class="auth-panel wf-card raised">
+                <span class="wf-label">"[ STEP 1/3 ]"</span>
+                <h2 class="wf-hand">"登録情報"</h2>
+                <input class="wf-input" placeholder="@handle" />
+                <input class="wf-input" placeholder="表示名" />
+                <input class="wf-input" placeholder="メールアドレス" />
+                <input class="wf-input" type="password" placeholder="パスワード" />
+                <button class="wf-btn accent">"次へ →"</button>
+            </section>
+        </div>
+    }
+}
+
+#[component]
+pub fn AdminPage() -> impl IntoView {
+    view! {
+        <Shell active="settings">
+            <TopBar title="管理コンソール" folio="99" />
+            <section class="wf-card raised">
+                <h2 class="wf-hand">"Admin"</h2>
+                <p>"P2で実装予定の管理画面です。"</p>
             </section>
         </Shell>
     }

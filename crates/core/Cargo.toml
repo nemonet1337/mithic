@@ -1,0 +1,30 @@
+[package]
+name = "mithic-core"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+mithic-config = { workspace = true }
+mithic-db     = { workspace = true }
+mithic-i18n   = { workspace = true }
+axum          = { workspace = true }
+serde         = { workspace = true }
+serde_json    = { workspace = true }
+tracing       = { workspace = true }
+anyhow        = { workspace = true }
+chrono        = { workspace = true }
+ulid          = { workspace = true }
+uuid          = { workspace = true }
+url           = { workspace = true }
+validator     = { workspace = true }
+regex         = { workspace = true }
+once_cell     = { workspace = true }
+surrealdb     = { workspace = true }
+redis         = { workspace = true }
+reqwest       = { workspace = true }
+bytes         = { workspace = true }
+http          = { workspace = true }
+mime          = { workspace = true }

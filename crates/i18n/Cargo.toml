@@ -1,0 +1,12 @@
+[package]
+name = "mithic-i18n"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+fluent = { workspace = true }
+unic-langid = { workspace = true }
+tracing = { workspace = true }
