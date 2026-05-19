@@ -16,5 +16,6 @@ backend = "http://127.0.0.1:3000/api/"
 rewrite = "/api/"
 
 [[proxy]]
-backend = "ws://127.0.0.1:3000/ws"
+backend = "ws://127.0.0.1:3000/api/streaming"
+rewrite = "/api/streaming"
 ws = true

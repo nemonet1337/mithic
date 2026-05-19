@@ -12,7 +12,9 @@ use crate::store::{AuthStore, ComposeStore, NotificationStore};
 
 #[component]
 pub fn App() -> impl IntoView {
-    provide_context(AuthStore::new());
+    let auth = AuthStore::new();
+    auth.verify_on_startup();
+    provide_context(auth);
     provide_context(ComposeStore::new());
     provide_context(NotificationStore::new());
 

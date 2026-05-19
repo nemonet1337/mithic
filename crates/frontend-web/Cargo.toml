@@ -9,9 +9,11 @@ rust-version.workspace = true
 [dependencies]
 leptos = { version = "0.7", default-features = false, features = ["csr"] }
 leptos_router = { version = "0.7", default-features = false }
-reqwest = { version = "0.12", default-features = false, features = ["json"] }
+gloo-net = { version = "0.6", features = ["http", "websocket"] }
+gloo-timers = { version = "0.3", features = ["futures"] }
 gloo-storage = "0.3"
 leptos_icons = "0.4"
+icondata = "0.3"
 serde.workspace = true
 serde_json.workspace = true
 shared = { path = "../shared" }
@@ -20,14 +22,20 @@ wasm-bindgen-futures = "0.4"
 web-sys = { version = "0.3", features = [
     "console",
     "CloseEvent",
+    "Document",
+    "DomTokenList",
     "DragEvent",
     "Element",
     "Event",
     "File",
     "FileList",
+    "HtmlBodyElement",
     "HtmlInputElement",
     "HtmlSelectElement",
     "HtmlTextAreaElement",
+    "IntersectionObserver",
+    "IntersectionObserverEntry",
+    "IntersectionObserverInit",
     "KeyboardEvent",
     "MessageEvent",
     "Url",
@@ -35,6 +43,7 @@ web-sys = { version = "0.3", features = [
     "Window",
 ] }
 console_error_panic_hook = "0.1"
+getrandom = { version = "0.3", features = ["wasm_js"] }
 
 [features]
 default = ["csr"]

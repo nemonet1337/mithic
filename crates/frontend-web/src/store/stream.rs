@@ -18,7 +18,7 @@ pub fn connect_stream(
 ) {
     use wasm_bindgen::JsCast;
     use wasm_bindgen::closure::Closure;
-    use web_sys::{MessageEvent, WebSocket};
+    use web_sys::{CloseEvent, MessageEvent, WebSocket};
 
     let Some(window) = web_sys::window() else {
         return;
@@ -29,14 +29,24 @@ pub fn connect_stream(
         Some("https:") => "wss",
         _ => "ws",
     };
-    let url = format!("{protocol}://{host}/ws?token={token}");
+    let url = format!("{protocol}://{host}/api/streaming?token={token}");
 
     let Ok(ws) = WebSocket::new(&url) else {
         web_sys::console::warn_1(&"failed to open Mithic websocket".into());
         return;
     };
 
-    let onmessage = Closure::<dyn FnMut(MessageEvent)>::wrap(Box::new(move |event| {
+    // 接続確立後にチャンネル購読メッセージを送信
+    let ws_for_open = ws.clone();
+    let onopen = Closure::<dyn FnMut()>::wrap(Box::new(move || {
+        let _ = ws_for_open.send_with_str(r#"{"type":"connect","channel":"homeTimeline"}"#);
+        let _ = ws_for_open.send_with_str(r#"{"type":"connect","channel":"notifications"}"#);
+    }));
+    ws.set_onopen(Some(onopen.as_ref().unchecked_ref()));
+    onopen.forget();
+
+    // メッセージ受信
+    let onmessage = Closure::<dyn FnMut(MessageEvent)>::wrap(Box::new(move |event: MessageEvent| {
         if let Some(text) = event.data().as_string() {
             match serde_json::from_str::<StreamEvent>(&text) {
                 Ok(StreamEvent::Note { note }) => notes.update(|items| items.insert(0, note)),
@@ -49,9 +59,20 @@ pub fn connect_stream(
             }
         }
     }));
-
     ws.set_onmessage(Some(onmessage.as_ref().unchecked_ref()));
     onmessage.forget();
+
+    // 切断時に指数バックオフで再接続 (簡易版: 3秒固定)
+    let token_for_close = token.clone();
+    let onclose = Closure::<dyn FnMut(CloseEvent)>::wrap(Box::new(move |_| {
+        let tok = token_for_close.clone();
+        gloo_timers::callback::Timeout::new(3_000, move || {
+            connect_stream(tok, notes, unread_notifications);
+        })
+        .forget();
+    }));
+    ws.set_onclose(Some(onclose.as_ref().unchecked_ref()));
+    onclose.forget();
 }
 
 #[cfg(not(target_arch = "wasm32"))]
