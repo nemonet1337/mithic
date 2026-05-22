@@ -1,17 +1,17 @@
 [workspace]
 members = [
-    "crates/config",
-    "crates/mfm",
-    "crates/i18n",
-    "crates/db",
-    "crates/core",
-    "crates/federation",
-    "crates/stream",
-    "crates/api",
-    "crates/server",
-    "crates/worker",
-    "crates/frontend-web",
-    "crates/shared",
+    "config",
+    "mfm",
+    "i18n",
+    "db",
+    "core",
+    "federation",
+    "stream",
+    "api",
+    "server",
+    "worker",
+    "frontend-web",
+    "shared",
 ]
 resolver = "2"
 
@@ -100,12 +100,12 @@ web-push = "0.11"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif"] }
 
 # Internal crates
-mithic-config     = { path = "crates/config" }
-mithic-mfm        = { path = "crates/mfm" }
-mithic-i18n       = { path = "crates/i18n" }
-mithic-db         = { path = "crates/db" }
-mithic-core       = { path = "crates/core" }
-mithic-federation = { path = "crates/federation" }
-mithic-stream     = { path = "crates/stream" }
-mithic-api        = { path = "crates/api" }
-shared            = { path = "crates/shared" }
+mithic-config     = { path = "config" }
+mithic-mfm        = { path = "mfm" }
+mithic-i18n       = { path = "i18n" }
+mithic-db         = { path = "db" }
+mithic-core       = { path = "core" }
+mithic-federation = { path = "federation" }
+mithic-stream     = { path = "stream" }
+mithic-api        = { path = "api" }
+shared            = { path = "shared" }
