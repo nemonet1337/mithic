@@ -20,10 +20,20 @@ pub struct PushSubscription {
 
 impl PushSubscription {
     pub fn new(user_id: ActorId, endpoint: String, p256dh: String, auth: String) -> Self {
-        Self { id: PushSubscriptionId::new(), user_id, endpoint, p256dh, auth, created_at: Utc::now(), last_used_at: None }
+        Self {
+            id: PushSubscriptionId::new(),
+            user_id,
+            endpoint,
+            p256dh,
+            auth,
+            created_at: Utc::now(),
+            last_used_at: None,
+        }
     }
 
-    pub fn update_last_used(&mut self) { self.last_used_at = Some(Utc::now()); }
+    pub fn update_last_used(&mut self) {
+        self.last_used_at = Some(Utc::now());
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -44,7 +54,11 @@ pub struct PushSubscriptionResponse {
 
 impl From<PushSubscription> for PushSubscriptionResponse {
     fn from(sub: PushSubscription) -> Self {
-        Self { id: sub.id.to_string(), endpoint: sub.endpoint.clone(), created_at: sub.created_at }
+        Self {
+            id: sub.id.to_string(),
+            endpoint: sub.endpoint.clone(),
+            created_at: sub.created_at,
+        }
     }
 }
 
@@ -70,9 +84,23 @@ pub struct WebPushBody {
 
 impl WebPushBody {
     pub fn new(id: impl Into<String>, title: impl Into<String>, body: impl Into<String>) -> Self {
-        Self { id: id.into(), title: title.into(), body: body.into(), icon: None, badge: None, tag: None, url: None }
+        Self {
+            id: id.into(),
+            title: title.into(),
+            body: body.into(),
+            icon: None,
+            badge: None,
+            tag: None,
+            url: None,
+        }
     }
 
-    pub fn with_icon(mut self, icon: impl Into<String>) -> Self { self.icon = Some(icon.into()); self }
-    pub fn with_url(mut self, url: impl Into<String>) -> Self { self.url = Some(url.into()); self }
+    pub fn with_icon(mut self, icon: impl Into<String>) -> Self {
+        self.icon = Some(icon.into());
+        self
+    }
+    pub fn with_url(mut self, url: impl Into<String>) -> Self {
+        self.url = Some(url.into());
+        self
+    }
 }

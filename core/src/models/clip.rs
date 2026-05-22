@@ -21,8 +21,21 @@ pub struct Clip {
 }
 
 impl Clip {
-    pub fn new(user_id: ActorId, name: String, is_public: bool, description: Option<String>) -> Self {
-        Self { id: ClipId::new(), user_id, name, is_public, description, created_at: Utc::now(), updated_at: None }
+    pub fn new(
+        user_id: ActorId,
+        name: String,
+        is_public: bool,
+        description: Option<String>,
+    ) -> Self {
+        Self {
+            id: ClipId::new(),
+            user_id,
+            name,
+            is_public,
+            description,
+            created_at: Utc::now(),
+            updated_at: None,
+        }
     }
 }
 
@@ -37,7 +50,12 @@ pub struct ClipNote {
 
 impl ClipNote {
     pub fn new(clip_id: ClipId, note_id: NoteId) -> Self {
-        Self { id: ClipNoteId::new(), clip_id, note_id, created_at: Utc::now() }
+        Self {
+            id: ClipNoteId::new(),
+            clip_id,
+            note_id,
+            created_at: Utc::now(),
+        }
     }
 }
 
@@ -71,13 +89,22 @@ pub struct ClipResponse {
 
 impl From<Clip> for ClipResponse {
     fn from(c: Clip) -> Self {
-        Self { id: c.id.to_string(), name: c.name, is_public: c.is_public, description: c.description, created_at: c.created_at, updated_at: c.updated_at }
+        Self {
+            id: c.id.to_string(),
+            name: c.name,
+            is_public: c.is_public,
+            description: c.description,
+            created_at: c.created_at,
+            updated_at: c.updated_at,
+        }
     }
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AddNoteToClipRequest { pub note_id: String }
+pub struct AddNoteToClipRequest {
+    pub note_id: String,
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

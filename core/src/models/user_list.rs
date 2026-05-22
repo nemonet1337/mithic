@@ -19,10 +19,19 @@ pub struct UserList {
 
 impl UserList {
     pub fn new(user_id: ActorId, name: String) -> Self {
-        Self { id: UserListId::new(), user_id, name, created_at: Utc::now(), updated_at: None }
+        Self {
+            id: UserListId::new(),
+            user_id,
+            name,
+            created_at: Utc::now(),
+            updated_at: None,
+        }
     }
 
-    pub fn rename(&mut self, name: String) { self.name = name; self.updated_at = Some(Utc::now()); }
+    pub fn rename(&mut self, name: String) {
+        self.name = name;
+        self.updated_at = Some(Utc::now());
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -36,17 +45,26 @@ pub struct UserListMembership {
 
 impl UserListMembership {
     pub fn new(list_id: UserListId, user_id: ActorId) -> Self {
-        Self { id: UserListMembershipId::new(), list_id, user_id, created_at: Utc::now() }
+        Self {
+            id: UserListMembershipId::new(),
+            list_id,
+            user_id,
+            created_at: Utc::now(),
+        }
     }
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CreateUserListRequest { pub name: String }
+pub struct CreateUserListRequest {
+    pub name: String,
+}
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct UpdateUserListRequest { pub name: String }
+pub struct UpdateUserListRequest {
+    pub name: String,
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -59,7 +77,12 @@ pub struct UserListResponse {
 
 impl From<UserList> for UserListResponse {
     fn from(list: UserList) -> Self {
-        Self { id: list.id.to_string(), name: list.name, created_at: list.created_at, updated_at: list.updated_at }
+        Self {
+            id: list.id.to_string(),
+            name: list.name,
+            created_at: list.created_at,
+            updated_at: list.updated_at,
+        }
     }
 }
 
@@ -74,13 +97,20 @@ pub struct UserListMembershipResponse {
 
 impl From<UserListMembership> for UserListMembershipResponse {
     fn from(m: UserListMembership) -> Self {
-        Self { id: m.id.to_string(), list_id: m.list_id.to_string(), user_id: m.user_id.to_string(), created_at: m.created_at }
+        Self {
+            id: m.id.to_string(),
+            list_id: m.list_id.to_string(),
+            user_id: m.user_id.to_string(),
+            created_at: m.created_at,
+        }
     }
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AddUserToListRequest { pub user_id: String }
+pub struct AddUserToListRequest {
+    pub user_id: String,
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

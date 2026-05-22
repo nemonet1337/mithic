@@ -18,12 +18,22 @@ struct TokenBucket {
 
 impl TokenBucket {
     fn new(max_tokens: u32, refill_rate: u32) -> Self {
-        Self { tokens: max_tokens, max_tokens, refill_rate, last_refill: Instant::now() }
+        Self {
+            tokens: max_tokens,
+            max_tokens,
+            refill_rate,
+            last_refill: Instant::now(),
+        }
     }
 
     fn try_consume(&mut self, tokens: u32) -> bool {
         self.refill();
-        if self.tokens >= tokens { self.tokens -= tokens; true } else { false }
+        if self.tokens >= tokens {
+            self.tokens -= tokens;
+            true
+        } else {
+            false
+        }
     }
 
     fn refill(&mut self) {
@@ -39,7 +49,9 @@ impl TokenBucket {
 
 impl RateLimiter {
     pub fn new() -> Self {
-        Self { buckets: Arc::new(Mutex::new(std::collections::HashMap::new())) }
+        Self {
+            buckets: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        }
     }
 
     pub async fn check_rate_limit(&self, key: &str, limit: u32) -> bool {
@@ -57,7 +69,9 @@ impl RateLimiter {
 }
 
 impl Default for RateLimiter {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -67,7 +81,12 @@ pub struct RateLimitConfig {
 }
 
 impl Default for RateLimitConfig {
-    fn default() -> Self { Self { requests_per_minute: 60, burst_size: 10 } }
+    fn default() -> Self {
+        Self {
+            requests_per_minute: 60,
+            burst_size: 10,
+        }
+    }
 }
 
 pub async fn rate_limit_middleware(
@@ -80,11 +99,19 @@ pub async fn rate_limit_middleware(
         .headers()
         .get("x-forwarded-for")
         .and_then(|v| v.to_str().ok())
-        .or_else(|| request.headers().get("x-real-ip").and_then(|v| v.to_str().ok()))
+        .or_else(|| {
+            request
+                .headers()
+                .get("x-real-ip")
+                .and_then(|v| v.to_str().ok())
+        })
         .unwrap_or("unknown")
         .to_string();
 
-    if !limiter.check_rate_limit(&client_id, config.requests_per_minute).await {
+    if !limiter
+        .check_rate_limit(&client_id, config.requests_per_minute)
+        .await
+    {
         return Err(StatusCode::TOO_MANY_REQUESTS);
     }
 

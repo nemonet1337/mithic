@@ -9,9 +9,18 @@ pub type FileId = Ulid;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub enum FileType { Image, Video, Audio, Other }
+pub enum FileType {
+    Image,
+    Video,
+    Audio,
+    Other,
+}
 
-impl Default for FileType { fn default() -> Self { FileType::Other } }
+impl Default for FileType {
+    fn default() -> Self {
+        FileType::Other
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 #[serde(rename_all = "camelCase")]
@@ -41,27 +50,59 @@ pub struct DriveFile {
 }
 
 impl DriveFile {
-    pub fn new(name: String, mime_type: String, size: i64, owner_id: ActorId, path: String, hash: String) -> Self {
+    pub fn new(
+        name: String,
+        mime_type: String,
+        size: i64,
+        owner_id: ActorId,
+        path: String,
+        hash: String,
+    ) -> Self {
         let file_type = Self::detect_file_type(&mime_type);
         Self {
-            id: FileId::new(), created_at: Utc::now(), updated_at: None,
-            name, mime_type, file_type, size, owner_id, path,
-            thumbnail_path: None, url: None, thumbnail_url: None,
-            width: None, height: None, duration: None, hash,
-            is_public: false, folder_id: None, comment: None,
+            id: FileId::new(),
+            created_at: Utc::now(),
+            updated_at: None,
+            name,
+            mime_type,
+            file_type,
+            size,
+            owner_id,
+            path,
+            thumbnail_path: None,
+            url: None,
+            thumbnail_url: None,
+            width: None,
+            height: None,
+            duration: None,
+            hash,
+            is_public: false,
+            folder_id: None,
+            comment: None,
         }
     }
 
     fn detect_file_type(mime_type: &str) -> FileType {
-        if mime_type.starts_with("image/") { FileType::Image }
-        else if mime_type.starts_with("video/") { FileType::Video }
-        else if mime_type.starts_with("audio/") { FileType::Audio }
-        else { FileType::Other }
+        if mime_type.starts_with("image/") {
+            FileType::Image
+        } else if mime_type.starts_with("video/") {
+            FileType::Video
+        } else if mime_type.starts_with("audio/") {
+            FileType::Audio
+        } else {
+            FileType::Other
+        }
     }
 
-    pub fn is_image(&self) -> bool { matches!(self.file_type, FileType::Image) }
-    pub fn is_video(&self) -> bool { matches!(self.file_type, FileType::Video) }
-    pub fn is_audio(&self) -> bool { matches!(self.file_type, FileType::Audio) }
+    pub fn is_image(&self) -> bool {
+        matches!(self.file_type, FileType::Image)
+    }
+    pub fn is_video(&self) -> bool {
+        matches!(self.file_type, FileType::Video)
+    }
+    pub fn is_audio(&self) -> bool {
+        matches!(self.file_type, FileType::Audio)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]

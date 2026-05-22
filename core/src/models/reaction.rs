@@ -20,10 +20,26 @@ pub struct Reaction {
 
 impl Reaction {
     pub fn new(note_id: NoteId, actor_id: ActorId, reaction: String) -> Self {
-        Self { id: ReactionId::new(), created_at: Utc::now(), note_id, actor_id, reaction, is_remote: false, uri: None }
+        Self {
+            id: ReactionId::new(),
+            created_at: Utc::now(),
+            note_id,
+            actor_id,
+            reaction,
+            is_remote: false,
+            uri: None,
+        }
     }
 
     pub fn new_remote(note_id: NoteId, actor_id: ActorId, reaction: String, uri: String) -> Self {
-        Self { id: ReactionId::new(), created_at: Utc::now(), note_id, actor_id, reaction, is_remote: true, uri: Some(uri) }
+        Self {
+            id: ReactionId::new(),
+            created_at: Utc::now(),
+            note_id,
+            actor_id,
+            reaction,
+            is_remote: true,
+            uri: Some(uri),
+        }
     }
 }

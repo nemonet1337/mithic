@@ -9,7 +9,12 @@ pub type AntennaNoteId = Ulid;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
-pub enum AntennaSource { All, Home, Users, UsersList }
+pub enum AntennaSource {
+    All,
+    Home,
+    Users,
+    UsersList,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -77,11 +82,17 @@ pub struct AntennaResponse {
 impl From<Antenna> for AntennaResponse {
     fn from(a: Antenna) -> Self {
         Self {
-            id: a.id, name: a.name, source: a.source,
-            keywords: a.keywords, exclude_keywords: a.exclude_keywords,
-            users: a.users, user_list_id: a.user_list_id,
-            case_sensitive: a.case_sensitive, with_replies: a.with_replies,
-            with_renotes: a.with_renotes, created_at: a.created_at,
+            id: a.id,
+            name: a.name,
+            source: a.source,
+            keywords: a.keywords,
+            exclude_keywords: a.exclude_keywords,
+            users: a.users,
+            user_list_id: a.user_list_id,
+            case_sensitive: a.case_sensitive,
+            with_replies: a.with_replies,
+            with_renotes: a.with_renotes,
+            created_at: a.created_at,
             updated_at: a.updated_at,
         }
     }
@@ -107,6 +118,11 @@ pub struct AntennaNoteResponse {
 
 impl From<AntennaNote> for AntennaNoteResponse {
     fn from(n: AntennaNote) -> Self {
-        Self { id: n.id, antenna_id: n.antenna_id, note_id: n.note_id, created_at: n.created_at }
+        Self {
+            id: n.id,
+            antenna_id: n.antenna_id,
+            note_id: n.note_id,
+            created_at: n.created_at,
+        }
     }
 }

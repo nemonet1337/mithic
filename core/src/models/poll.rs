@@ -21,17 +21,44 @@ pub struct Poll {
 }
 
 impl Poll {
-    pub fn new(note_id: NoteId, choices: Vec<String>, expires_at: Option<DateTime<Utc>>, multiple: bool) -> Self {
-        let choices = choices.into_iter().enumerate()
-            .map(|(index, text)| PollChoice { index: index as i32, text, votes: 0 })
+    pub fn new(
+        note_id: NoteId,
+        choices: Vec<String>,
+        expires_at: Option<DateTime<Utc>>,
+        multiple: bool,
+    ) -> Self {
+        let choices = choices
+            .into_iter()
+            .enumerate()
+            .map(|(index, text)| PollChoice {
+                index: index as i32,
+                text,
+                votes: 0,
+            })
             .collect();
-        Self { id: Ulid::new(), note_id, created_at: Utc::now(), expires_at, multiple, is_archived: false, choices }
+        Self {
+            id: Ulid::new(),
+            note_id,
+            created_at: Utc::now(),
+            expires_at,
+            multiple,
+            is_archived: false,
+            choices,
+        }
     }
 
-    pub fn close(&mut self) { self.is_archived = true; }
-    pub fn is_expired(&self) -> bool { self.expires_at.map(|exp| Utc::now() > exp).unwrap_or(false) }
-    pub fn can_vote(&self) -> bool { !self.is_expired() && !self.is_archived }
-    pub fn total_votes(&self) -> i32 { self.choices.iter().map(|c| c.votes).sum() }
+    pub fn close(&mut self) {
+        self.is_archived = true;
+    }
+    pub fn is_expired(&self) -> bool {
+        self.expires_at.map(|exp| Utc::now() > exp).unwrap_or(false)
+    }
+    pub fn can_vote(&self) -> bool {
+        !self.is_expired() && !self.is_archived
+    }
+    pub fn total_votes(&self) -> i32 {
+        self.choices.iter().map(|c| c.votes).sum()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -54,7 +81,13 @@ pub struct PollVote {
 
 impl PollVote {
     pub fn new(poll_id: PollId, actor_id: ActorId, choice_index: i32) -> Self {
-        Self { id: Ulid::new(), poll_id, actor_id, choice_index, created_at: Utc::now() }
+        Self {
+            id: Ulid::new(),
+            poll_id,
+            actor_id,
+            choice_index,
+            created_at: Utc::now(),
+        }
     }
 }
 

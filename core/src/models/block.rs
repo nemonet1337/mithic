@@ -17,13 +17,20 @@ pub struct Block {
 
 impl Block {
     pub fn new(blocker_id: ActorId, blockee_id: ActorId) -> Self {
-        Self { id: BlockId::new(), blocker_id, blockee_id, created_at: Utc::now() }
+        Self {
+            id: BlockId::new(),
+            blocker_id,
+            blockee_id,
+            created_at: Utc::now(),
+        }
     }
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CreateBlockRequest { pub user_id: String }
+pub struct CreateBlockRequest {
+    pub user_id: String,
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -36,7 +43,12 @@ pub struct BlockResponse {
 
 impl From<Block> for BlockResponse {
     fn from(b: Block) -> Self {
-        Self { id: b.id.to_string(), blocker_id: b.blocker_id.to_string(), blockee_id: b.blockee_id.to_string(), created_at: b.created_at }
+        Self {
+            id: b.id.to_string(),
+            blocker_id: b.blocker_id.to_string(),
+            blockee_id: b.blockee_id.to_string(),
+            created_at: b.created_at,
+        }
     }
 }
 
@@ -48,6 +60,10 @@ pub struct BlockListQuery {
 }
 
 impl BlockListQuery {
-    pub fn limit(&self) -> i32 { self.limit.unwrap_or(20).min(100) }
-    pub fn offset(&self) -> i32 { self.offset.unwrap_or(0) }
+    pub fn limit(&self) -> i32 {
+        self.limit.unwrap_or(20).min(100)
+    }
+    pub fn offset(&self) -> i32 {
+        self.offset.unwrap_or(0)
+    }
 }

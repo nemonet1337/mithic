@@ -74,8 +74,12 @@ pub struct HashtagSearchQuery {
 }
 
 impl HashtagSearchQuery {
-    pub fn limit(&self) -> i32 { self.limit.unwrap_or(20).min(100) }
-    pub fn offset(&self) -> i32 { self.offset.unwrap_or(0) }
+    pub fn limit(&self) -> i32 {
+        self.limit.unwrap_or(20).min(100)
+    }
+    pub fn offset(&self) -> i32 {
+        self.offset.unwrap_or(0)
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -89,5 +93,7 @@ pub struct HashtagTimelineQuery {
 }
 
 impl HashtagTimelineQuery {
-    pub fn limit(&self) -> i32 { self.limit.unwrap_or(10).min(30) }
+    pub fn limit(&self) -> i32 {
+        self.limit.unwrap_or(10).min(30)
+    }
 }

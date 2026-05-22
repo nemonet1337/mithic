@@ -36,19 +36,20 @@ pub fn connect_stream(
         return;
     };
 
-    let onmessage = Closure::<dyn FnMut(MessageEvent)>::wrap(Box::new(move |event| {
-        if let Some(text) = event.data().as_string() {
-            match serde_json::from_str::<StreamEvent>(&text) {
-                Ok(StreamEvent::Note { note }) => notes.update(|items| items.insert(0, note)),
-                Ok(StreamEvent::Notification { .. }) => {
-                    unread_notifications.update(|count| *count = count.saturating_add(1));
+    let onmessage =
+        Closure::<dyn FnMut(MessageEvent)>::wrap(Box::new(move |event: MessageEvent| {
+            if let Some(text) = event.data().as_string() {
+                match serde_json::from_str::<StreamEvent>(&text) {
+                    Ok(StreamEvent::Note { note }) => notes.update(|items| items.insert(0, note)),
+                    Ok(StreamEvent::Notification { .. }) => {
+                        unread_notifications.update(|count| *count = count.saturating_add(1));
+                    }
+                    Err(error) => web_sys::console::warn_1(
+                        &format!("ignored malformed stream event: {error}").into(),
+                    ),
                 }
-                Err(error) => web_sys::console::warn_1(
-                    &format!("ignored malformed stream event: {error}").into(),
-                ),
             }
-        }
-    }));
+        }));
 
     ws.set_onmessage(Some(onmessage.as_ref().unchecked_ref()));
     onmessage.forget();

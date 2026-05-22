@@ -18,6 +18,12 @@ pub struct UserPublicKey {
 
 impl UserPublicKey {
     pub fn new(user_id: ActorId, key_id: String, public_key_pem: String) -> Self {
-        Self { id: UserPublicKeyId::new(), user_id, key_id, public_key_pem, created_at: Utc::now() }
+        Self {
+            id: UserPublicKeyId::new(),
+            user_id,
+            key_id,
+            public_key_pem,
+            created_at: Utc::now(),
+        }
     }
 }

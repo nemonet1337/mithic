@@ -54,12 +54,24 @@ impl AppState {
         })
     }
 
-    pub fn surreal(&self) -> &SurrealClient { &self.inner.surreal }
-    pub fn dragonfly(&self) -> &DragonflyClient { &self.inner.dragonfly }
-    pub fn config(&self) -> &AppConfig { &self.inner.config }
-    pub fn http_client(&self) -> &reqwest::Client { &self.inner.http_client }
-    pub fn federation_service(&self) -> &FederationService { &self.inner.federation_service }
-    pub fn rate_limiter(&self) -> &RateLimiter { &self.inner.rate_limiter }
+    pub fn surreal(&self) -> &SurrealClient {
+        &self.inner.surreal
+    }
+    pub fn dragonfly(&self) -> &DragonflyClient {
+        &self.inner.dragonfly
+    }
+    pub fn config(&self) -> &AppConfig {
+        &self.inner.config
+    }
+    pub fn http_client(&self) -> &reqwest::Client {
+        &self.inner.http_client
+    }
+    pub fn federation_service(&self) -> &FederationService {
+        &self.inner.federation_service
+    }
+    pub fn rate_limiter(&self) -> &RateLimiter {
+        &self.inner.rate_limiter
+    }
 }
 
 pub use mithic_core::AuthUser as ApiAuthUser;

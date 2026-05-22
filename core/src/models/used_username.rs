@@ -14,6 +14,10 @@ pub struct UsedUsername {
 
 impl UsedUsername {
     pub fn new(username: String) -> Self {
-        Self { id: UsedUsernameId::new(), username: username.to_lowercase(), created_at: Utc::now() }
+        Self {
+            id: UsedUsernameId::new(),
+            username: username.to_lowercase(),
+            created_at: Utc::now(),
+        }
     }
 }

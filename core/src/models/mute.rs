@@ -18,14 +18,22 @@ pub struct Mute {
 
 impl Mute {
     pub fn new(muter_id: ActorId, mutee_id: ActorId, expires_at: Option<DateTime<Utc>>) -> Self {
-        Self { id: MuteId::new(), muter_id, mutee_id, created_at: Utc::now(), expires_at }
+        Self {
+            id: MuteId::new(),
+            muter_id,
+            mutee_id,
+            created_at: Utc::now(),
+            expires_at,
+        }
     }
 
     pub fn is_expired(&self) -> bool {
         self.expires_at.map(|exp| Utc::now() > exp).unwrap_or(false)
     }
 
-    pub fn is_active(&self) -> bool { !self.is_expired() }
+    pub fn is_active(&self) -> bool {
+        !self.is_expired()
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -65,6 +73,10 @@ pub struct MuteListQuery {
 }
 
 impl MuteListQuery {
-    pub fn limit(&self) -> i32 { self.limit.unwrap_or(20).min(100) }
-    pub fn offset(&self) -> i32 { self.offset.unwrap_or(0) }
+    pub fn limit(&self) -> i32 {
+        self.limit.unwrap_or(20).min(100)
+    }
+    pub fn offset(&self) -> i32 {
+        self.offset.unwrap_or(0)
+    }
 }

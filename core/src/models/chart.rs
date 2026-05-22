@@ -8,11 +8,22 @@ pub type ChartEntryId = Ulid;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
-pub enum ChartSpan { Hour, Day }
+pub enum ChartSpan {
+    Hour,
+    Day,
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
-pub enum ChartType { Users, Notes, Drive, Federation, PerUserNotes, PerUserFollowing, PerUserDrive }
+pub enum ChartType {
+    Users,
+    Notes,
+    Drive,
+    Federation,
+    PerUserNotes,
+    PerUserFollowing,
+    PerUserDrive,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -31,8 +42,26 @@ pub struct ChartEntry {
 }
 
 impl ChartEntry {
-    pub fn new_daily(chart_type: ChartType, date: NaiveDate, total: i64, inc: i64, dec: i64) -> Self {
-        Self { id: ChartEntryId::new(), chart_type, span: ChartSpan::Day, date: Some(date), hour: None, user_id: None, total, inc, dec, data: None, created_at: Utc::now() }
+    pub fn new_daily(
+        chart_type: ChartType,
+        date: NaiveDate,
+        total: i64,
+        inc: i64,
+        dec: i64,
+    ) -> Self {
+        Self {
+            id: ChartEntryId::new(),
+            chart_type,
+            span: ChartSpan::Day,
+            date: Some(date),
+            hour: None,
+            user_id: None,
+            total,
+            inc,
+            dec,
+            data: None,
+            created_at: Utc::now(),
+        }
     }
 }
 
@@ -56,15 +85,24 @@ pub struct ChartQuery {
 
 #[derive(Debug, Clone, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
-pub enum ChartSpanQuery { #[default] Day, Hour }
+pub enum ChartSpanQuery {
+    #[default]
+    Day,
+    Hour,
+}
 
 impl From<ChartSpanQuery> for ChartSpan {
     fn from(q: ChartSpanQuery) -> Self {
-        match q { ChartSpanQuery::Day => ChartSpan::Day, ChartSpanQuery::Hour => ChartSpan::Hour }
+        match q {
+            ChartSpanQuery::Day => ChartSpan::Day,
+            ChartSpanQuery::Hour => ChartSpan::Hour,
+        }
     }
 }
 
-fn default_limit() -> u32 { 30 }
+fn default_limit() -> u32 {
+    30
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
