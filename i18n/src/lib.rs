@@ -115,7 +115,6 @@ impl Default for I18n {
     }
 }
 
-
 /// 簡易翻訳マクロ
 #[macro_export]
 macro_rules! t {

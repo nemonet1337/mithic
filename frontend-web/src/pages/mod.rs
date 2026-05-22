@@ -3,8 +3,8 @@ use leptos_router::components::A;
 use leptos_router::hooks::{use_params_map, use_query_map};
 
 use crate::components::{Avatar, AvatarSize, MfmText, PostCard, Shell, TopBar};
-use crate::models::{sample_notes, sample_notifications, sample_user, NotificationType};
-use crate::store::{stream::connect_stream, AuthStore, NotificationStore};
+use crate::models::{NotificationType, sample_notes, sample_notifications, sample_user};
+use crate::store::{AuthStore, NotificationStore, stream::connect_stream};
 
 const TIMELINE_TABS: [(&str, &str); 3] = [
     ("フォロー中", "/"),

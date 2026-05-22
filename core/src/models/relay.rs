@@ -6,9 +6,17 @@ pub type RelayId = Ulid;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub enum RelayStatus { Requesting, Accepted, Rejected }
+pub enum RelayStatus {
+    Requesting,
+    Accepted,
+    Rejected,
+}
 
-impl Default for RelayStatus { fn default() -> Self { RelayStatus::Requesting } }
+impl Default for RelayStatus {
+    fn default() -> Self {
+        RelayStatus::Requesting
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -23,12 +31,26 @@ pub struct Relay {
 
 impl Relay {
     pub fn new(inbox: String) -> Self {
-        Self { id: RelayId::new(), inbox, status: RelayStatus::Requesting, created_at: Utc::now(), updated_at: None }
+        Self {
+            id: RelayId::new(),
+            inbox,
+            status: RelayStatus::Requesting,
+            created_at: Utc::now(),
+            updated_at: None,
+        }
     }
 
-    pub fn accept(&mut self) { self.status = RelayStatus::Accepted; self.updated_at = Some(Utc::now()); }
-    pub fn reject(&mut self) { self.status = RelayStatus::Rejected; self.updated_at = Some(Utc::now()); }
-    pub fn is_accepted(&self) -> bool { self.status == RelayStatus::Accepted }
+    pub fn accept(&mut self) {
+        self.status = RelayStatus::Accepted;
+        self.updated_at = Some(Utc::now());
+    }
+    pub fn reject(&mut self) {
+        self.status = RelayStatus::Rejected;
+        self.updated_at = Some(Utc::now());
+    }
+    pub fn is_accepted(&self) -> bool {
+        self.status == RelayStatus::Accepted
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -49,6 +71,12 @@ pub struct RelayResponse {
 
 impl From<Relay> for RelayResponse {
     fn from(relay: Relay) -> Self {
-        Self { id: relay.id.to_string(), inbox: relay.inbox.clone(), status: relay.status, created_at: relay.created_at, updated_at: relay.updated_at }
+        Self {
+            id: relay.id.to_string(),
+            inbox: relay.inbox.clone(),
+            status: relay.status,
+            created_at: relay.created_at,
+            updated_at: relay.updated_at,
+        }
     }
 }

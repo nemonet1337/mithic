@@ -53,19 +53,41 @@ impl Notification {
         }
     }
 
-    pub fn reaction(recipient_id: ActorId, sender_id: ActorId, note_id: NoteId, reaction: String) -> Self {
-        let mut notif = Self::new(NotificationType::Reaction, recipient_id, Some(sender_id), Some(note_id));
+    pub fn reaction(
+        recipient_id: ActorId,
+        sender_id: ActorId,
+        note_id: NoteId,
+        reaction: String,
+    ) -> Self {
+        let mut notif = Self::new(
+            NotificationType::Reaction,
+            recipient_id,
+            Some(sender_id),
+            Some(note_id),
+        );
         notif.reaction = Some(reaction);
         notif
     }
 
     pub fn mention(recipient_id: ActorId, sender_id: ActorId, note_id: NoteId) -> Self {
-        Self::new(NotificationType::Mention, recipient_id, Some(sender_id), Some(note_id))
+        Self::new(
+            NotificationType::Mention,
+            recipient_id,
+            Some(sender_id),
+            Some(note_id),
+        )
     }
 
     pub fn follow(recipient_id: ActorId, sender_id: ActorId) -> Self {
-        Self::new(NotificationType::Follow, recipient_id, Some(sender_id), None)
+        Self::new(
+            NotificationType::Follow,
+            recipient_id,
+            Some(sender_id),
+            None,
+        )
     }
 
-    pub fn mark_as_read(&mut self) { self.is_read = true; }
+    pub fn mark_as_read(&mut self) {
+        self.is_read = true;
+    }
 }

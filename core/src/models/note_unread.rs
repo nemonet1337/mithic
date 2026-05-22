@@ -19,6 +19,13 @@ pub struct NoteUnread {
 
 impl NoteUnread {
     pub fn new(note_id: NoteId, user_id: ActorId, is_specified: bool, is_mention: bool) -> Self {
-        Self { id: NoteUnreadId::new(), note_id, user_id, is_specified, is_mention, created_at: Utc::now() }
+        Self {
+            id: NoteUnreadId::new(),
+            note_id,
+            user_id,
+            is_specified,
+            is_mention,
+            created_at: Utc::now(),
+        }
     }
 }

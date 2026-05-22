@@ -9,11 +9,20 @@ pub type ImportId = Ulid;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
-pub enum ExportFormat { Json, Csv }
+pub enum ExportFormat {
+    Json,
+    Csv,
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
-pub enum ExportScope { All, Notes, Follows, Clips, Antennas }
+pub enum ExportScope {
+    All,
+    Notes,
+    Follows,
+    Clips,
+    Antennas,
+}
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -24,7 +33,11 @@ pub struct ExportRequest {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
-pub enum ExportStatus { Processing, Completed, Failed }
+pub enum ExportStatus {
+    Processing,
+    Completed,
+    Failed,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -42,7 +55,11 @@ pub struct Export {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
-pub enum ImportStatus { Processing, Completed, Failed }
+pub enum ImportStatus {
+    Processing,
+    Completed,
+    Failed,
+}
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]

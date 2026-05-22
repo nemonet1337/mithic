@@ -18,7 +18,9 @@ pub enum NoteVisibility {
 }
 
 impl Default for NoteVisibility {
-    fn default() -> Self { NoteVisibility::Public }
+    fn default() -> Self {
+        NoteVisibility::Public
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
@@ -77,9 +79,19 @@ impl Note {
         }
     }
 
-    pub fn is_renote(&self) -> bool { self.renote_id.is_some() }
-    pub fn is_reply(&self) -> bool { self.reply_id.is_some() }
-    pub fn has_text(&self) -> bool { self.text.as_ref().map(|t| !t.is_empty()).unwrap_or(false) }
-    pub fn has_files(&self) -> bool { !self.file_ids.is_empty() }
-    pub fn total_reactions(&self) -> i32 { self.reactions.values().sum() }
+    pub fn is_renote(&self) -> bool {
+        self.renote_id.is_some()
+    }
+    pub fn is_reply(&self) -> bool {
+        self.reply_id.is_some()
+    }
+    pub fn has_text(&self) -> bool {
+        self.text.as_ref().map(|t| !t.is_empty()).unwrap_or(false)
+    }
+    pub fn has_files(&self) -> bool {
+        !self.file_ids.is_empty()
+    }
+    pub fn total_reactions(&self) -> i32 {
+        self.reactions.values().sum()
+    }
 }

@@ -1,7 +1,7 @@
 use axum::{
     body::{Body, to_bytes},
     extract::{Request, State},
-    http::{header, StatusCode},
+    http::{StatusCode, header},
     middleware::Next,
     response::{IntoResponse, Response},
 };
@@ -67,7 +67,11 @@ impl HttpSignature {
     pub fn parse(header_value: &str) -> Result<Self, SignatureError> {
         let mut key_id = None;
         let mut signature = None;
-        let mut headers = vec!["(request-target)".to_string(), "host".to_string(), "date".to_string()];
+        let mut headers = vec![
+            "(request-target)".to_string(),
+            "host".to_string(),
+            "date".to_string(),
+        ];
         let mut algorithm = "rsa-sha256".to_string();
 
         for part in header_value.split(',') {
@@ -77,7 +81,11 @@ impl HttpSignature {
             } else if let Some(value) = part.strip_prefix("signature=\"") {
                 signature = Some(value.trim_end_matches('"').to_string());
             } else if let Some(value) = part.strip_prefix("headers=\"") {
-                headers = value.trim_end_matches('"').split_whitespace().map(|s| s.to_string()).collect();
+                headers = value
+                    .trim_end_matches('"')
+                    .split_whitespace()
+                    .map(|s| s.to_string())
+                    .collect();
             } else if let Some(value) = part.strip_prefix("algorithm=\"") {
                 algorithm = value.trim_end_matches('"').to_string();
             }
@@ -119,9 +127,14 @@ pub async fn verify_http_signature(
     let request_time = chrono::DateTime::parse_from_rfc2822(date_header)
         .map_err(|_| SignatureError::InvalidFormat)?;
     let now = chrono::Utc::now();
-    let time_diff = (now - request_time.with_timezone(&chrono::Utc)).num_seconds().abs();
+    let time_diff = (now - request_time.with_timezone(&chrono::Utc))
+        .num_seconds()
+        .abs();
     if time_diff > 30 * 60 {
-        warn!("Request time too old or in future: {} (diff: {}s)", date_header, time_diff);
+        warn!(
+            "Request time too old or in future: {} (diff: {}s)",
+            date_header, time_diff
+        );
         return Err(SignatureError::VerificationFailed);
     }
 
@@ -131,17 +144,23 @@ pub async fn verify_http_signature(
 
     let public_key_pem = fetch_actor_public_key(&state, &signature.key_id)
         .await
-        .map_err(|e| { warn!("Failed to fetch public key for {}: {}", signature.key_id, e); SignatureError::ActorKeyNotFound })?;
+        .map_err(|e| {
+            warn!("Failed to fetch public key for {}: {}", signature.key_id, e);
+            SignatureError::ActorKeyNotFound
+        })?;
 
     let (parts, body) = request.into_parts();
     let body_bytes = if method == axum::http::Method::POST {
-        to_bytes(body, usize::MAX).await.map_err(|_| SignatureError::DigestMismatch)?
+        to_bytes(body, usize::MAX)
+            .await
+            .map_err(|_| SignatureError::DigestMismatch)?
     } else {
         axum::body::Bytes::new()
     };
 
     if method == axum::http::Method::POST {
-        let digest = digest_header.ok_or_else(|| SignatureError::MissingHeader("Digest".to_string()))?;
+        let digest =
+            digest_header.ok_or_else(|| SignatureError::MissingHeader("Digest".to_string()))?;
         if !verify_digest(&body_bytes, digest) {
             warn!("Digest verification failed");
             return Err(SignatureError::DigestMismatch);
@@ -149,7 +168,14 @@ pub async fn verify_http_signature(
     }
 
     let request_target = format!("{} {}", method.as_str().to_lowercase(), uri.path());
-    if !verify_signature(&public_key_pem, &signature, &request_target, host, date_header, &headers)? {
+    if !verify_signature(
+        &public_key_pem,
+        &signature,
+        &request_target,
+        host,
+        date_header,
+        &headers,
+    )? {
         warn!("HTTP signature verification failed");
         return Err(SignatureError::VerificationFailed);
     }
@@ -198,8 +224,12 @@ fn build_signing_string(
 
 fn verify_digest(body: &[u8], digest_header: &str) -> bool {
     let parts: Vec<&str> = digest_header.splitn(2, '=').collect();
-    if parts.len() != 2 { return false; }
-    if !parts[0].eq_ignore_ascii_case("sha-256") && !parts[0].eq_ignore_ascii_case("SHA-256") { return false; }
+    if parts.len() != 2 {
+        return false;
+    }
+    if !parts[0].eq_ignore_ascii_case("sha-256") && !parts[0].eq_ignore_ascii_case("SHA-256") {
+        return false;
+    }
 
     use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
@@ -235,7 +265,10 @@ async fn fetch_actor_public_key(state: &AppState, key_id: &str) -> Result<String
         .map_err(|e| AppError::Internal(format!("Failed to fetch actor: {}", e)))?;
 
     if !response.status().is_success() {
-        return Err(AppError::Internal(format!("Actor fetch failed with status: {}", response.status())));
+        return Err(AppError::Internal(format!(
+            "Actor fetch failed with status: {}",
+            response.status()
+        )));
     }
 
     let actor_data: serde_json::Value = response

@@ -79,7 +79,7 @@ pub enum ClientMessage {
 }
 
 /// Channel registry
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ChannelRegistry {
     channels: Arc<RwLock<HashMap<String, Arc<dyn Channel + Send + Sync>>>>,
 }

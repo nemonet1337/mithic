@@ -52,16 +52,34 @@ impl AppError {
 
     fn to_error_details(&self) -> ErrorDetails {
         match self {
-            AppError::Unauthorized(_) => ErrorDetails { key: "error-unauthorized", detail: None },
-            AppError::Forbidden(_) => ErrorDetails { key: "error-forbidden", detail: None },
-            AppError::NotFound(_) => ErrorDetails { key: "error-not-found", detail: None },
+            AppError::Unauthorized(_) => ErrorDetails {
+                key: "error-unauthorized",
+                detail: None,
+            },
+            AppError::Forbidden(_) => ErrorDetails {
+                key: "error-forbidden",
+                detail: None,
+            },
+            AppError::NotFound(_) => ErrorDetails {
+                key: "error-not-found",
+                detail: None,
+            },
             AppError::Validation(msg) => ErrorDetails {
                 key: "error-validation",
                 detail: Some(msg.clone()),
             },
-            AppError::Database(_) => ErrorDetails { key: "error-database", detail: None },
-            AppError::Redis(_) => ErrorDetails { key: "error-cache", detail: None },
-            AppError::Internal(_) => ErrorDetails { key: "error-internal", detail: None },
+            AppError::Database(_) => ErrorDetails {
+                key: "error-database",
+                detail: None,
+            },
+            AppError::Redis(_) => ErrorDetails {
+                key: "error-cache",
+                detail: None,
+            },
+            AppError::Internal(_) => ErrorDetails {
+                key: "error-internal",
+                detail: None,
+            },
         }
     }
 

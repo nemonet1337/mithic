@@ -7,7 +7,11 @@ pub type InstanceConfigId = Ulid;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub enum RegistrationMode { Open, Invite, Closed }
+pub enum RegistrationMode {
+    Open,
+    Invite,
+    Closed,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 #[serde(rename_all = "camelCase")]

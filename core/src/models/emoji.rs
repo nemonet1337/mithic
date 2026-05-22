@@ -7,8 +7,16 @@ pub type EmojiId = Ulid;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum EmojiCategory {
-    General, Activities, Animals, Flags, Food, Objects,
-    People, Nature, Symbols, Uncategorized,
+    General,
+    Activities,
+    Animals,
+    Flags,
+    Food,
+    Objects,
+    People,
+    Nature,
+    Symbols,
+    Uncategorized,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -63,6 +71,17 @@ pub struct EmojiResponse {
 
 impl From<Emoji> for EmojiResponse {
     fn from(e: Emoji) -> Self {
-        Self { id: e.id, name: e.name, category: e.category, aliases: e.aliases, url: e.url, width: e.width, height: e.height, is_public: e.is_public, created_at: e.created_at, updated_at: e.updated_at }
+        Self {
+            id: e.id,
+            name: e.name,
+            category: e.category,
+            aliases: e.aliases,
+            url: e.url,
+            width: e.width,
+            height: e.height,
+            is_public: e.is_public,
+            created_at: e.created_at,
+            updated_at: e.updated_at,
+        }
     }
 }

@@ -12,7 +12,7 @@ async fn main() -> Result<()> {
     let config = mithic_config::AppConfig::from_env()?;
 
     info!("Connecting to SurrealDB at {}", config.surrealdb_endpoint);
-    let surreal = mithic_db::create_surreal_client(mithic_db::SurrealConfig {
+    let surreal = mithic_db::create_surreal_client(&mithic_db::SurrealConfig {
         endpoint: config.surrealdb_endpoint.clone(),
         namespace: config.surrealdb_namespace.clone(),
         database: config.surrealdb_database.clone(),

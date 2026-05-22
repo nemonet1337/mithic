@@ -17,6 +17,11 @@ pub struct UserNotePining {
 
 impl UserNotePining {
     pub fn new(user_id: ActorId, note_id: NoteId) -> Self {
-        Self { id: UserNotePiningId::new(), user_id, note_id, created_at: Utc::now() }
+        Self {
+            id: UserNotePiningId::new(),
+            user_id,
+            note_id,
+            created_at: Utc::now(),
+        }
     }
 }

@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use base64::prelude::*;
 use reqwest::Client;
+use sha2::Digest;
 use tracing::{error, info, warn};
 
 use mithic_core::models::Actor;
@@ -10,7 +11,7 @@ use mithic_db::{DragonflyClient, SurrealClient};
 #[derive(Debug, Clone)]
 pub struct FederationService {
     surreal: Arc<SurrealClient>,
-    dragonfly: Arc<DragonflyClient>,
+    dragonfly: DragonflyClient,
     http_client: Client,
     instance_url: String,
 }
@@ -19,7 +20,7 @@ impl FederationService {
     pub fn new(surreal: SurrealClient, dragonfly: DragonflyClient, instance_url: String) -> Self {
         Self {
             surreal: Arc::new(surreal),
-            dragonfly: Arc::new(dragonfly),
+            dragonfly,
             http_client: Client::new(),
             instance_url,
         }
@@ -36,10 +37,11 @@ impl FederationService {
                 "activity": activity,
                 "attempts": 0,
             });
+            let mut conn = self.dragonfly.clone();
             redis::cmd("LPUSH")
                 .arg("federation:queue")
                 .arg(delivery.to_string())
-                .query_async::<_, ()>(&mut self.dragonfly.clone())
+                .query_async::<()>(&mut conn)
                 .await?;
         }
         Ok(())
@@ -57,11 +59,13 @@ impl FederationService {
             .private_key
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("Actor has no private key"))?;
+        let _ = private_key;
 
         let key_id = format!("{}#main-key", actor.actor_uri(&self.instance_url));
         let body = serde_json::to_vec(activity)?;
         let parsed_url = url::Url::parse(inbox_url)?;
         let path = parsed_url.path();
+        let _ = path;
         let host = parsed_url
             .host_str()
             .ok_or_else(|| anyhow::anyhow!("Invalid inbox URL: no host"))?;
@@ -73,7 +77,6 @@ impl FederationService {
         );
 
         // TODO: implement RSA-SHA256 signing (requires openssl or ring)
-        // For now use a placeholder signature
         let signature_b64 = "placeholder".to_string();
         let signature_header = format!(
             "keyId=\"{}\",algorithm=\"rsa-sha256\",headers=\"(request-target) host date digest\",signature=\"{}\"",
@@ -116,7 +119,10 @@ impl FederationService {
         inbox_url: &str,
         activity: &serde_json::Value,
     ) -> anyhow::Result<()> {
-        warn!("Delivering unsigned activity to {} (legacy mode)", inbox_url);
+        warn!(
+            "Delivering unsigned activity to {} (legacy mode)",
+            inbox_url
+        );
 
         let response = self
             .http_client
@@ -149,7 +155,7 @@ impl FederationService {
         &self,
         activity: serde_json::Value,
         actor_id: &str,
-        actor: &Actor,
+        _actor: &Actor,
     ) -> anyhow::Result<()> {
         info!("Broadcasting activity to followers of {}", actor_id);
 
@@ -163,18 +169,23 @@ impl FederationService {
         let mut result = self
             .surreal
             .query(query)
-            .bind(("actor_id", actor_id))
+            .bind(("actor_id", actor_id.to_string()))
             .await
-            .map_err(|e| { error!("Failed to fetch followers: {}", e); anyhow::anyhow!("Database error: {}", e) })?;
+            .map_err(|e| {
+                error!("Failed to fetch followers: {}", e);
+                anyhow::anyhow!("Database error: {}", e)
+            })?;
 
-        let follower_data: Vec<(Option<String>, Option<String>)> = result.take(0).unwrap_or_default();
+        let follower_data: Vec<(Option<String>, Option<String>)> =
+            result.take(0).unwrap_or_default();
 
         if follower_data.is_empty() {
             info!("No remote followers to broadcast to");
             return Ok(());
         }
 
-        let mut inbox_groups: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+        let mut inbox_groups: std::collections::HashMap<String, Vec<String>> =
+            std::collections::HashMap::new();
         for (inbox, shared_inbox) in follower_data {
             let target_inbox = shared_inbox.clone().or(inbox.clone());
             if let Some(target) = target_inbox {
@@ -214,7 +225,8 @@ impl FederationService {
             }
         });
 
-        self.deliver_signed(follower_inbox, &accept_activity, local_actor).await
+        self.deliver_signed(follower_inbox, &accept_activity, local_actor)
+            .await
     }
 
     pub async fn send_reject_follow(
@@ -242,19 +254,22 @@ impl FederationService {
             }
         });
 
-        self.deliver_signed(follower_inbox, &reject_activity, local_actor).await
+        self.deliver_signed(follower_inbox, &reject_activity, local_actor)
+            .await
     }
 
     pub async fn get_queue_stats(&self) -> anyhow::Result<QueueStats> {
+        let mut conn = self.dragonfly.clone();
         let queue_length: usize = redis::cmd("LLEN")
             .arg("federation:queue")
-            .query_async(&mut self.dragonfly.clone())
+            .query_async::<usize>(&mut conn)
             .await
             .unwrap_or(0);
 
+        let mut conn = self.dragonfly.clone();
         let processing: usize = redis::cmd("LLEN")
             .arg("federation:processing")
-            .query_async(&mut self.dragonfly.clone())
+            .query_async::<usize>(&mut conn)
             .await
             .unwrap_or(0);
 
@@ -266,11 +281,12 @@ impl FederationService {
     }
 
     pub async fn get_queue_jobs(&self, limit: usize) -> anyhow::Result<Vec<QueueJob>> {
+        let mut conn = self.dragonfly.clone();
         let jobs: Vec<String> = redis::cmd("LRANGE")
             .arg("federation:queue")
-            .arg(0)
-            .arg(limit - 1)
-            .query_async(&mut self.dragonfly.clone())
+            .arg(0i64)
+            .arg((limit - 1) as i64)
+            .query_async::<Vec<String>>(&mut conn)
             .await
             .unwrap_or_default();
 
@@ -279,9 +295,19 @@ impl FederationService {
             if let Ok(job_value) = serde_json::from_str::<serde_json::Value>(job_str) {
                 result.push(QueueJob {
                     id: i.to_string(),
-                    inbox_url: job_value.get("inbox_url").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                    activity: job_value.get("activity").cloned().unwrap_or(serde_json::Value::Null),
-                    attempts: job_value.get("attempts").and_then(|v| v.as_i64()).unwrap_or(0),
+                    inbox_url: job_value
+                        .get("inbox_url")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    activity: job_value
+                        .get("activity")
+                        .cloned()
+                        .unwrap_or(serde_json::Value::Null),
+                    attempts: job_value
+                        .get("attempts")
+                        .and_then(|v| v.as_i64())
+                        .unwrap_or(0),
                 });
             }
         }
@@ -308,10 +334,11 @@ impl FederationService {
     pub async fn run_delivery_worker(&self) -> anyhow::Result<()> {
         info!("Starting federation delivery worker");
         loop {
+            let mut conn = self.dragonfly.clone();
             let delivery_json: Option<String> = redis::cmd("BRPOP")
                 .arg("federation:queue")
-                .arg(30)
-                .query_async::<_, Option<(String, String)>>(&mut self.dragonfly.clone())
+                .arg(30i64)
+                .query_async::<Option<(String, String)>>(&mut conn)
                 .await
                 .map(|opt| opt.map(|(_, val)| val))?;
 
@@ -322,33 +349,45 @@ impl FederationService {
                             error!("Failed to process delivery: {}", e);
                         }
                     }
-                    Err(e) => { error!("Invalid delivery JSON: {}", e); }
+                    Err(e) => {
+                        error!("Invalid delivery JSON: {}", e);
+                    }
                 }
             }
         }
     }
 
     async fn process_delivery_task(&self, delivery: serde_json::Value) -> anyhow::Result<()> {
-        let inbox_url = delivery.get("inbox_url").and_then(|v| v.as_str())
+        let inbox_url = delivery
+            .get("inbox_url")
+            .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing inbox_url"))?;
-        let activity = delivery.get("activity")
+        let activity = delivery
+            .get("activity")
             .ok_or_else(|| anyhow::anyhow!("Missing activity"))?;
-        let attempts = delivery.get("attempts").and_then(|v| v.as_i64()).unwrap_or(0);
+        let attempts = delivery
+            .get("attempts")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
 
-        let actor_id = activity.get("actor").and_then(|v| v.as_str())
+        let actor_id = activity
+            .get("actor")
+            .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing actor in activity"))?;
 
         let actor_result: Option<Actor> = self
             .surreal
-            .query("SELECT * FROM user WHERE uri = $actor_id")
-            .bind(("actor_id", actor_id))
+            .query("SELECT * FROM user WHERE uri = $actor_id LIMIT 1")
+            .bind(("actor_id", actor_id.to_string()))
             .await
-            .and_then(|mut res| res.take(0))
             .ok()
-            .flatten();
+            .and_then(|mut res| res.take::<Vec<serde_json::Value>>(0).ok())
+            .and_then(|mut v| v.into_iter().next())
+            .and_then(|v| serde_json::from_value::<Actor>(v).ok());
 
-        let actor = actor_result
-            .ok_or_else(|| anyhow::anyhow!("Actor not found or has no private key: {}", actor_id))?;
+        let actor = actor_result.ok_or_else(|| {
+            anyhow::anyhow!("Actor not found or has no private key: {}", actor_id)
+        })?;
 
         match self.deliver_signed(inbox_url, activity, &actor).await {
             Ok(_) => {
@@ -365,14 +404,22 @@ impl FederationService {
                         "attempts": attempts + 1,
                         "retry_after": chrono::Utc::now() + chrono::Duration::from_std(delay)?,
                     });
+                    let mut conn = self.dragonfly.clone();
                     redis::cmd("LPUSH")
                         .arg("federation:queue:retry")
                         .arg(retry_delivery.to_string())
-                        .query_async::<_, ()>(&mut self.dragonfly.clone())
+                        .query_async::<()>(&mut conn)
                         .await?;
-                    warn!("Scheduled retry for {} (attempt {})", inbox_url, attempts + 1);
+                    warn!(
+                        "Scheduled retry for {} (attempt {})",
+                        inbox_url,
+                        attempts + 1
+                    );
                 } else {
-                    error!("Giving up on delivery to {} after {} attempts", inbox_url, attempts);
+                    error!(
+                        "Giving up on delivery to {} after {} attempts",
+                        inbox_url, attempts
+                    );
                 }
                 Err(e)
             }

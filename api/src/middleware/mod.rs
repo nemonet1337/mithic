@@ -7,9 +7,9 @@ pub mod rate_limit;
 
 pub use auth::auth_middleware;
 pub use content_negotiation::{
-    content_negotiation_middleware, is_activitypub_request, ContentNegotiationExt, ContentType,
+    ContentNegotiationExt, ContentType, content_negotiation_middleware, is_activitypub_request,
 };
 pub use cors::cors_layer;
 pub use http_signature::verify_http_signature;
-pub use locale::{locale_middleware, LocaleExt, RequestLocale};
+pub use locale::{LocaleExt, RequestLocale, locale_middleware};
 pub use rate_limit::{RateLimitConfig, RateLimiter, rate_limit_middleware};

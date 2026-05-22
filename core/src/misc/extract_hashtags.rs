@@ -1,9 +1,8 @@
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-static HASHTAG_SIMPLE_REGEX: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"#([\w぀-ゟ゠-ヿ一-龯가-힯]+)").unwrap()
-});
+static HASHTAG_SIMPLE_REGEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"#([\w぀-ゟ゠-ヿ一-龯가-힯]+)").unwrap());
 
 pub fn extract_hashtags(text: &str) -> Vec<String> {
     let mut hashtags = Vec::new();
@@ -11,9 +10,13 @@ pub fn extract_hashtags(text: &str) -> Vec<String> {
     for mat in HASHTAG_SIMPLE_REGEX.find_iter(text) {
         if let Some(caps) = HASHTAG_SIMPLE_REGEX.captures(mat.as_str()) {
             let hashtag = caps.get(1).map(|m| m.as_str()).unwrap_or("").to_string();
-            if hashtag.is_empty() || hashtag.chars().all(|c| c.is_ascii_digit()) { continue; }
+            if hashtag.is_empty() || hashtag.chars().all(|c| c.is_ascii_digit()) {
+                continue;
+            }
             let normalized = hashtag.to_lowercase();
-            if seen.insert(normalized.clone()) { hashtags.push(normalized); }
+            if seen.insert(normalized.clone()) {
+                hashtags.push(normalized);
+            }
         }
     }
     hashtags
@@ -24,7 +27,9 @@ pub fn extract_hashtags_with_positions(text: &str) -> Vec<(String, usize, usize)
     for mat in HASHTAG_SIMPLE_REGEX.find_iter(text) {
         if let Some(caps) = HASHTAG_SIMPLE_REGEX.captures(mat.as_str()) {
             let hashtag = caps.get(1).map(|m| m.as_str()).unwrap_or("").to_string();
-            if hashtag.is_empty() || hashtag.chars().all(|c| c.is_ascii_digit()) { continue; }
+            if hashtag.is_empty() || hashtag.chars().all(|c| c.is_ascii_digit()) {
+                continue;
+            }
             hashtags.push((hashtag.to_lowercase(), mat.start(), mat.end()));
         }
     }
@@ -32,9 +37,14 @@ pub fn extract_hashtags_with_positions(text: &str) -> Vec<(String, usize, usize)
 }
 
 pub fn is_valid_hashtag(tag: &str) -> bool {
-    if tag.is_empty() { return false; }
-    if tag.chars().all(|c| c.is_ascii_digit()) { return false; }
-    tag.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || is_japanese_character(c))
+    if tag.is_empty() {
+        return false;
+    }
+    if tag.chars().all(|c| c.is_ascii_digit()) {
+        return false;
+    }
+    tag.chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '_' || is_japanese_character(c))
 }
 
 fn is_japanese_character(c: char) -> bool {

@@ -1,7 +1,7 @@
 use axum::{
     body::Body,
     extract::Request,
-    http::{header, StatusCode},
+    http::{StatusCode, header},
     middleware::Next,
     response::Response,
 };
@@ -11,7 +11,11 @@ pub const ACTIVITY_JSON: &str = "application/activity+json";
 pub const LD_JSON: &str = "application/ld+json; profile=\"https://www.w3.org/ns/activitystreams\"";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ContentType { ActivityJson, LdJson, Html }
+pub enum ContentType {
+    ActivityJson,
+    LdJson,
+    Html,
+}
 
 impl fmt::Display for ContentType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -38,7 +42,9 @@ impl ContentType {
 }
 
 pub fn negotiate_content_type(accept_header: Option<&str>) -> ContentType {
-    let Some(header) = accept_header else { return ContentType::Html; };
+    let Some(header) = accept_header else {
+        return ContentType::Html;
+    };
     let mut candidates: Vec<(ContentType, f32)> = Vec::new();
 
     for part in header.split(',') {
@@ -51,20 +57,26 @@ pub fn negotiate_content_type(accept_header: Option<&str>) -> ContentType {
         };
 
         let content_type = match media_type {
-            t if t == ACTIVITY_JSON || t == "application/activity+json; charset=utf-8" => Some(ContentType::ActivityJson),
+            t if t == ACTIVITY_JSON || t == "application/activity+json; charset=utf-8" => {
+                Some(ContentType::ActivityJson)
+            }
             t if t.starts_with("application/ld+json") => Some(ContentType::LdJson),
             "text/html" | "application/xhtml+xml" => Some(ContentType::Html),
             "*/*" => Some(ContentType::Html),
             _ => None,
         };
 
-        if let Some(ct) = content_type { candidates.push((ct, q)); }
+        if let Some(ct) = content_type {
+            candidates.push((ct, q));
+        }
     }
 
     candidates.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
     for (ct, q) in candidates {
-        if q > 0.0 && ct.is_activitypub() { return ct; }
+        if q > 0.0 && ct.is_activitypub() {
+            return ct;
+        }
     }
     ContentType::Html
 }
@@ -80,10 +92,15 @@ fn parse_q_value(params: &str) -> f32 {
 }
 
 pub async fn content_negotiation_middleware(request: Request<Body>, next: Next) -> Response {
-    let accept = request.headers().get(header::ACCEPT).and_then(|v| v.to_str().ok());
+    let accept = request
+        .headers()
+        .get(header::ACCEPT)
+        .and_then(|v| v.to_str().ok());
     let content_type = negotiate_content_type(accept);
     let mut response = next.run(request).await;
-    response.headers_mut().insert(header::VARY, header::HeaderValue::from_static("Accept"));
+    response
+        .headers_mut()
+        .insert(header::VARY, header::HeaderValue::from_static("Accept"));
     if content_type.is_activitypub() {
         response.headers_mut().insert(
             header::CONTENT_TYPE,
@@ -104,9 +121,14 @@ pub trait ContentNegotiationExt {
 
 impl ContentNegotiationExt for Request<Body> {
     fn content_type(&self) -> ContentType {
-        let accept = self.headers().get(header::ACCEPT).and_then(|v| v.to_str().ok());
+        let accept = self
+            .headers()
+            .get(header::ACCEPT)
+            .and_then(|v| v.to_str().ok());
         negotiate_content_type(accept)
     }
 
-    fn is_activitypub(&self) -> bool { self.content_type().is_activitypub() }
+    fn is_activitypub(&self) -> bool {
+        self.content_type().is_activitypub()
+    }
 }

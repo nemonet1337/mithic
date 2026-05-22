@@ -25,6 +25,10 @@ pub struct BookmarkResponse {
 
 impl From<Bookmark> for BookmarkResponse {
     fn from(b: Bookmark) -> Self {
-        Self { id: b.id, note_id: b.note_id, created_at: b.created_at }
+        Self {
+            id: b.id,
+            note_id: b.note_id,
+            created_at: b.created_at,
+        }
     }
 }

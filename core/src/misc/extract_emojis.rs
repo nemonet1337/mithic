@@ -9,8 +9,12 @@ pub fn extract_emojis(text: &str) -> Vec<String> {
     for mat in CUSTOM_EMOJI_REGEX.find_iter(text) {
         if let Some(caps) = CUSTOM_EMOJI_REGEX.captures(mat.as_str()) {
             let emoji_name = caps.get(1).map(|m| m.as_str()).unwrap_or("").to_string();
-            if emoji_name.is_empty() { continue; }
-            if seen.insert(emoji_name.clone()) { emojis.push(emoji_name); }
+            if emoji_name.is_empty() {
+                continue;
+            }
+            if seen.insert(emoji_name.clone()) {
+                emojis.push(emoji_name);
+            }
         }
     }
     emojis
@@ -21,7 +25,9 @@ pub fn extract_emojis_with_positions(text: &str) -> Vec<(String, usize, usize)> 
     for mat in CUSTOM_EMOJI_REGEX.find_iter(text) {
         if let Some(caps) = CUSTOM_EMOJI_REGEX.captures(mat.as_str()) {
             let emoji_name = caps.get(1).map(|m| m.as_str()).unwrap_or("").to_string();
-            if emoji_name.is_empty() { continue; }
+            if emoji_name.is_empty() {
+                continue;
+            }
             emojis.push((emoji_name, mat.start(), mat.end()));
         }
     }
@@ -41,8 +47,11 @@ pub fn extract_emojis_raw(text: &str) -> Vec<String> {
 }
 
 pub fn is_valid_emoji_name(name: &str) -> bool {
-    if name.is_empty() { return false; }
-    name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '+' || c == '-')
+    if name.is_empty() {
+        return false;
+    }
+    name.chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '+' || c == '-')
 }
 
 pub fn remove_custom_emojis(text: &str) -> String {

@@ -63,8 +63,7 @@ impl AppConfig {
 
             instance_url: env::var("INSTANCE_URL")
                 .unwrap_or_else(|_| "http://localhost:3000".to_string()),
-            instance_name: env::var("INSTANCE_NAME")
-                .unwrap_or_else(|_| "Mithic".to_string()),
+            instance_name: env::var("INSTANCE_NAME").unwrap_or_else(|_| "Mithic".to_string()),
         })
     }
 

@@ -87,8 +87,12 @@ impl Actor {
         }
     }
 
-    pub fn is_local(&self) -> bool { self.host.is_none() }
-    pub fn is_remote(&self) -> bool { self.host.is_some() }
+    pub fn is_local(&self) -> bool {
+        self.host.is_none()
+    }
+    pub fn is_remote(&self) -> bool {
+        self.host.is_some()
+    }
 
     pub fn actor_uri(&self, instance_url: &str) -> String {
         format!("{}/users/{}", instance_url, self.username)
