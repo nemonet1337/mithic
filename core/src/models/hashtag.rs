@@ -44,13 +44,13 @@ impl Hashtag {
         self.count += 1;
         self.updated_at = Utc::now();
         if !self.mentioned_user_ids.contains(&user_id) {
-            self.mentioned_user_ids.push(user_id.clone());
+            self.mentioned_user_ids.push(user_id);
             self.mentioned_users_count += 1;
             if is_local {
-                self.mentioned_local_user_ids.push(user_id.clone());
+                self.mentioned_local_user_ids.push(user_id);
                 self.mentioned_local_users_count += 1;
             } else {
-                self.mentioned_remote_user_ids.push(user_id.clone());
+                self.mentioned_remote_user_ids.push(user_id);
                 self.mentioned_remote_users_count += 1;
             }
         }

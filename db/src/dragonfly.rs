@@ -1,5 +1,5 @@
+use redis::Client;
 use redis::aio::MultiplexedConnection;
-use redis::{AsyncCommands, Client};
 
 /// Dragonflyクライアント型（Redis互換）
 pub type DragonflyClient = MultiplexedConnection;

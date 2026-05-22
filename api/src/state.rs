@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use mithic_config::AppConfig;
-use mithic_core::AuthUser;
 use mithic_db::{DragonflyClient, SurrealClient};
 use mithic_federation::FederationService;
 

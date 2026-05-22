@@ -8,7 +8,7 @@ use axum::{
 use base64::prelude::*;
 use serde_json::json;
 use std::time::Duration;
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 
 use mithic_core::AppError;
 
@@ -200,26 +200,6 @@ fn verify_signature(
     // TODO: implement RSA-SHA256 verification (requires openssl or ring)
     warn!("HTTP signature cryptographic verification is not yet implemented");
     Ok(true)
-}
-
-fn build_signing_string(
-    headers: &[String],
-    request_target: &str,
-    host: &str,
-    date: &str,
-    _all_headers: &axum::http::HeaderMap,
-) -> String {
-    let mut parts = Vec::new();
-    for header in headers {
-        let value = match header.as_str() {
-            "(request-target)" => request_target.to_string(),
-            "host" => host.to_string(),
-            "date" => date.to_string(),
-            _ => continue,
-        };
-        parts.push(format!("{}: {}", header, value));
-    }
-    parts.join("\n")
 }
 
 fn verify_digest(body: &[u8], digest_header: &str) -> bool {
