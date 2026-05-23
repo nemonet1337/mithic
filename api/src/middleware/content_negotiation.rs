@@ -1,10 +1,4 @@
-use axum::{
-    body::Body,
-    extract::Request,
-    http::{StatusCode, header},
-    middleware::Next,
-    response::Response,
-};
+use axum::{body::Body, extract::Request, http::header, middleware::Next, response::Response};
 use std::fmt;
 
 pub const ACTIVITY_JSON: &str = "application/activity+json";

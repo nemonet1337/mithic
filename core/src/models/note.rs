@@ -8,19 +8,14 @@ use super::actor::ActorId;
 
 pub type NoteId = Ulid;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub enum NoteVisibility {
+    #[default]
     Public,
     Home,
     Followers,
     Specified,
-}
-
-impl Default for NoteVisibility {
-    fn default() -> Self {
-        NoteVisibility::Public
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]

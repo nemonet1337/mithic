@@ -382,7 +382,7 @@ impl FederationService {
             .await
             .ok()
             .and_then(|mut res| res.take::<Vec<serde_json::Value>>(0).ok())
-            .and_then(|mut v| v.into_iter().next())
+            .and_then(|v| v.into_iter().next())
             .and_then(|v| serde_json::from_value::<Actor>(v).ok());
 
         let actor = actor_result.ok_or_else(|| {

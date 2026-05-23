@@ -4,18 +4,13 @@ use ulid::Ulid;
 
 pub type RelayId = Ulid;
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "camelCase")]
 pub enum RelayStatus {
+    #[default]
     Requesting,
     Accepted,
     Rejected,
-}
-
-impl Default for RelayStatus {
-    fn default() -> Self {
-        RelayStatus::Requesting
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

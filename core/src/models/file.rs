@@ -7,19 +7,14 @@ use super::actor::ActorId;
 
 pub type FileId = Ulid;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub enum FileType {
     Image,
     Video,
     Audio,
+    #[default]
     Other,
-}
-
-impl Default for FileType {
-    fn default() -> Self {
-        FileType::Other
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]

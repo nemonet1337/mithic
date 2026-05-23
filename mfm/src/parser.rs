@@ -30,8 +30,7 @@ static INLINE_CODE_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"`([^`]+)`").un
 static BOLD_REGEX: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"\*\*\*?([^*]+)\*\*\*?|\*\*([^*]+)\*\*").unwrap());
 
-static ITALIC_REGEX: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"<i>(.*?)</i>|(?<!\*)\*([^*]+)\*(?!\*)").unwrap());
+static ITALIC_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"<i>(.*?)</i>|\*([^*]+)\*").unwrap());
 
 static STRIKE_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"~~(.+?)~~").unwrap());
 
@@ -325,7 +324,7 @@ fn take_text(text: &str) -> (String, usize) {
 }
 
 /// パース結果を正規化（隣接するテキストノードを結合等）
-fn normalize(mut forest: MfmForest) -> Result<MfmForest, ParseError> {
+fn normalize(forest: MfmForest) -> Result<MfmForest, ParseError> {
     if forest.is_empty() {
         return Ok(forest);
     }
