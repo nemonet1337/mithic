@@ -35,8 +35,8 @@ pub async fn create_client(config: &SurrealConfig) -> anyhow::Result<DbClient> {
     // 認証
     client
         .signin(Root {
-            username: &config.username,
-            password: &config.password,
+            username: config.username.clone(),
+            password: config.password.clone(),
         })
         .await?;
 

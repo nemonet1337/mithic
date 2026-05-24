@@ -11,3 +11,4 @@ surrealdb = { workspace = true }
 redis = { workspace = true }
 anyhow = { workspace = true }
 tokio = { workspace = true }
+mithic-core = { workspace = true }

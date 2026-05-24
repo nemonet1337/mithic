@@ -1,6 +1,6 @@
 # Mithic 統合 Todo リスト
 
-**更新日**: 2026-05-17  
+**更新日**: 2026-05-19  
 **参照**: `docs/feature-gap-analysis.md`, `old-src/` との機能比較, `crates/` 実装調査結果
 
 ---
@@ -47,6 +47,13 @@
 - [ ] `POST /api/notes/renote` / `unrenote` — リノート
 - [ ] `POST /api/notes/search` — 投稿検索
 - [ ] `POST /api/notes/search-by-tag` — ハッシュタグ検索
+- [ ] `POST /api/notes/mentions` — メンション一覧
+- [ ] `POST /api/notes/children` — 返信ツリー取得
+- [ ] `POST /api/notes/replies` — 直接返信一覧
+- [ ] `POST /api/notes/renotes` — リノート一覧
+- [ ] `POST /api/notes/conversation` — 会話スレッド取得
+- [ ] `POST /api/notes/state` — 投稿のブックマーク済み・リアクション済み状態
+- [ ] `POST /api/notes/polls/vote` — 投票
 
 #### タイムライン (`routes/timeline.rs`)
 - [ ] `POST /api/notes/timeline` — ホームタイムライン
@@ -59,11 +66,28 @@
 - [ ] `POST /api/users/show` — ユーザー詳細
 - [ ] `POST /api/users/search` — ユーザー検索
 - [ ] `POST /api/users/relation` — 関係ステータス取得
+- [ ] `POST /api/users/followers` — フォロワー一覧
+- [ ] `POST /api/users/following` — フォロー中一覧
+- [ ] `POST /api/users/notes` — ユーザーノート一覧
 - [ ] `POST /api/following/create` / `delete` — フォロー
-- [ ] `POST /api/following/requests/accept` / `reject` — フォローリクエスト
+- [ ] `POST /api/following/requests/accept` / `reject` / `cancel` / `list` — フォローリクエスト
 - [ ] `POST /api/blocking/create` / `delete` / `list` — ブロック
 - [ ] `POST /api/muting/create` / `delete` / `list` — ミュート
 - [ ] `POST /api/username/available` — ユーザー名チェック
+
+#### 自分自身 (`routes/i.rs`)
+- [ ] `GET  /api/i` — 自分のプロフィール取得 (認証済み)
+- [ ] `POST /api/i/update` — プロフィール更新 (bio, avatar, display name 等)
+- [ ] `POST /api/i/change-password` — パスワード変更
+- [ ] `POST /api/i/2fa/register` / `done` / `unregister` — 2FA 管理
+- [ ] `POST /api/i/regenerate-token` — APIトークン再生成
+- [ ] `POST /api/i/update-email` — メールアドレス変更
+- [ ] `POST /api/i/pin` / `unpin` — ノートのピン留め
+
+#### メタ情報 (`routes/meta.rs`)
+- [ ] `POST /api/meta` — インスタンスメタ情報取得
+- [ ] `POST /api/stats` — インスタンス統計情報
+- [ ] `POST /api/sw/register` / `unregister` — Web Push 購読登録
 
 #### ドライブ (`routes/drive.rs`)
 - [ ] `POST /api/drive/files/create` — ファイルアップロード
@@ -89,6 +113,7 @@
 #### ハッシュタグ (`routes/hashtags.rs`)
 - [ ] `POST /api/hashtags/list` — 一覧
 - [ ] `POST /api/hashtags/show` — 詳細
+- [ ] `POST /api/hashtags/trend` — トレンド
 - [ ] `POST /api/hashtags/users` — 使用ユーザー一覧
 
 #### チャート (`routes/charts.rs`)
@@ -104,6 +129,21 @@
 - [ ] `POST /api/admin/relays/add` / `list` / `remove`
 - [ ] `POST /api/admin/drive/clean-files` / `cleanup`
 - [ ] `POST /api/admin/update-meta` / `vacuum` / `server-info` / `get-table-stats`
+
+#### クリップ (`routes/clips.rs`)
+- [ ] `POST /api/clips/create` / `delete` / `show` / `list` / `update`
+- [ ] `POST /api/clips/add-note` / `remove-note` / `notes` — クリップへのノート管理
+
+#### チャンネル (`routes/channels.rs`)
+- [ ] `POST /api/channels/create` / `delete` / `show` / `list` / `update`
+- [ ] `POST /api/channels/follow` / `unfollow` / `followed`
+- [ ] `POST /api/channels/timeline` — チャンネルタイムライン
+- [ ] `POST /api/channels/featured` — 注目チャンネル一覧
+
+#### OAuth/アプリ (`routes/oauth.rs`)
+- [ ] `POST /api/app/create` / `show` — OAuth アプリ登録・取得
+- [ ] `POST /api/auth/session/generate` / `userkey` — OAuth セッション
+- [ ] `GET  /api/auth/callback` — OAuth コールバック
 
 #### ActivityPub (`routes/activitypub.rs`)
 - [ ] `GET /@:username` — Actor オブジェクト
@@ -166,6 +206,10 @@
 - [ ] `poll.rs` — 投票管理・結果集計
 - [ ] `push_notification.rs` — Web Push 配送
 - [ ] `fetch_nodeinfo.rs` — リモートインスタンス NodeInfo 取得
+- [ ] `clip.rs` — クリップ作成・管理・ノート追加
+- [ ] `channel.rs` — チャンネル作成・フォロー・タイムライン
+- [ ] `meta.rs` — インスタンスメタ情報・統計集計
+- [ ] `export.rs` / `import.rs` — データ出力・取り込み処理
 
 ---
 
@@ -186,7 +230,10 @@
 - [ ] ActivityPub 配送ジョブ (deliver/inbox)
 - [ ] Relay Announce ジョブ
 - [ ] Web Push 配送ジョブ
-- [ ] ファイル処理ジョブ (サムネイル生成)
+- [ ] ファイル処理ジョブ (サムネイル生成・WebP変換)
+- [ ] データエクスポートジョブ (export-following, export-notes, export-blocking, export-muting)
+- [ ] データインポートジョブ (import-following, import-blocking, import-muting)
+- [ ] チャートデータ集計ジョブ (定期実行)
 
 ---
 
@@ -228,6 +275,12 @@
 - [ ] `api/messages.rs` — DM会話一覧・詳細・送信
 - [ ] `api/reactions.rs` — リアクション送信・削除
 - [ ] `api/lists.rs` — ユーザーリスト CRUD
+- [ ] `api/clips.rs` — クリップ CRUD・ノート追加/削除
+- [ ] `api/channels.rs` — チャンネル CRUD・フォロー
+- [ ] `api/antennas.rs` — アンテナ CRUD
+- [ ] `api/hashtags.rs` — ハッシュタグ検索・トレンド
+- [ ] `api/meta.rs` — インスタンスメタ情報・統計
+- [ ] `api/i.rs` — プロフィール更新・パスワード変更・2FA
 
 ---
 
@@ -305,6 +358,24 @@ old-src `settings.*.vue` との差分:
 - [ ] リスト編集 (メンバー追加/削除)
 - [ ] リストタイムライン画面 (`/lists/:id`)
 - [ ] `users/lists/pull` API 接続 (メンバー削除)
+
+---
+
+### F-8b. クリップ管理 UI
+
+- [ ] クリップ一覧ページ (`/clips`)
+- [ ] クリップ作成・削除ダイアログ
+- [ ] ノートをクリップに追加するメニュー項目 (`NoteMenu`)
+- [ ] クリップ詳細ページ (`/clips/:id`) — クリップ内ノート表示
+
+---
+
+### F-8c. チャンネル機能 UI
+
+- [ ] チャンネル一覧ページ (`/channels`) — 参加中 / 注目
+- [ ] チャンネル作成・編集ダイアログ
+- [ ] チャンネルタイムラインページ (`/channels/:id`)
+- [ ] チャンネルフォロー/アンフォローボタン
 
 ---
 
@@ -472,7 +543,7 @@ new Frontend では `AdminPage` と `AdminUsersPage` のみ。old-src との差�
 ## 横断タスク
 
 - [ ] 機能を実装・完了したら本ファイル (`TODO.md`) の対応チェックボックスをチェック済みにする
-- [ ] `crates/shared/` の DTO を実 API レスポンスに合わせて拡充
+- [ ] `crates/shared/` の DTO を実 API レスポンスに合わせて拡充 (CreateFollowRequest, BlockRequest, MuteRequest, FileUploadRequest, ReactionRequest, PollVoteRequest, ClipRequest, ChannelRequest, ListRequest, AntennaRequest, MetaResponse 等)
 - [ ] `crates/i18n/locales/` に `ja.ftl` / `en.ftl` を整備
 - [ ] 主要 UI のアクセシビリティ確認 (focus ring / aria-label / keyboard nav)
 - [ ] モバイル表示を実機幅で確認

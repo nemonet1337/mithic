@@ -3282,7 +3282,6 @@ dependencies = [
  "http",
  "mime",
  "mithic-config",
- "mithic-db",
  "mithic-i18n",
  "once_cell",
  "redis",
@@ -3303,6 +3302,7 @@ name = "mithic-db"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "mithic-core",
  "redis",
  "surrealdb",
  "tokio",
