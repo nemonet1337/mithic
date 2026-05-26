@@ -1,7 +1,7 @@
 use gloo_storage::{LocalStorage, Storage};
 use leptos::prelude::*;
 
-use crate::models::{User, sample_user};
+use crate::models::User;
 
 const TOKEN_KEY: &str = "mithic.auth.token";
 
@@ -14,10 +14,22 @@ pub struct AuthStore {
 impl AuthStore {
     pub fn new() -> Self {
         let token = LocalStorage::get(TOKEN_KEY).ok();
-        let me = token.as_ref().map(|_| sample_user("you", "You"));
         Self {
             token: RwSignal::new(token),
-            me: RwSignal::new(me),
+            me: RwSignal::new(None),
+        }
+    }
+
+    /// 起動時にトークンを /me で検証し、失敗したらログアウトする。
+    pub fn verify_on_startup(&self) {
+        let store = self.clone();
+        if let Some(token) = self.token.get_untracked() {
+            wasm_bindgen_futures::spawn_local(async move {
+                match crate::api::auth::fetch_me(&token).await {
+                    Ok(user) => store.me.set(Some(user)),
+                    Err(_)   => store.logout(),
+                }
+            });
         }
     }
 

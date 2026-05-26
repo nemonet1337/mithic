@@ -1,4 +1,5 @@
 pub mod dragonfly;
+pub mod queries;
 pub mod surreal;
 
 pub use dragonfly::create_client as create_dragonfly_client;

@@ -1,0 +1,8 @@
+target/
+.git/
+.gitignore
+docs/
+old-src/
+dist/
+*.md
+.env

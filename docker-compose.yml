@@ -1,0 +1,120 @@
+services:
+  # ---------------------------------------------------------------------------
+  # Infrastructure
+  # ---------------------------------------------------------------------------
+  surrealdb:
+    image: surrealdb/surrealdb:latest
+    restart: unless-stopped
+    command:
+      - start
+      - --log=info
+      - --user=${SURREALDB_USERNAME:-root}
+      - --pass=${SURREALDB_PASSWORD:-root}
+      - file:/data/surrealdb
+    volumes:
+      - surrealdb_data:/data/surrealdb
+    ports:
+      - "8000:8000"
+    networks:
+      - mithic
+    healthcheck:
+      test: ["CMD", "/surreal", "isready", "--endpoint", "http://localhost:8000"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  dragonfly:
+    image: docker.dragonflydb.io/dragonflydb/dragonfly:latest
+    restart: unless-stopped
+    ulimits:
+      memlock: -1
+    volumes:
+      - dragonfly_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - mithic
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # Application
+  # ---------------------------------------------------------------------------
+  server:
+    build:
+      context: .
+      target: server
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      SURREALDB_ENDPOINT: ws://surrealdb:8000
+      DRAGONFLY_URL: redis://dragonfly:6379
+    volumes:
+      - media_files:/app/files
+    depends_on:
+      surrealdb:
+        condition: service_healthy
+      dragonfly:
+        condition: service_healthy
+    networks:
+      - mithic
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:3000/api/v1/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  worker:
+    build:
+      context: .
+      target: worker
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      SURREALDB_ENDPOINT: ws://surrealdb:8000
+      DRAGONFLY_URL: redis://dragonfly:6379
+    volumes:
+      - media_files:/app/files
+    depends_on:
+      surrealdb:
+        condition: service_healthy
+      dragonfly:
+        condition: service_healthy
+    networks:
+      - mithic
+
+  frontend:
+    build:
+      context: .
+      target: frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      server:
+        condition: service_healthy
+    networks:
+      - mithic
+
+# -----------------------------------------------------------------------------
+# Volumes
+# -----------------------------------------------------------------------------
+volumes:
+  surrealdb_data:
+  dragonfly_data:
+  media_files:
+
+# -----------------------------------------------------------------------------
+# Networks
+# -----------------------------------------------------------------------------
+networks:
+  mithic:
+    driver: bridge
