@@ -12,6 +12,7 @@ mithic-core       = { workspace = true }
 mithic-db         = { workspace = true }
 mithic-federation = { workspace = true }
 mithic-i18n       = { workspace = true }
+shared            = { workspace = true }
 
 axum              = { workspace = true }
 tower             = { workspace = true }

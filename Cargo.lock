@@ -3252,6 +3252,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.0",
+ "shared",
  "tokio",
  "tower",
  "tower-http",
@@ -3276,10 +3277,12 @@ name = "mithic-core"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "argon2",
  "axum",
  "bytes",
  "chrono",
  "http",
+ "jsonwebtoken",
  "mime",
  "mithic-config",
  "mithic-i18n",
