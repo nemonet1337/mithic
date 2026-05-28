@@ -1,6 +1,16 @@
-use anyhow::anyhow;
-use mithic_core::models::note::{Note, NoteId};
 use crate::SurrealClient;
+use crate::queries::rows_to;
+use anyhow::anyhow;
+use mithic_core::models::note::{Note, NoteId, NoteVisibility};
+
+fn visibility_str(visibility: NoteVisibility) -> &'static str {
+    match visibility {
+        NoteVisibility::Public => "public",
+        NoteVisibility::Home => "home",
+        NoteVisibility::Followers => "followers",
+        NoteVisibility::Specified => "specified",
+    }
+}
 
 pub async fn create_note(client: &SurrealClient, note: &Note) -> anyhow::Result<Note> {
     let id_str = note.id.to_string();
@@ -9,7 +19,8 @@ pub async fn create_note(client: &SurrealClient, note: &Note) -> anyhow::Result<
     let renote_id_str = note.renote_id.map(|id| id.to_string());
 
     let _response = client
-        .query("
+        .query(
+            "
             INSERT INTO note {
                 id: $id,
                 created_at: $created_at,
@@ -26,20 +37,21 @@ pub async fn create_note(client: &SurrealClient, note: &Note) -> anyhow::Result<
                 tags: $tags,
                 has_poll: $has_poll
             };
-        ")
-        .bind(("id", &id_str))
-        .bind(("created_at", &note.created_at))
-        .bind(("text", &note.text))
-        .bind(("cw", &note.cw))
-        .bind(("actor_id", &actor_id_str))
-        .bind(("visibility", &note.visibility))
+        ",
+        )
+        .bind(("id", id_str))
+        .bind(("created_at", note.created_at))
+        .bind(("text", note.text.clone()))
+        .bind(("cw", note.cw.clone()))
+        .bind(("actor_id", actor_id_str))
+        .bind(("visibility", visibility_str(note.visibility)))
         .bind(("renote_count", note.renote_count))
         .bind(("replies_count", note.replies_count))
-        .bind(("reactions", &note.reactions))
-        .bind(("reply_id", &reply_id_str))
-        .bind(("renote_id", &renote_id_str))
-        .bind(("file_ids", &note.file_ids))
-        .bind(("tags", &note.tags))
+        .bind(("reactions", note.reactions.clone()))
+        .bind(("reply_id", reply_id_str))
+        .bind(("renote_id", renote_id_str))
+        .bind(("file_ids", note.file_ids.clone()))
+        .bind(("tags", note.tags.clone()))
         .bind(("has_poll", note.has_poll))
         .await?;
 
@@ -51,7 +63,8 @@ pub async fn create_note(client: &SurrealClient, note: &Note) -> anyhow::Result<
 pub async fn get_note_by_id(client: &SurrealClient, id: &NoteId) -> anyhow::Result<Option<Note>> {
     let id_str = id.to_string();
     let mut response = client
-        .query("
+        .query(
+            "
             SELECT 
                 *,
                 actor_id.id AS actor_id,
@@ -60,12 +73,13 @@ pub async fn get_note_by_id(client: &SurrealClient, id: &NoteId) -> anyhow::Resu
             FROM note 
             WHERE id = $id 
             LIMIT 1;
-        ")
+        ",
+        )
         .bind(("id", id_str))
         .await?;
 
-    let note: Option<Note> = response.take(0)?;
-    Ok(note)
+    let rows: Vec<surrealdb::types::Value> = response.take(0)?;
+    Ok(rows_to::<Note>(rows)?.into_iter().next())
 }
 
 pub async fn delete_note(client: &SurrealClient, id: &NoteId) -> anyhow::Result<()> {

@@ -30,11 +30,7 @@ pub async fn create(
         Some(request.text)
     };
 
-    let mut note = Note::new(
-        auth.user_id,
-        text,
-        visibility_from_dto(request.visibility),
-    );
+    let mut note = Note::new(auth.user_id, text, visibility_from_dto(request.visibility));
     note.cw = request.cw;
     note.file_ids = request.file_ids;
     if let Some(reply_id) = request.reply_id {

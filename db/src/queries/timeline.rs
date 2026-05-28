@@ -1,5 +1,6 @@
-use mithic_core::models::note::{Note, NoteId};
 use crate::SurrealClient;
+use crate::queries::rows_to;
+use mithic_core::models::note::{Note, NoteId};
 
 pub async fn get_local_timeline(
     client: &SurrealClient,
@@ -18,7 +19,8 @@ pub async fn get_local_timeline(
         FROM note
         WHERE visibility = 'public' 
           AND actor_id.host = None
-    ".to_string();
+    "
+    .to_string();
 
     if since_id.is_some() {
         query.push_str(" AND id > $since_id");
@@ -39,8 +41,8 @@ pub async fn get_local_timeline(
     }
 
     let mut response = q.await?;
-    let notes: Vec<Note> = response.take(0)?;
-    Ok(notes)
+    let rows: Vec<surrealdb::types::Value> = response.take(0)?;
+    rows_to::<Note>(rows)
 }
 
 pub async fn get_global_timeline(
@@ -81,6 +83,6 @@ pub async fn get_global_timeline(
     }
 
     let mut response = q.await?;
-    let notes: Vec<Note> = response.take(0)?;
-    Ok(notes)
+    let rows: Vec<surrealdb::types::Value> = response.take(0)?;
+    rows_to::<Note>(rows)
 }

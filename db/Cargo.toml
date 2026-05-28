@@ -11,4 +11,6 @@ surrealdb = { workspace = true }
 redis = { workspace = true }
 anyhow = { workspace = true }
 tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 mithic-core = { workspace = true }

@@ -3307,6 +3307,8 @@ dependencies = [
  "anyhow",
  "mithic-core",
  "redis",
+ "serde",
+ "serde_json",
  "surrealdb",
  "tokio",
 ]
