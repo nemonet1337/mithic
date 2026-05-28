@@ -1,7 +1,14 @@
 # Mithic 統合 Todo リスト
 
-**更新日**: 2026-05-19  
-**参照**: `docs/feature-gap-analysis.md`, `old-src/` との機能比較, `crates/` 実装調査結果
+**更新日**: 2026-05-28  
+**参照**: `old-src/` との機能比較, クレート実装調査結果
+
+> **注記 (2026-05-28)**: クレートはリポジトリルート直下に移動済み (旧 `crates/` は削除)。
+> 本ファイル中の `crates/foo/...` という表記は、現在の `foo/...` (ルート直下) を指す。
+> また旧 `crates/` に取り残されていた `core/services` と `db/queries` のソースを
+> ワークスペースへ統合し、`crates/` ディレクトリを削除した。
+> 併せて `db` クエリ層を surrealdb 3.0.5 API (`SurrealValue` / `Value`→serde 変換) に追従させ、
+> ワークスペース全体が `cargo check` / `cargo clippy -D warnings` を通る状態にした。
 
 ---
 
@@ -13,9 +20,9 @@
 | `crates/mfm/` | **完了** | 基本MFMパーサ実装済み |
 | `crates/stream/` | **設計済み** | アーキテクチャ定義、実装未 |
 | `crates/api/middleware/` | **完了** | 7 ミドルウェア実装済み |
-| `crates/api/routes/` | **未実装** | `mod.rs` が空 — 最重要ギャップ |
-| `crates/db/` | **スタブ** | DBクライアントのみ、スキーマ・クエリ未 |
-| `crates/core/services/` | **未実装** | サービス層なし |
+| `crates/api/routes/` | **一部** | 認証(signin/signup/i)・ノート(create/show/delete)・タイムライン(local/global) を実装 |
+| `crates/db/` | **一部** | クライアント + actors/notes/timeline クエリ実装 (surrealdb 3.0.5 対応済) |
+| `crates/core/services/` | **一部** | `auth.rs`(Argon2 + JWT) を実装。`user.rs` は db 依存のため `api/services/` へ配置 |
 | `crates/federation/` | **スタブ** | `FederationService` 定義のみ |
 | `crates/server/` | **スタブ** | `main.rs` のみ |
 | `crates/worker/` | **スタブ** | `main.rs` のみ |
@@ -32,15 +39,15 @@
 `crates/api/src/routes/mod.rs` が完全に空。以下を実装する。
 
 #### 認証 (`routes/auth.rs`)
-- [ ] `POST /api/signin` — JWTログイン
-- [ ] `POST /api/signup` — アカウント登録
+- [x] `POST /api/signin` — JWTログイン
+- [x] `POST /api/signup` — アカウント登録
 - [ ] `POST /api/signout` — ログアウト
-- [ ] `GET /api/i` — 自分のプロフィール取得
+- [x] `GET /api/i` — 自分のプロフィール取得
 
 #### ノート (`routes/notes.rs`)
-- [ ] `POST /api/notes/create` — 投稿作成
-- [ ] `POST /api/notes/delete` — 投稿削除
-- [ ] `POST /api/notes/show` — 投稿詳細
+- [x] `POST /api/notes/create` — 投稿作成
+- [x] `POST /api/notes/delete` — 投稿削除 (本人のみ)
+- [x] `POST /api/notes/show` — 投稿詳細
 - [ ] `POST /api/notes/reactions/create` — リアクション追加
 - [ ] `POST /api/notes/reactions/delete` — リアクション削除
 - [ ] `POST /api/notes/favorites/create` / `delete` — ブックマーク
@@ -56,9 +63,9 @@
 - [ ] `POST /api/notes/polls/vote` — 投票
 
 #### タイムライン (`routes/timeline.rs`)
-- [ ] `POST /api/notes/timeline` — ホームタイムライン
-- [ ] `POST /api/notes/local-timeline` — ローカルタイムライン
-- [ ] `POST /api/notes/global-timeline` — グローバルタイムライン
+- [ ] `POST /api/notes/timeline` — ホームタイムライン (フォローグラフ未実装のため保留: B-2 `follows.rs` 依存)
+- [x] `POST /api/notes/local-timeline` — ローカルタイムライン
+- [x] `POST /api/notes/global-timeline` — グローバルタイムライン
 - [ ] `POST /api/notes/user-list-timeline` — リストタイムライン
 - [ ] `POST /api/notes/hashtag` — ハッシュタグタイムライン
 
@@ -174,9 +181,9 @@
 - [ ] `relay.surql` / `instance.surql`
 
 #### クエリ (`db/src/queries/`)
-- [ ] `actors.rs` — CRUD + フォロワー数更新
-- [ ] `notes.rs` — 作成/削除/取得/タイムライン (FETCH句N+1防止)
-- [ ] `timeline.rs` — ホーム/ローカル/グローバル タイムラインクエリ
+- [~] `actors.rs` — create / get_by_id / get_by_username / update_token 実装済。フォロワー数更新は未
+- [~] `notes.rs` — 作成/削除/取得 実装済。FETCH句によるN+1防止は未
+- [~] `timeline.rs` — ローカル/グローバル 実装済。ホーム(フォローグラフ)は未
 - [ ] `follows.rs` — グラフクエリ (->follows->)
 - [ ] `notifications.rs` — 通知取得・既読
 - [ ] `drive.rs` — ファイル/フォルダ CRUD
@@ -194,9 +201,9 @@
 
 サービスディレクトリが存在するが実装なし。
 
-- [ ] `auth.rs` — 認証・JWT発行/検証・Argon2ハッシュ
+- [x] `auth.rs` — 認証・JWT発行/検証・Argon2ハッシュ (`core/src/services/auth.rs`。JWT は `typ:"access"` を付与し `api` の auth_middleware と整合)
 - [ ] `note.rs` — 投稿作成・削除・タイムライン構築
-- [ ] `user.rs` — フォロー・ブロック・ミュート管理
+- [~] `user.rs` — 登録 / 認証 を実装 (db 依存のため `api/src/services/user.rs` に配置)。フォロー・ブロック・ミュート管理は未
 - [ ] `drive.rs` — ファイルアップロード・サムネイル生成
 - [ ] `notification.rs` — 通知生成・配送
 - [ ] `search.rs` — ノート/ユーザー検索

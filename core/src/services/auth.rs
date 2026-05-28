@@ -1,17 +1,18 @@
 use argon2::{
-    password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,
+    password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
 };
-use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
+use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
-use rand::rngs::OsRng;
+
 use crate::error::{AppError, Result};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
     pub sub: String,
     pub exp: usize,
+    pub typ: String,
 }
 
 pub fn hash_password(password: &str) -> Result<String> {
@@ -28,7 +29,9 @@ pub fn verify_password(password: &str, password_hash: &str) -> Result<bool> {
     let parsed_hash = PasswordHash::new(password_hash)
         .map_err(|e| AppError::Internal(format!("Failed to parse password hash: {}", e)))?;
     let argon2 = Argon2::default();
-    Ok(argon2.verify_password(password.as_bytes(), &parsed_hash).is_ok())
+    Ok(argon2
+        .verify_password(password.as_bytes(), &parsed_hash)
+        .is_ok())
 }
 
 pub fn generate_jwt(user_id: &str, jwt_secret: &str, expiry_hours: i64) -> Result<String> {
@@ -41,6 +44,7 @@ pub fn generate_jwt(user_id: &str, jwt_secret: &str, expiry_hours: i64) -> Resul
     let claims = Claims {
         sub: user_id.to_string(),
         exp,
+        typ: "access".to_string(),
     };
 
     let token = encode(
