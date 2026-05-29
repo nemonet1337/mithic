@@ -185,21 +185,90 @@ pub async fn verify_http_signature(
     Ok(next.run(request).await)
 }
 
-fn verify_signature(
-    _public_key_pem: &str,
+/// Reconstruct the HTTP signature signing string from the headers listed in the
+/// `Signature` header, in order. Returns `None` if a referenced header is absent.
+fn build_signing_string(
     signature: &HttpSignature,
-    _request_target: &str,
-    _host: &str,
-    _date: &str,
-    _headers: &axum::http::HeaderMap,
+    request_target: &str,
+    host: &str,
+    date: &str,
+    headers: &axum::http::HeaderMap,
+) -> Option<String> {
+    let mut lines = Vec::with_capacity(signature.headers.len());
+    for name in &signature.headers {
+        let value = match name.as_str() {
+            "(request-target)" => request_target.to_string(),
+            "host" => host.to_string(),
+            "date" => date.to_string(),
+            other => headers
+                .get(other)
+                .and_then(|v| v.to_str().ok())?
+                .to_string(),
+        };
+        lines.push(format!("{}: {}", name, value));
+    }
+    Some(lines.join("\n"))
+}
+
+fn verify_signature(
+    public_key_pem: &str,
+    signature: &HttpSignature,
+    request_target: &str,
+    host: &str,
+    date: &str,
+    headers: &axum::http::HeaderMap,
 ) -> Result<bool, SignatureError> {
+    use openssl::hash::MessageDigest;
+    use openssl::pkey::PKey;
+    use openssl::sign::Verifier;
+
     if signature.algorithm != "rsa-sha256" && signature.algorithm != "hs2019" {
         warn!("Unsupported algorithm: {}", signature.algorithm);
         return Err(SignatureError::UnsupportedAlgorithm);
     }
-    // TODO: implement RSA-SHA256 verification (requires openssl or ring)
-    warn!("HTTP signature cryptographic verification is not yet implemented");
-    Ok(true)
+
+    let Some(signing_string) = build_signing_string(signature, request_target, host, date, headers)
+    else {
+        warn!("A signed header referenced in the Signature is missing from the request");
+        return Ok(false);
+    };
+
+    let signature_bytes = match BASE64_STANDARD.decode(signature.signature.as_bytes()) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            warn!("Failed to base64-decode signature: {}", e);
+            return Ok(false);
+        }
+    };
+
+    let pkey = match PKey::public_key_from_pem(public_key_pem.as_bytes()) {
+        Ok(pkey) => pkey,
+        Err(e) => {
+            warn!("Failed to parse public key PEM: {}", e);
+            return Ok(false);
+        }
+    };
+
+    let mut verifier = match Verifier::new(MessageDigest::sha256(), &pkey) {
+        Ok(v) => v,
+        Err(e) => {
+            warn!("Failed to create verifier: {}", e);
+            return Ok(false);
+        }
+    };
+
+    if let Err(e) = verifier.update(signing_string.as_bytes()) {
+        warn!("Failed to feed data to verifier: {}", e);
+        return Ok(false);
+    }
+
+    match verifier.verify(&signature_bytes) {
+        Ok(valid) => Ok(valid),
+        Err(e) => {
+            warn!("Signature verification error: {}", e);
+            Ok(false)
+        }
+    }
 }
 
 fn verify_digest(body: &[u8], digest_header: &str) -> bool {
@@ -266,4 +335,189 @@ async fn fetch_actor_public_key(state: &AppState, key_id: &str) -> Result<String
     let _: Result<(), _> = redis.set_ex(&cache_key, &pem_string, 24 * 60 * 60).await;
     info!("Successfully fetched and cached public key for: {}", key_id);
     Ok(pem_string)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use openssl::hash::MessageDigest;
+    use openssl::pkey::PKey;
+    use openssl::rsa::Rsa;
+    use openssl::sign::Signer;
+
+    /// Generate an RSA-2048 key pair, returning (private PKey, public key PEM string).
+    fn gen_keypair() -> (PKey<openssl::pkey::Private>, String) {
+        let rsa = Rsa::generate(2048).unwrap();
+        let pkey = PKey::from_rsa(rsa).unwrap();
+        let public_pem = String::from_utf8(pkey.public_key_to_pem().unwrap()).unwrap();
+        (pkey, public_pem)
+    }
+
+    /// Sign `data` with `pkey` using RSA-SHA256 and return the base64-encoded signature.
+    fn sign_b64(pkey: &PKey<openssl::pkey::Private>, data: &str) -> String {
+        let mut signer = Signer::new(MessageDigest::sha256(), pkey).unwrap();
+        signer.update(data.as_bytes()).unwrap();
+        BASE64_STANDARD.encode(signer.sign_to_vec().unwrap())
+    }
+
+    fn make_signature(headers: &[&str], sig_b64: &str, algorithm: &str) -> HttpSignature {
+        HttpSignature {
+            key_id: "https://example.com/users/alice#main-key".to_string(),
+            signature: sig_b64.to_string(),
+            headers: headers.iter().map(|s| s.to_string()).collect(),
+            algorithm: algorithm.to_string(),
+        }
+    }
+
+    #[test]
+    fn build_signing_string_orders_and_formats_headers() {
+        let mut header_map = axum::http::HeaderMap::new();
+        header_map.insert("digest", "SHA-256=abc".parse().unwrap());
+        let sig = make_signature(
+            &["(request-target)", "host", "date", "digest"],
+            "",
+            "rsa-sha256",
+        );
+
+        let result = build_signing_string(
+            &sig,
+            "post /inbox",
+            "example.com",
+            "Tue, 20 Apr 2021 02:07:55 GMT",
+            &header_map,
+        )
+        .unwrap();
+
+        assert_eq!(
+            result,
+            "(request-target): post /inbox\n\
+             host: example.com\n\
+             date: Tue, 20 Apr 2021 02:07:55 GMT\n\
+             digest: SHA-256=abc"
+        );
+    }
+
+    #[test]
+    fn build_signing_string_returns_none_for_missing_header() {
+        let header_map = axum::http::HeaderMap::new();
+        let sig = make_signature(&["(request-target)", "digest"], "", "rsa-sha256");
+        let result =
+            build_signing_string(&sig, "post /inbox", "example.com", "some-date", &header_map);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn verify_signature_accepts_valid_signature() {
+        let (pkey, public_pem) = gen_keypair();
+        let request_target = "post /inbox";
+        let host = "example.com";
+        let date = "Tue, 20 Apr 2021 02:07:55 GMT";
+
+        let signing_string =
+            format!("(request-target): {request_target}\nhost: {host}\ndate: {date}");
+        let sig_b64 = sign_b64(&pkey, &signing_string);
+        let sig = make_signature(
+            &["(request-target)", "host", "date"],
+            &sig_b64,
+            "rsa-sha256",
+        );
+
+        let headers = axum::http::HeaderMap::new();
+        let result =
+            verify_signature(&public_pem, &sig, request_target, host, date, &headers).unwrap();
+        assert!(result, "valid signature should verify");
+    }
+
+    #[test]
+    fn verify_signature_rejects_tampered_signature() {
+        let (pkey, public_pem) = gen_keypair();
+        let request_target = "post /inbox";
+        let host = "example.com";
+        let date = "Tue, 20 Apr 2021 02:07:55 GMT";
+
+        let signing_string =
+            format!("(request-target): {request_target}\nhost: {host}\ndate: {date}");
+        // Sign the correct string, but verify against a different request target.
+        let sig_b64 = sign_b64(&pkey, &signing_string);
+        let sig = make_signature(
+            &["(request-target)", "host", "date"],
+            &sig_b64,
+            "rsa-sha256",
+        );
+
+        let headers = axum::http::HeaderMap::new();
+        let result =
+            verify_signature(&public_pem, &sig, "post /other", host, date, &headers).unwrap();
+        assert!(!result, "signature over different data must be rejected");
+    }
+
+    #[test]
+    fn verify_signature_rejects_wrong_key() {
+        let (pkey, _public_pem) = gen_keypair();
+        let (_other_pkey, other_public_pem) = gen_keypair();
+        let request_target = "post /inbox";
+        let host = "example.com";
+        let date = "Tue, 20 Apr 2021 02:07:55 GMT";
+
+        let signing_string =
+            format!("(request-target): {request_target}\nhost: {host}\ndate: {date}");
+        let sig_b64 = sign_b64(&pkey, &signing_string);
+        let sig = make_signature(
+            &["(request-target)", "host", "date"],
+            &sig_b64,
+            "rsa-sha256",
+        );
+
+        let headers = axum::http::HeaderMap::new();
+        let result = verify_signature(
+            &other_public_pem,
+            &sig,
+            request_target,
+            host,
+            date,
+            &headers,
+        )
+        .unwrap();
+        assert!(
+            !result,
+            "signature must not verify against an unrelated key"
+        );
+    }
+
+    #[test]
+    fn verify_signature_rejects_unsupported_algorithm() {
+        let (_pkey, public_pem) = gen_keypair();
+        let sig = make_signature(&["(request-target)", "host", "date"], "AAAA", "ed25519");
+        let headers = axum::http::HeaderMap::new();
+        let result = verify_signature(
+            &public_pem,
+            &sig,
+            "post /inbox",
+            "example.com",
+            "some-date",
+            &headers,
+        );
+        assert!(matches!(result, Err(SignatureError::UnsupportedAlgorithm)));
+    }
+
+    #[test]
+    fn verify_signature_rejects_invalid_base64() {
+        let (_pkey, public_pem) = gen_keypair();
+        let sig = make_signature(
+            &["(request-target)", "host", "date"],
+            "not valid base64!!!",
+            "rsa-sha256",
+        );
+        let headers = axum::http::HeaderMap::new();
+        let result = verify_signature(
+            &public_pem,
+            &sig,
+            "post /inbox",
+            "example.com",
+            "some-date",
+            &headers,
+        )
+        .unwrap();
+        assert!(!result, "non-base64 signature must be rejected, not error");
+    }
 }
