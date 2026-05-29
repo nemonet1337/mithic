@@ -255,7 +255,7 @@
 - [ ] Relay 受信フロー: `should_persist_note` で関与ありのみ DB 保存、それ以外は Dragonfly バッファ→破棄
 - [ ] Relay 配送フロー: ノート作成時に `fanout_to_relays` 呼び出し
 - [ ] Relay Unsubscribe (Undo Follow 送信)
-- [ ] HTTP Signature 検証 (Relay からの受信時に必須)
+- [x] HTTP Signature 検証 (Relay からの受信時に必須) — RSA-SHA256 検証を `api/src/middleware/http_signature.rs` に実装 (openssl使用、ユニットテスト付き)。署名生成側は未実装
 - [ ] visibility フィルタ: `public` のみ配送。`home` / `followers` は配送しない
 - [ ] `remote_actor` 保存条件: フォローした/されたユーザーのみ (Relay 経由の全アクターは保存しない)
 - [ ] Dead Inbox Circuit Breaker (`dead_inbox:{host}` に失敗回数を記録、閾値超で一時停止)
