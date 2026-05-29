@@ -482,13 +482,25 @@ new Frontend では `AdminPage` と `AdminUsersPage` のみ。old-src との差�
 
 ## パフォーマンス最適化 (段階的導入)
 
+> **設計詳細 (2026-05-29 追記)**: 数万人＋リレー流入を捌くための最適化を全領域調査した結果と
+> 具体設計・負荷テスト/ベンチ設計を **`docs/performance-optimization-plan.md`** にまとめた。
+> 判明したギャップ台帳は **`docs/feature-gap-analysis.md`** (P-G1〜P-G16) を参照。
+> 最重要の発見: 主要ボトルネックは「遅い実装」ではなく**未実装のホットパス**
+> (ホーム TL の fan-out 不在 / ワーカー未起動 / HTTP 署名 placeholder / 接続プール無し / `init_schema()` 未呼び出し)。
+
+### P-0. 前提 — 起動時に活性化すべき既存資産 (調査で判明・最優先)
+
+- [ ] `db/src/surreal.rs:init_schema()` を server/worker 起動時に呼ぶ (21 インデックス定義が現状未適用)
+- [ ] `worker/src/main.rs` で `FederationService::run_delivery_worker()` を起動 (現状キューが溜まるだけ)
+- [ ] `FederationService` を `AppState` のプール済 `reqwest::Client` で初期化 (現状 `Client::new()` 二重生成)
+
 ### P-1. Phase 1 — 低難易度・高効果（早期導入推奨）
 
 - [ ] `mimalloc` または `jemalloc` をグローバルアロケータに設定 (+10〜30%)
 - [ ] リリースビルドに `lto = "fat"`, `codegen-units = 1`, `opt-level = 3`, `strip = true`
 - [ ] `RUSTFLAGS="-C target-cpu=native"` で native 向け最適化
-- [ ] ActivityPub 配送で `sharedInbox` にグルーピング (同一インスタンスへは1回のみ POST)
-- [ ] `reqwest::Client` をアプリ全体で共有しコネクション再利用 (`pool_max_idle_per_host = 32`)
+- [ ] ActivityPub 配送で `sharedInbox` にグルーピング (同一インスタンスへは1回のみ POST。グルーピングをキュー投入前へ移動)
+- [ ] `reqwest::Client` をアプリ全体で共有しコネクション再利用 (`pool_max_idle_per_host = 32`、HTTP/2 有効)
 
 ### P-2. Phase 2 — 中難易度・大効果
 
@@ -496,8 +508,13 @@ new Frontend では `AdminPage` と `AdminUsersPage` のみ。old-src との差�
   - フォロワー < 10,000: Push 型、≥ 10,000 (インフルエンサー): Pull 型ハイブリッド
   - `ZREMRANGEBYRANK` で上限300件維持、TTL 24時間
 - [ ] Pre-rendered Response Cache — シリアライズ済みJSON を Dragonfly にバイト列で保存して返す
+- [ ] TL 取得の N+1 解消 — `FETCH actor_id` で著者同梱 + note 本体は `note:{id}` を MGET、欠損のみ `IN [...]` で一括取得
+- [ ] ワーカー並列化 — 単一 BRPOP ループ → N 並列タスク + ホスト単位セマフォ、prefetch (`LMPOP`/パイプライン)
+- [ ] キュー堅牢化 — retry を遅延付きで本キューへ戻すスケジューラ (`federation:scheduled` ZSET)、`federation:dlq`、バックオフにジッタ
+- [ ] リレー取り込み — `activity.id` で dedup、`should_persist_note` で関与分のみ DB 保存
 - [ ] Prometheus メトリクス (`metrics` + `metrics-exporter-prometheus`) + Grafana 可視化
-  - API レイテンシ (P50/P95/P99)、DB クエリ時間、Dragonfly ヒット率、AP キュー深度
+  - API レイテンシ (P50/P95/P99)、DB クエリ時間、Dragonfly ヒット率、AP キュー深度、fan-out レイテンシ
+- [ ] 負荷テスト/ベンチハーネス — シードジェネレータ + `criterion` + 負荷シナリオ (詳細は `docs/performance-optimization-plan.md` §4)
 
 ### P-3. Phase 3 — 中難易度
 
