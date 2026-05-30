@@ -66,3 +66,14 @@ impl User {
             .to_uppercase()
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UserRelation {
+    pub id: String,
+    pub is_following: bool,
+    pub is_followed: bool,
+    pub is_blocking: bool,
+    pub is_blocked: bool,
+    pub is_muted: bool,
+}

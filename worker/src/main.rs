@@ -19,10 +19,47 @@ async fn main() -> anyhow::Result<()> {
 
     info!("Starting Mithic Worker...");
 
-    // TODO: フェデレーション配送キュー処理
-    // TODO: メディア処理（サムネイル生成等）
-    // TODO: 定期クリーンアップジョブ
-    // TODO: 期限切れポーリング結果の集計
+    let config = mithic_config::AppConfig::from_env()?;
+
+    info!("Connecting to SurrealDB at {}", config.surrealdb_endpoint);
+    let surreal = mithic_db::create_surreal_client(&mithic_db::SurrealConfig {
+        endpoint: config.surrealdb_endpoint.clone(),
+        namespace: config.surrealdb_namespace.clone(),
+        database: config.surrealdb_database.clone(),
+        username: config.surrealdb_username.clone(),
+        password: config.surrealdb_password.clone(),
+    })
+    .await?;
+
+    info!("Initializing SurrealDB schema");
+    mithic_db::init_schema(&surreal).await?;
+
+    info!("Connecting to Dragonfly at {}", config.dragonfly_url);
+    let dragonfly = mithic_db::create_dragonfly_client(&config.dragonfly_url).await?;
+
+    let surreal_client = mithic_db::SurrealClient(surreal);
+    let dragonfly_client = mithic_db::DragonflyClient(dragonfly);
+
+    let http_client = reqwest::Client::builder()
+        .pool_max_idle_per_host(32)
+        .pool_idle_timeout(std::time::Duration::from_secs(90))
+        .build()
+        .unwrap_or_default();
+
+    let federation_service = mithic_federation::FederationService::new(
+        surreal_client,
+        dragonfly_client,
+        http_client,
+        config.instance_url.clone(),
+    );
+
+    // フェデレーション配送キュー処理を非同期タスクとして起動
+    let fed_service_clone = federation_service.clone();
+    tokio::spawn(async move {
+        if let Err(e) = fed_service_clone.run_delivery_worker().await {
+            tracing::error!("Federation delivery worker failed: {}", e);
+        }
+    });
 
     info!("Worker started. Waiting for jobs...");
 

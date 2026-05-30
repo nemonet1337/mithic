@@ -3,7 +3,7 @@ pub mod queries;
 pub mod surreal;
 
 pub use dragonfly::create_client as create_dragonfly_client;
-pub use surreal::{SurrealConfig, create_client as create_surreal_client};
+pub use surreal::{SurrealConfig, create_client as create_surreal_client, init_schema};
 
 use redis::aio::MultiplexedConnection;
 use surrealdb::Surreal;

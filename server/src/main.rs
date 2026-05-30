@@ -21,6 +21,9 @@ async fn main() -> Result<()> {
     })
     .await?;
 
+    info!("Initializing SurrealDB schema");
+    mithic_db::init_schema(&surreal).await?;
+
     info!("Connecting to Dragonfly at {}", config.dragonfly_url);
     let dragonfly = mithic_db::create_dragonfly_client(&config.dragonfly_url).await?;
 

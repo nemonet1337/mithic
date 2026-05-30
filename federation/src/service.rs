@@ -17,11 +17,16 @@ pub struct FederationService {
 }
 
 impl FederationService {
-    pub fn new(surreal: SurrealClient, dragonfly: DragonflyClient, instance_url: String) -> Self {
+    pub fn new(
+        surreal: SurrealClient,
+        dragonfly: DragonflyClient,
+        http_client: Client,
+        instance_url: String,
+    ) -> Self {
         Self {
             surreal: Arc::new(surreal),
             dragonfly,
-            http_client: Client::new(),
+            http_client,
             instance_url,
         }
     }

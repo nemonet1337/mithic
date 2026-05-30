@@ -275,5 +275,40 @@ pub async fn init_schema(client: &DbClient) -> anyhow::Result<()> {
         )
         .await?;
 
+    // リアクション定義
+    client
+        .query(
+            "
+        DEFINE TABLE IF NOT EXISTS note_reaction SCHEMAFULL;
+        DEFINE FIELD IF NOT EXISTS id ON note_reaction TYPE string;
+        DEFINE FIELD IF NOT EXISTS note_id ON note_reaction TYPE record<note>;
+        DEFINE FIELD IF NOT EXISTS actor_id ON note_reaction TYPE record<user>;
+        DEFINE FIELD IF NOT EXISTS reaction ON note_reaction TYPE string;
+        DEFINE FIELD IF NOT EXISTS created_at ON note_reaction TYPE datetime;
+        DEFINE FIELD IF NOT EXISTS is_remote ON note_reaction TYPE bool DEFAULT false;
+        DEFINE FIELD IF NOT EXISTS uri ON note_reaction TYPE option<string>;
+        DEFINE INDEX IF NOT EXISTS idx_note_reaction_note ON note_reaction COLUMNS note_id;
+        DEFINE INDEX IF NOT EXISTS idx_note_reaction_actor ON note_reaction COLUMNS actor_id;
+        DEFINE INDEX IF NOT EXISTS idx_note_reaction_unique ON note_reaction COLUMNS note_id, actor_id UNIQUE;
+    ",
+        )
+        .await?;
+
+    // ブックマーク定義
+    client
+        .query(
+            "
+        DEFINE TABLE IF NOT EXISTS bookmark SCHEMAFULL;
+        DEFINE FIELD IF NOT EXISTS id ON bookmark TYPE string;
+        DEFINE FIELD IF NOT EXISTS user_id ON bookmark TYPE record<user>;
+        DEFINE FIELD IF NOT EXISTS note_id ON bookmark TYPE record<note>;
+        DEFINE FIELD IF NOT EXISTS created_at ON bookmark TYPE datetime;
+        DEFINE INDEX IF NOT EXISTS idx_bookmark_user ON bookmark COLUMNS user_id;
+        DEFINE INDEX IF NOT EXISTS idx_bookmark_note ON bookmark COLUMNS note_id;
+        DEFINE INDEX IF NOT EXISTS idx_bookmark_unique ON bookmark COLUMNS user_id, note_id UNIQUE;
+    ",
+        )
+        .await?;
+
     Ok(())
 }

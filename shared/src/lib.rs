@@ -3,5 +3,5 @@ pub mod types;
 
 pub use types::{
     CreateNoteRequest, MeResponse, MediaAttachment, Note, NoteVisibility, Notification, NotificationType,
-    ReactionSummary, SigninRequest, SigninResponse, SignupRequest, User,
+    ReactionSummary, SigninRequest, SigninResponse, SignupRequest, User, ReactionRequest, UserRelation,
 };

@@ -3256,6 +3256,7 @@ dependencies = [
  "axum",
  "base64",
  "chrono",
+ "hex",
  "jsonwebtoken",
  "mithic-config",
  "mithic-core",
@@ -3321,12 +3322,14 @@ name = "mithic-db"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "mithic-core",
  "redis",
  "serde",
  "serde_json",
  "surrealdb",
  "tokio",
+ "ulid",
 ]
 
 [[package]]
@@ -3412,6 +3415,7 @@ dependencies = [
  "mithic-core",
  "mithic-db",
  "mithic-federation",
+ "reqwest",
  "tokio",
  "tracing",
  "tracing-subscriber",

@@ -36,6 +36,7 @@ impl AppState {
         let federation_service = FederationService::new(
             surreal.clone(),
             dragonfly.clone(),
+            http_client.clone(),
             config.instance_url.clone(),
         );
 

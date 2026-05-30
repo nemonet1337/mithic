@@ -1,4 +1,4 @@
-use axum::{Extension, Json, extract::State};
+use axum::{Extension, Json, extract::State, http::StatusCode};
 use mithic_core::services::auth::generate_jwt;
 use mithic_core::{AppError, AuthUser, Result};
 use mithic_db::queries::{get_actor_by_id, update_actor_token};
@@ -48,4 +48,15 @@ pub async fn me(
 
     let user = actor_to_user(&actor);
     Ok(Json(MeResponse { user }))
+}
+
+pub async fn signout(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthUser>,
+) -> Result<StatusCode> {
+    update_actor_token(state.surreal(), &auth.user_id, None)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+    Ok(StatusCode::NO_CONTENT)
 }
