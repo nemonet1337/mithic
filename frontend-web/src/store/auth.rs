@@ -27,7 +27,7 @@ impl AuthStore {
             wasm_bindgen_futures::spawn_local(async move {
                 match crate::api::auth::fetch_me(&token).await {
                     Ok(user) => store.me.set(Some(user)),
-                    Err(_)   => store.logout(),
+                    Err(_) => store.logout(),
                 }
             });
         }

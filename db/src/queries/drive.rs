@@ -13,13 +13,21 @@ fn map_row_to_file(val: serde_json::Value) -> Option<DriveFile> {
     let name = val.get("name")?.as_str()?.to_string();
     let mime_type = val.get("mime_type")?.as_str()?.to_string();
     let size = val.get("size")?.as_i64()?;
-    
+
     let owner_id_str = val.get("owner_id")?.as_str()?;
     let owner_id = owner_id_str.parse::<ActorId>().ok()?;
-    
-    let hash = val.get("hash").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    let url = val.get("url").and_then(|v| v.as_str().map(|s| s.to_string()));
-    let thumbnail_url = val.get("thumbnail_url").and_then(|v| v.as_str().map(|s| s.to_string()));
+
+    let hash = val
+        .get("hash")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let url = val
+        .get("url")
+        .and_then(|v| v.as_str().map(|s| s.to_string()));
+    let thumbnail_url = val
+        .get("thumbnail_url")
+        .and_then(|v| v.as_str().map(|s| s.to_string()));
 
     let file_type = if mime_type.starts_with("image/") {
         FileType::Image
@@ -54,10 +62,7 @@ fn map_row_to_file(val: serde_json::Value) -> Option<DriveFile> {
     })
 }
 
-pub async fn create_drive_file(
-    client: &SurrealClient,
-    file: &DriveFile,
-) -> anyhow::Result<()> {
+pub async fn create_drive_file(client: &SurrealClient, file: &DriveFile) -> anyhow::Result<()> {
     let id_str = file.id.to_string();
     let owner_str = file.owner_id.to_string();
 
@@ -166,10 +171,7 @@ pub async fn get_user_drive_files(
     Ok(files)
 }
 
-pub async fn delete_drive_file(
-    client: &SurrealClient,
-    id: &FileId,
-) -> anyhow::Result<()> {
+pub async fn delete_drive_file(client: &SurrealClient, id: &FileId) -> anyhow::Result<()> {
     let id_str = id.to_string();
 
     client

@@ -1,9 +1,8 @@
 use mithic_core::models::actor::ActorId;
 use mithic_db::SurrealClient;
 use mithic_db::queries::{
-    follow_user as db_follow, unfollow_user as db_unfollow,
-    block_user as db_block, unblock_user as db_unblock,
-    mute_user as db_mute, unmute_user as db_unmute
+    block_user as db_block, follow_user as db_follow, mute_user as db_mute,
+    unblock_user as db_unblock, unfollow_user as db_unfollow, unmute_user as db_unmute,
 };
 
 pub async fn follow(

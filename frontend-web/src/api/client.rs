@@ -7,8 +7,8 @@ pub fn api_base() -> &'static str {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ApiError {
-    pub status:  u16,
-    pub code:    String,
+    pub status: u16,
+    pub code: String,
     pub message: String,
 }
 
@@ -33,12 +33,12 @@ where
     let url = format!("{}/{}", api_base(), path.trim_start_matches('/'));
 
     let mut req = match method {
-        "GET"    => Request::get(&url),
-        "POST"   => Request::post(&url),
-        "PATCH"  => Request::patch(&url),
+        "GET" => Request::get(&url),
+        "POST" => Request::post(&url),
+        "PATCH" => Request::patch(&url),
         "DELETE" => Request::delete(&url),
-        "PUT"    => Request::put(&url),
-        other    => panic!("unsupported HTTP method: {other}"),
+        "PUT" => Request::put(&url),
+        other => panic!("unsupported HTTP method: {other}"),
     };
 
     if let Some(tok) = token {
@@ -47,18 +47,30 @@ where
 
     let response: Response = if let Some(b) = body {
         req.json(b)
-            .map_err(|e| ApiError { status: 0, code: "serialize".into(), message: e.to_string() })?
+            .map_err(|e| ApiError {
+                status: 0,
+                code: "serialize".into(),
+                message: e.to_string(),
+            })?
             .send()
             .await
     } else {
         req.send().await
     }
-    .map_err(|e| ApiError { status: 0, code: "network".into(), message: e.to_string() })?;
+    .map_err(|e| ApiError {
+        status: 0,
+        code: "network".into(),
+        message: e.to_string(),
+    })?;
 
     let status = response.status();
 
     if status == 429 {
-        return Err(ApiError { status, code: "rate_limit".into(), message: "レートリミット".into() });
+        return Err(ApiError {
+            status,
+            code: "rate_limit".into(),
+            message: "レートリミット".into(),
+        });
     }
 
     if !response.ok() {
@@ -70,10 +82,11 @@ where
         return Err(err);
     }
 
-    response
-        .json::<T>()
-        .await
-        .map_err(|e| ApiError { status: 0, code: "deserialize".into(), message: e.to_string() })
+    response.json::<T>().await.map_err(|e| ApiError {
+        status: 0,
+        code: "deserialize".into(),
+        message: e.to_string(),
+    })
 }
 
 pub async fn request_with_retry<T, B>(

@@ -118,7 +118,10 @@ pub async fn get_home_timeline(
 
     query.push_str(" ORDER BY id DESC LIMIT $limit;");
 
-    let mut q = client.query(&query).bind(("user_id", user_str)).bind(("limit", limit));
+    let mut q = client
+        .query(&query)
+        .bind(("user_id", user_str))
+        .bind(("limit", limit));
 
     if let Some(since) = since_id {
         q = q.bind(("since_id", since.to_string()));
