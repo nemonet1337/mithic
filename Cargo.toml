@@ -90,7 +90,7 @@ tempfile = "3"
 base64 = "0.22"
 sha2 = "0.11"
 hex = "0.4"
-openssl = "0.10"
+rsa = { version = "0.9", features = ["sha2", "pem"] }
 validator = { version = "0.20", features = ["derive"] }
 
 # Web Push

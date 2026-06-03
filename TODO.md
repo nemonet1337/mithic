@@ -1,6 +1,6 @@
 # Mithic 統合 Todo リスト
 
-**更新日**: 2026-05-28  
+**更新日**: 2026-06-03  
 **参照**: `old-src/` との機能比較, クレート実装調査結果
 
 > **注記 (2026-05-28)**: クレートはリポジトリルート直下に移動済み (旧 `crates/` は削除)。
@@ -549,9 +549,8 @@ new Frontend では `AdminPage` と `AdminUsersPage` のみ。old-src との差�
 
 ### I-1. Windows 開発環境 OpenSSL 問題
 
-- [ ] `openssl` 依存を `rustls` 系へ置換するか検討
-- [ ] または `vendored` feature 使用の手順を `docs/` に追記
-- [ ] `cargo check -p mithic-server` が Windows で通るようにする
+- [x] `openssl` 依存を `rsa` / `sha2`（純Rust製）へ置換 (Windowsビルドエラーの解消)
+- [x] `cargo check` が Windows で通るようにする
 
 ---
 

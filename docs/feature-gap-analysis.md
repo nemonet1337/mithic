@@ -1,6 +1,6 @@
 # 機能ギャップ分析 (Feature Gap Analysis)
 
-**検証日**: 2026-05-29
+**検証日**: 2026-06-03
 **参照**: `old-src/`（旧 Misskey/Dolphin 実装）との機能比較、クレート実装調査、パフォーマンス調査
 **関連**: `docs/performance-optimization-plan.md`, `TODO.md`
 

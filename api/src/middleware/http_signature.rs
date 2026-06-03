@@ -218,9 +218,10 @@ fn verify_signature(
     date: &str,
     headers: &axum::http::HeaderMap,
 ) -> Result<bool, SignatureError> {
-    use openssl::hash::MessageDigest;
-    use openssl::pkey::PKey;
-    use openssl::sign::Verifier;
+    use rsa::{RsaPublicKey, pkcs1::DecodeRsaPublicKey, pkcs8::DecodePublicKey};
+    use rsa::pkcs1v15::VerifyingKey;
+    use rsa::signature::Verifier;
+    use rsa::sha2::Sha256;
 
     if signature.algorithm != "rsa-sha256" && signature.algorithm != "hs2019" {
         warn!("Unsupported algorithm: {}", signature.algorithm);
@@ -241,31 +242,32 @@ fn verify_signature(
         }
     };
 
-    let pkey = match PKey::public_key_from_pem(public_key_pem.as_bytes()) {
-        Ok(pkey) => pkey,
-        Err(e) => {
-            warn!("Failed to parse public key PEM: {}", e);
-            return Ok(false);
+    // Parse the public key. Try PKCS#8 first, then fall back to PKCS#1.
+    let pkey = match RsaPublicKey::from_public_key_pem(public_key_pem) {
+        Ok(key) => key,
+        Err(_) => {
+            match RsaPublicKey::from_pkcs1_pem(public_key_pem) {
+                Ok(key) => key,
+                Err(e) => {
+                    warn!("Failed to parse public key PEM as PKCS#8 or PKCS#1: {}", e);
+                    return Ok(false);
+                }
+            }
         }
     };
 
-    let mut verifier = match Verifier::new(MessageDigest::sha256(), &pkey) {
-        Ok(v) => v,
+    let verifying_key = VerifyingKey::<Sha256>::new(pkey);
+    let signature = match rsa::pkcs1v15::Signature::try_from(signature_bytes.as_slice()) {
+        Ok(sig) => sig,
         Err(e) => {
-            warn!("Failed to create verifier: {}", e);
+            warn!("Failed to parse signature: {}", e);
             return Ok(false);
         }
     };
-
-    if let Err(e) = verifier.update(signing_string.as_bytes()) {
-        warn!("Failed to feed data to verifier: {}", e);
-        return Ok(false);
-    }
-
-    match verifier.verify(&signature_bytes) {
-        Ok(valid) => Ok(valid),
+    match verifying_key.verify(signing_string.as_bytes(), &signature) {
+        Ok(_) => Ok(true),
         Err(e) => {
-            warn!("Signature verification error: {}", e);
+            warn!("Signature verification failed: {}", e);
             Ok(false)
         }
     }
@@ -340,24 +342,27 @@ async fn fetch_actor_public_key(state: &AppState, key_id: &str) -> Result<String
 #[cfg(test)]
 mod tests {
     use super::*;
-    use openssl::hash::MessageDigest;
-    use openssl::pkey::PKey;
-    use openssl::rsa::Rsa;
-    use openssl::sign::Signer;
+    use rsa::{RsaPrivateKey, RsaPublicKey, pkcs8::EncodePublicKey};
+    use rsa::pkcs1v15::SigningKey;
+    use rsa::signature::{RandomizedSigner, SignatureEncoding};
+    use rsa::sha2::Sha256;
+    use rand::thread_rng;
 
-    /// Generate an RSA-2048 key pair, returning (private PKey, public key PEM string).
-    fn gen_keypair() -> (PKey<openssl::pkey::Private>, String) {
-        let rsa = Rsa::generate(2048).unwrap();
-        let pkey = PKey::from_rsa(rsa).unwrap();
-        let public_pem = String::from_utf8(pkey.public_key_to_pem().unwrap()).unwrap();
-        (pkey, public_pem)
+    /// Generate an RSA-2048 key pair, returning (RsaPrivateKey, public key PEM string).
+    fn gen_keypair() -> (RsaPrivateKey, String) {
+        let mut rng = thread_rng();
+        let private_key = RsaPrivateKey::new(&mut rng, 2048).unwrap();
+        let public_key = RsaPublicKey::from(&private_key);
+        let public_pem = public_key.to_public_key_pem(rsa::pkcs8::LineEnding::LF).unwrap();
+        (private_key, public_pem)
     }
 
     /// Sign `data` with `pkey` using RSA-SHA256 and return the base64-encoded signature.
-    fn sign_b64(pkey: &PKey<openssl::pkey::Private>, data: &str) -> String {
-        let mut signer = Signer::new(MessageDigest::sha256(), pkey).unwrap();
-        signer.update(data.as_bytes()).unwrap();
-        BASE64_STANDARD.encode(signer.sign_to_vec().unwrap())
+    fn sign_b64(pkey: &RsaPrivateKey, data: &str) -> String {
+        let mut rng = thread_rng();
+        let signing_key = SigningKey::<Sha256>::new(pkey.clone());
+        let signature = signing_key.sign_with_rng(&mut rng, data.as_bytes());
+        BASE64_STANDARD.encode(signature.to_bytes())
     }
 
     fn make_signature(headers: &[&str], sig_b64: &str, algorithm: &str) -> HttpSignature {

@@ -1,10 +1,7 @@
 use axum::{Extension, Json, extract::State, http::StatusCode};
 use mithic_core::models::note::{Note, NoteId};
 use mithic_core::{AppError, AuthUser, Result};
-use mithic_db::queries::{
-    add_favorite, add_reaction, create_note, delete_note, get_actor_by_id, get_home_timeline,
-    get_note_by_id, remove_favorite, remove_reaction,
-};
+use mithic_db::queries::{create_note, delete_note, get_actor_by_id, get_note_by_id, add_reaction, remove_reaction, add_favorite, remove_favorite, get_home_timeline};
 use serde::Deserialize;
 use shared::{CreateNoteRequest, Note as NoteDto, ReactionRequest};
 
@@ -209,19 +206,14 @@ pub async fn renote(
         .map_err(|e| AppError::Internal(e.to_string()))?
         .ok_or_else(|| AppError::NotFound("Note not found".to_string()))?;
 
-    let mut renote = Note::new(
-        my_id,
-        None,
-        mithic_core::models::note::NoteVisibility::Public,
-    );
+    let mut renote = Note::new(my_id, None, mithic_core::models::note::NoteVisibility::Public);
     renote.renote_id = Some(target_note_id);
 
     let created = create_note(state.surreal(), &renote)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
-    state
-        .surreal()
+    state.surreal()
         .query("UPDATE note SET renote_count += 1 WHERE id = $id;")
         .bind(("id", target_note_id.to_string()))
         .await
@@ -254,17 +246,13 @@ pub async fn unrenote(
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
-    let rows: Vec<serde_json::Value> = response
-        .take(0)
-        .map_err(|e| AppError::Internal(e.to_string()))?;
-    let deleted_notes: Vec<Note> = rows
-        .into_iter()
+    let rows: Vec<serde_json::Value> = response.take(0).map_err(|e| AppError::Internal(e.to_string()))?;
+    let deleted_notes: Vec<Note> = rows.into_iter()
         .map(|v| serde_json::from_value::<Note>(v).map_err(|e| AppError::Internal(e.to_string())))
         .collect::<Result<Vec<Note>>>()?;
-
+    
     if !deleted_notes.is_empty() {
-        state
-            .surreal()
+        state.surreal()
             .query("UPDATE note SET renote_count = <int>(renote_count OR 1) - 1 WHERE id = $id;")
             .bind(("id", target_note_id.to_string()))
             .await
@@ -288,9 +276,9 @@ pub async fn home_timeline(
     Json(request): Json<TimelineRequest>,
 ) -> Result<Json<Vec<NoteDto>>> {
     let user_id = auth.user_id;
-
+    
     let limit = request.limit.unwrap_or(20).min(100);
-
+    
     let since_id = match request.since_id {
         Some(ref id) => Some(parse_note_id(id)?),
         None => None,
