@@ -1,11 +1,15 @@
-use axum::{Extension, Json, extract::{State, Multipart}, http::StatusCode};
-use mithic_core::{AppError, AuthUser, Result};
-use mithic_db::queries::{create_drive_file, get_drive_file, delete_drive_file};
-use mithic_core::models::file::DriveFile;
 use crate::state::AppState;
+use axum::{
+    Extension, Json,
+    extract::{Multipart, State},
+    http::StatusCode,
+};
+use mithic_core::models::file::DriveFile;
+use mithic_core::{AppError, AuthUser, Result};
+use mithic_db::queries::{create_drive_file, delete_drive_file, get_drive_file};
 use serde::Deserialize;
-use shared::MediaAttachment;
 use sha2::Digest;
+use shared::MediaAttachment;
 
 pub fn file_to_dto(f: &DriveFile) -> MediaAttachment {
     MediaAttachment {
@@ -29,17 +33,30 @@ pub async fn upload_file(
     let mut mime_type = "application/octet-stream".to_string();
     let mut data = Vec::new();
 
-    while let Some(field) = multipart.next_field().await.map_err(|e| AppError::Internal(e.to_string()))? {
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?
+    {
         let field_name = field.name().unwrap_or_default().to_string();
         if field_name == "file" {
             name = field.file_name().unwrap_or("file").to_string();
-            mime_type = field.content_type().unwrap_or("application/octet-stream").to_string();
-            data = field.bytes().await.map_err(|e| AppError::Internal(e.to_string()))?.to_vec();
+            mime_type = field
+                .content_type()
+                .unwrap_or("application/octet-stream")
+                .to_string();
+            data = field
+                .bytes()
+                .await
+                .map_err(|e| AppError::Internal(e.to_string()))?
+                .to_vec();
         }
     }
 
     if data.is_empty() {
-        return Err(AppError::Validation("No file uploaded or file empty".to_string()));
+        return Err(AppError::Validation(
+            "No file uploaded or file empty".to_string(),
+        ));
     }
 
     let size = data.len() as i64;
@@ -47,14 +64,7 @@ pub async fn upload_file(
 
     let file_url = format!("{}/uploads/{}", state.config().instance_url, hash);
 
-    let drive_file = DriveFile::new(
-        name,
-        mime_type,
-        size,
-        owner_id,
-        format!("{}", hash),
-        hash,
-    );
+    let drive_file = DriveFile::new(name, mime_type, size, owner_id, hash.to_string(), hash);
 
     let mut drive_file = drive_file;
     drive_file.url = Some(file_url.clone());
@@ -84,7 +94,9 @@ pub async fn show(
     State(state): State<AppState>,
     Json(request): Json<FileIdRequest>,
 ) -> Result<Json<MediaAttachment>> {
-    let file_id = request.file_id.parse::<mithic_core::models::file::FileId>()
+    let file_id = request
+        .file_id
+        .parse::<mithic_core::models::file::FileId>()
         .map_err(|_| AppError::Validation("Invalid file id".to_string()))?;
 
     let file = get_drive_file(state.surreal(), &file_id)
@@ -100,7 +112,9 @@ pub async fn delete(
     Extension(auth): Extension<AuthUser>,
     Json(request): Json<FileIdRequest>,
 ) -> Result<StatusCode> {
-    let file_id = request.file_id.parse::<mithic_core::models::file::FileId>()
+    let file_id = request
+        .file_id
+        .parse::<mithic_core::models::file::FileId>()
         .map_err(|_| AppError::Validation("Invalid file id".to_string()))?;
 
     let file = get_drive_file(state.surreal(), &file_id)

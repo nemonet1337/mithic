@@ -1,9 +1,9 @@
 use leptos::prelude::*;
 use leptos_router::components::A;
 
-use crate::models::{Note, NoteVisibility};
 use super::avatar::{Avatar, AvatarSize};
 use super::mfm::MfmText;
+use crate::models::{Note, NoteVisibility};
 
 #[component]
 pub fn PostCard(note: Note, #[prop(default = false)] flat: bool) -> impl IntoView {

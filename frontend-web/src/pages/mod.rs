@@ -4,8 +4,8 @@ use leptos_router::components::A;
 use leptos_router::hooks::{use_navigate, use_params_map, use_query_map};
 
 use crate::components::{Avatar, AvatarSize, MfmText, PostCard, Shell, TopBar};
-use crate::models::{sample_notes, sample_notifications, sample_user, Note, NotificationType};
-use crate::store::{stream::connect_stream, AuthStore, NotificationStore};
+use crate::models::{Note, NotificationType, sample_notes, sample_notifications, sample_user};
+use crate::store::{AuthStore, NotificationStore, stream::connect_stream};
 
 const TIMELINE_TABS: [(&str, &str); 3] = [
     ("フォロー中", "/"),
@@ -37,25 +37,25 @@ pub fn GlobalTimelinePage() -> impl IntoView {
 
 #[component]
 fn TimelinePage(kind: TimelineKind) -> impl IntoView {
-    let auth        = expect_context::<AuthStore>();
+    let auth = expect_context::<AuthStore>();
     let notifications = expect_context::<NotificationStore>();
-    let notes       = RwSignal::<Vec<Note>>::new(vec![]);
-    let is_loading  = RwSignal::new(false);
-    let has_more    = RwSignal::new(true);
+    let notes = RwSignal::<Vec<Note>>::new(vec![]);
+    let is_loading = RwSignal::new(false);
+    let has_more = RwSignal::new(true);
 
     let kind_str = match kind {
-        TimelineKind::Home   => "home",
-        TimelineKind::Local  => "local",
+        TimelineKind::Home => "home",
+        TimelineKind::Local => "local",
         TimelineKind::Global => "global",
     };
     let active = match kind {
-        TimelineKind::Home   => "/",
-        TimelineKind::Local  => "/local",
+        TimelineKind::Home => "/",
+        TimelineKind::Local => "/local",
         TimelineKind::Global => "/global",
     };
     let title = match kind {
-        TimelineKind::Home   => "ホーム",
-        TimelineKind::Local  => "ローカル",
+        TimelineKind::Home => "ホーム",
+        TimelineKind::Local => "ローカル",
         TimelineKind::Global => "グローバル",
     };
 
@@ -87,14 +87,16 @@ fn TimelinePage(kind: TimelineKind) -> impl IntoView {
     });
 
     let load_more = move || {
-        let token  = auth.token.get_untracked();
+        let token = auth.token.get_untracked();
         let oldest = notes.with_untracked(|v| v.last().map(|n| n.id.clone()));
         if let (Some(tok), Some(id)) = (token, oldest) {
             is_loading.set(true);
             wasm_bindgen_futures::spawn_local(async move {
                 match crate::api::notes::fetch_timeline(&tok, kind_str, Some(&id)).await {
                     Ok(mut more) => {
-                        if more.is_empty() { has_more.set(false); }
+                        if more.is_empty() {
+                            has_more.set(false);
+                        }
                         notes.update(|v| v.append(&mut more));
                         is_loading.set(false);
                     }
@@ -399,17 +401,26 @@ pub fn ProfilePage() -> impl IntoView {
 #[component]
 pub fn SettingsPage() -> impl IntoView {
     let groups = vec![
-        ("アカウント",   vec!["プロフィール", "メール", "パスワード", "連携アカウント", "2段階認証"]),
+        (
+            "アカウント",
+            vec![
+                "プロフィール",
+                "メール",
+                "パスワード",
+                "連携アカウント",
+                "2段階認証",
+            ],
+        ),
         ("プライバシー", vec!["公開範囲", "ブロック", "ミュート"]),
-        ("通知",         vec!["プッシュ", "メール", "メンション"]),
-        ("表示",         vec!["テーマ", "言語", "密度", "タイムゾーン"]),
-        ("連携",         vec!["外部サービス", "APIトークン"]),
+        ("通知", vec!["プッシュ", "メール", "メンション"]),
+        ("表示", vec!["テーマ", "言語", "密度", "タイムゾーン"]),
+        ("連携", vec!["外部サービス", "APIトークン"]),
     ];
 
     let show_delete_confirm = RwSignal::new(false);
 
     let theme = RwSignal::new(
-        LocalStorage::get::<String>("mithic.theme").unwrap_or_else(|_| "light".into())
+        LocalStorage::get::<String>("mithic.theme").unwrap_or_else(|_| "light".into()),
     );
 
     let set_theme = move |t: &'static str| {
@@ -420,8 +431,12 @@ pub fn SettingsPage() -> impl IntoView {
             .and_then(|d| d.body())
         {
             match t {
-                "dark" => { let _ = el.class_list().add_1("dark"); }
-                _      => { let _ = el.class_list().remove_1("dark"); }
+                "dark" => {
+                    let _ = el.class_list().add_1("dark");
+                }
+                _ => {
+                    let _ = el.class_list().remove_1("dark");
+                }
             }
         }
     };
@@ -543,13 +558,13 @@ fn Field(#[prop(into)] label: String, #[prop(into)] value: String) -> impl IntoV
 
 #[component]
 pub fn LoginPage() -> impl IntoView {
-    let auth     = expect_context::<AuthStore>();
-    let handle   = RwSignal::new(String::new());
+    let auth = expect_context::<AuthStore>();
+    let handle = RwSignal::new(String::new());
     let password = RwSignal::new(String::new());
     let remember = RwSignal::new(false);
-    let show_pw  = RwSignal::new(false);
-    let error    = RwSignal::<Option<String>>::new(None);
-    let loading  = RwSignal::new(false);
+    let show_pw = RwSignal::new(false);
+    let error = RwSignal::<Option<String>>::new(None);
+    let loading = RwSignal::new(false);
     let navigate = use_navigate();
 
     let on_submit = move |_| {
@@ -557,7 +572,9 @@ pub fn LoginPage() -> impl IntoView {
         let p = password.get();
 
         if h.trim().is_empty() {
-            error.set(Some("ハンドルまたはメールアドレスを入力してください".into()));
+            error.set(Some(
+                "ハンドルまたはメールアドレスを入力してください".into(),
+            ));
             return;
         }
         if p.len() < 8 {
@@ -568,10 +585,14 @@ pub fn LoginPage() -> impl IntoView {
         loading.set(true);
 
         let auth2 = auth.clone();
-        let nav2  = navigate.clone();
+        let nav2 = navigate.clone();
         wasm_bindgen_futures::spawn_local(async move {
             use crate::api::auth::{LoginRequest, login};
-            let req = LoginRequest { handle: h, password: p, remember: remember.get() };
+            let req = LoginRequest {
+                handle: h,
+                password: p,
+                remember: remember.get(),
+            };
             match login(&req).await {
                 Ok(pair) => {
                     auth2.login(pair.access_token, pair.user);
@@ -694,25 +715,30 @@ pub fn LoginPage() -> impl IntoView {
 
 #[component]
 pub fn SignupPage() -> impl IntoView {
-    let signup_handle    = RwSignal::new(String::new());
-    let display_name     = RwSignal::new(String::new());
-    let email            = RwSignal::new(String::new());
-    let password         = RwSignal::new(String::new());
+    let signup_handle = RwSignal::new(String::new());
+    let display_name = RwSignal::new(String::new());
+    let email = RwSignal::new(String::new());
+    let password = RwSignal::new(String::new());
     let password_confirm = RwSignal::new(String::new());
-    let agreed_age       = RwSignal::new(false);
-    let agreed_tos       = RwSignal::new(false);
+    let agreed_age = RwSignal::new(false);
+    let agreed_tos = RwSignal::new(false);
     let handle_available = RwSignal::<Option<bool>>::new(None);
-    let error            = RwSignal::<Option<String>>::new(None);
+    let error = RwSignal::<Option<String>>::new(None);
 
     // ハンドル可用性チェック (簡易デバウンス)
     Effect::new(move |_| {
         let h = signup_handle.get();
-        if h.len() < 3 { handle_available.set(None); return; }
+        if h.len() < 3 {
+            handle_available.set(None);
+            return;
+        }
         wasm_bindgen_futures::spawn_local(async move {
             gloo_timers::future::sleep(std::time::Duration::from_millis(500)).await;
-            if signup_handle.get_untracked() != h { return; }
+            if signup_handle.get_untracked() != h {
+                return;
+            }
             match crate::api::users::check_handle(&h).await {
-                Ok(r)  => handle_available.set(Some(r.available)),
+                Ok(r) => handle_available.set(Some(r.available)),
                 Err(_) => handle_available.set(None),
             }
         });
@@ -721,21 +747,29 @@ pub fn SignupPage() -> impl IntoView {
     let pw_strength = Memo::new(move |_| {
         let p = password.get();
         let mut score = 0u8;
-        if p.len() >= 8  { score += 1; }
-        if p.len() >= 12 { score += 1; }
-        if p.chars().any(|c| c.is_ascii_uppercase())    { score += 1; }
-        if p.chars().any(|c| c.is_ascii_punctuation())  { score += 1; }
+        if p.len() >= 8 {
+            score += 1;
+        }
+        if p.len() >= 12 {
+            score += 1;
+        }
+        if p.chars().any(|c| c.is_ascii_uppercase()) {
+            score += 1;
+        }
+        if p.chars().any(|c| c.is_ascii_punctuation()) {
+            score += 1;
+        }
         score
     });
 
     let can_proceed = Memo::new(move |_| {
         handle_available.get() == Some(true)
-        && !display_name.get().is_empty()
-        && email.get().contains('@')
-        && password.get().len() >= 8
-        && password.get() == password_confirm.get()
-        && agreed_age.get()
-        && agreed_tos.get()
+            && !display_name.get().is_empty()
+            && email.get().contains('@')
+            && password.get().len() >= 8
+            && password.get() == password_confirm.get()
+            && agreed_age.get()
+            && agreed_tos.get()
     });
 
     view! {

@@ -1,12 +1,12 @@
 use serde::{Deserialize, Serialize};
 
-use crate::models::User;
 use super::client::{ApiError, request};
+use crate::models::User;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LoginRequest {
-    pub handle:   String,
+    pub handle: String,
     pub password: String,
     pub remember: bool,
 }
@@ -14,9 +14,9 @@ pub struct LoginRequest {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenPair {
-    pub access_token:  String,
+    pub access_token: String,
     pub refresh_token: String,
-    pub user:          User,
+    pub user: User,
 }
 
 pub async fn login(body: &LoginRequest) -> Result<TokenPair, ApiError> {
@@ -29,8 +29,16 @@ pub async fn logout(token: &str) -> Result<(), ApiError> {
 
 pub async fn refresh(refresh_token: &str) -> Result<TokenPair, ApiError> {
     #[derive(Serialize)]
-    struct Body<'a> { refresh_token: &'a str }
-    request("POST", "v1/auth/refresh", None, Some(&Body { refresh_token })).await
+    struct Body<'a> {
+        refresh_token: &'a str,
+    }
+    request(
+        "POST",
+        "v1/auth/refresh",
+        None,
+        Some(&Body { refresh_token }),
+    )
+    .await
 }
 
 pub async fn fetch_me(token: &str) -> Result<User, ApiError> {

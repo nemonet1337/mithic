@@ -34,10 +34,10 @@ pub enum AvatarAccent {
 impl AvatarAccent {
     fn extra_class(self) -> &'static str {
         match self {
-            Self::None    => "",
-            Self::Accent  => " accent",
+            Self::None => "",
+            Self::Accent => " accent",
             Self::Accent2 => " accent2",
-            Self::Ink     => " ink",
+            Self::Ink => " ink",
         }
     }
 }
@@ -45,14 +45,14 @@ impl AvatarAccent {
 #[component]
 pub fn Avatar(
     user: User,
-    #[prop(default = AvatarSize::Md)]    size:   AvatarSize,
+    #[prop(default = AvatarSize::Md)] size: AvatarSize,
     #[prop(default = AvatarAccent::None)] accent: AvatarAccent,
 ) -> impl IntoView {
-    let initials   = user.initials();
-    let label      = user.handle();
-    let name       = user.name();
+    let initials = user.initials();
+    let label = user.handle();
+    let name = user.name();
     let avatar_url = user.avatar_url.clone();
-    let size_cls   = size.class_name();
+    let size_cls = size.class_name();
     let class = if size_cls.is_empty() {
         format!("wf-av{} avatar-content", accent.extra_class())
     } else {

@@ -217,7 +217,8 @@ pub async fn get_following(
         .await?;
 
     let rows: Vec<surrealdb::types::Value> = response.take(0)?;
-    let actors: Vec<serde_json::Value> = rows.into_iter()
+    let actors: Vec<serde_json::Value> = rows
+        .into_iter()
         .filter_map(|val| val.into_json_value().get("actor").cloned())
         .collect();
 
@@ -245,7 +246,8 @@ pub async fn get_followers(
         .await?;
 
     let rows: Vec<surrealdb::types::Value> = response.take(0)?;
-    let actors: Vec<serde_json::Value> = rows.into_iter()
+    let actors: Vec<serde_json::Value> = rows
+        .into_iter()
         .filter_map(|val| val.into_json_value().get("actor").cloned())
         .collect();
 

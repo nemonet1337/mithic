@@ -1,13 +1,13 @@
+use crate::dto::actor_to_user;
+use crate::services::relationship::{block, follow, mute, unblock, unfollow, unmute};
+use crate::state::AppState;
 use axum::{Extension, Json, extract::State};
 use mithic_core::models::actor::{Actor, ActorId};
 use mithic_core::{AppError, AuthUser, Result};
 use mithic_db::queries::{
-    get_actor_by_id, get_actor_by_username, is_following, is_blocking, is_muting,
-    get_following, get_followers
+    get_actor_by_id, get_actor_by_username, get_followers, get_following, is_blocking,
+    is_following, is_muting,
 };
-use crate::services::relationship::{follow, unfollow, block, unblock, mute, unmute};
-use crate::dto::actor_to_user;
-use crate::state::AppState;
 use serde::Deserialize;
 use shared::{User, UserRelation};
 
@@ -70,7 +70,9 @@ pub async fn show(
             .await
             .map_err(|e| AppError::Internal(e.to_string()))?
     } else {
-        return Err(AppError::Validation("userId or username required".to_string()));
+        return Err(AppError::Validation(
+            "userId or username required".to_string(),
+        ));
     };
 
     let actor = actor.ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
@@ -88,7 +90,7 @@ pub async fn relation(
     let is_following_val = is_following(state.surreal(), &my_id, &target_id)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
-    
+
     let is_followed_val = is_following(state.surreal(), &target_id, &my_id)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
@@ -241,7 +243,8 @@ pub async fn search(
 ) -> Result<Json<Vec<User>>> {
     let limit = request.limit.unwrap_or(20).min(100);
 
-    let mut response = state.surreal()
+    let mut response = state
+        .surreal()
         .query(
             "
             SELECT * FROM user 
@@ -255,8 +258,11 @@ pub async fn search(
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
-    let rows: Vec<serde_json::Value> = response.take(0).map_err(|e| AppError::Internal(e.to_string()))?;
-    let actors: Vec<Actor> = rows.into_iter()
+    let rows: Vec<serde_json::Value> = response
+        .take(0)
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let actors: Vec<Actor> = rows
+        .into_iter()
         .map(|v| serde_json::from_value::<Actor>(v).map_err(|e| AppError::Internal(e.to_string())))
         .collect::<Result<Vec<Actor>>>()?;
     let users = actors.iter().map(actor_to_user).collect();
@@ -290,7 +296,8 @@ pub async fn user_notes(
     let user_id = parse_actor_id(&request.user_id)?;
     let limit = request.limit.unwrap_or(20).min(100);
 
-    let mut response = state.surreal()
+    let mut response = state
+        .surreal()
         .query(
             "
             SELECT 
@@ -309,20 +316,26 @@ pub async fn user_notes(
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
-    let rows: Vec<serde_json::Value> = response.take(0).map_err(|e| AppError::Internal(e.to_string()))?;
-    let notes: Vec<mithic_core::models::note::Note> = rows.into_iter()
-        .map(|v| serde_json::from_value::<mithic_core::models::note::Note>(v).map_err(|e| AppError::Internal(e.to_string())))
+    let rows: Vec<serde_json::Value> = response
+        .take(0)
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let notes: Vec<mithic_core::models::note::Note> = rows
+        .into_iter()
+        .map(|v| {
+            serde_json::from_value::<mithic_core::models::note::Note>(v)
+                .map_err(|e| AppError::Internal(e.to_string()))
+        })
         .collect::<Result<Vec<mithic_core::models::note::Note>>>()?;
-    
+
     let mut note_dtos = Vec::new();
     for note in notes {
         let author = get_actor_by_id(state.surreal(), &note.actor_id)
             .await
             .map_err(|e| AppError::Internal(e.to_string()))?
             .ok_or_else(|| AppError::NotFound("Author not found".to_string()))?;
-        
+
         note_dtos.push(crate::dto::note_to_dto(&note, actor_to_user(&author)));
     }
-    
+
     Ok(Json(note_dtos))
 }

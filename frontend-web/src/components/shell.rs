@@ -3,8 +3,8 @@ use leptos::prelude::*;
 use leptos_icons::Icon;
 use leptos_router::components::A;
 
+use super::avatar::{Avatar, AvatarAccent, AvatarSize};
 use crate::store::{ComposeStore, NotificationStore};
-use super::avatar::{Avatar, AvatarSize, AvatarAccent};
 
 #[component]
 pub fn Shell(
@@ -55,15 +55,15 @@ pub fn TopBar(
 
 #[component]
 pub fn Sidebar(#[prop(into)] active: String) -> impl IntoView {
-    let compose       = expect_context::<ComposeStore>();
+    let compose = expect_context::<ComposeStore>();
     let notifications = expect_context::<NotificationStore>();
     let nav_items = vec![
-        ("home",     "ホーム",       "01", "/"),
-        ("search",   "検索",         "02", "/search"),
-        ("notif",    "通知",         "03", "/notifications"),
-        ("dm",       "メッセージ",   "04", "/dm"),
-        ("profile",  "プロフィール", "05", "/you"),
-        ("settings", "設定",         "06", "/settings"),
+        ("home", "ホーム", "01", "/"),
+        ("search", "検索", "02", "/search"),
+        ("notif", "通知", "03", "/notifications"),
+        ("dm", "メッセージ", "04", "/dm"),
+        ("profile", "プロフィール", "05", "/you"),
+        ("settings", "設定", "06", "/settings"),
     ];
 
     view! {
@@ -167,13 +167,13 @@ pub fn RightRail() -> impl IntoView {
 
 fn nav_icon(name: &str) -> AnyView {
     let icon = match name {
-        "home"     => id::FiHome,
-        "search"   => id::FiSearch,
-        "notif"    => id::FiBell,
-        "dm"       => id::FiMail,
-        "profile"  => id::FiUser,
+        "home" => id::FiHome,
+        "search" => id::FiSearch,
+        "notif" => id::FiBell,
+        "dm" => id::FiMail,
+        "profile" => id::FiUser,
         "settings" => id::FiSettings,
-        _          => id::FiCircle,
+        _ => id::FiCircle,
     };
     view! { <Icon icon=icon width="16" height="16" /> }.into_any()
 }
