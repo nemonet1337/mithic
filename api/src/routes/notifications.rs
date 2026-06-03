@@ -1,14 +1,14 @@
-use axum::{Extension, Json, extract::State, http::StatusCode};
-use mithic_core::{AppError, AuthUser, Result};
-use mithic_db::queries::{
-    get_notifications, mark_notification_as_read, mark_all_notifications_as_read,
-    get_actor_by_id, get_note_by_id
-};
 use crate::dto::{actor_to_user, note_to_dto};
 use crate::state::AppState;
+use axum::{Extension, Json, extract::State, http::StatusCode};
+use mithic_core::models::notification::NotificationType;
+use mithic_core::{AppError, AuthUser, Result};
+use mithic_db::queries::{
+    get_actor_by_id, get_note_by_id, get_notifications, mark_all_notifications_as_read,
+    mark_notification_as_read,
+};
 use serde::Deserialize;
 use shared::{Notification as NotifDto, NotificationType as NotifTypeDto};
-use mithic_core::models::notification::{Notification, NotificationType};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -52,14 +52,10 @@ pub async fn list(
     let mut dtos = Vec::new();
     for notif in notifs {
         let sender = if let Some(sender_id) = notif.sender_id {
-            if let Some(actor) = get_actor_by_id(state.surreal(), &sender_id)
+            get_actor_by_id(state.surreal(), &sender_id)
                 .await
                 .map_err(|e| AppError::Internal(e.to_string()))?
-            {
-                Some(actor_to_user(&actor))
-            } else {
-                None
-            }
+                .map(|actor| actor_to_user(&actor))
         } else {
             None
         };
@@ -69,14 +65,10 @@ pub async fn list(
                 .await
                 .map_err(|e| AppError::Internal(e.to_string()))?
             {
-                if let Some(author_actor) = get_actor_by_id(state.surreal(), &n.actor_id)
+                get_actor_by_id(state.surreal(), &n.actor_id)
                     .await
                     .map_err(|e| AppError::Internal(e.to_string()))?
-                {
-                    Some(note_to_dto(&n, actor_to_user(&author_actor)))
-                } else {
-                    None
-                }
+                    .map(|author_actor| note_to_dto(&n, actor_to_user(&author_actor)))
             } else {
                 None
             }
