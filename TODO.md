@@ -1,575 +1,360 @@
-# Mithic 統合 Todo リスト
+# Mithic 統合 Todo / 実装ロードマップ
 
-**更新日**: 2026-06-03  
-**参照**: `old-src/` との機能比較, クレート実装調査結果
+**更新日**: 2026-06-04
+**参照**: `old-src/` との機能比較, 全クレート実装インベントリ調査 (2026-06-04), `docs/performance-optimization-plan.md`, `docs/feature-gap-analysis.md`
 
-> **注記 (2026-05-28)**: クレートはリポジトリルート直下に移動済み (旧 `crates/` は削除)。
-> 本ファイル中の `crates/foo/...` という表記は、現在の `foo/...` (ルート直下) を指す。
-> また旧 `crates/` に取り残されていた `core/services` と `db/queries` のソースを
-> ワークスペースへ統合し、`crates/` ディレクトリを削除した。
-> 併せて `db` クエリ層を surrealdb 3.0.5 API (`SurrealValue` / `Value`→serde 変換) に追従させ、
-> ワークスペース全体が `cargo check` / `cargo clippy -D warnings` を通る状態にした。
+> **本ファイルについて (2026-06-04 全面刷新)**:
+> 実コードの全インベントリ調査に基づきチェックボックスを実態へ同期し、
+> `docs/` のロードマップ（縦切り＝動くSNS優先 ＋ 連合並行）を本ファイルに統合した。
+> 構成は **Phase 単位のロードマップ** を主軸とし、各 Phase 内に従来の B-/F-/P- 課題IDを対応付けて配置する。
+> クレートはリポジトリルート直下 (`api/`, `db/` …) に配置。`crates/foo/...` 表記は現在の `foo/...` を指す。
 
 ---
 
-## 現在の実装状況サマリー
+## 実装状況サマリー（2026-06-04 実測）
 
 | クレート | 状態 | 備考 |
 |---|---|---|
-| `crates/core/models/` | **完了** | 28 エンティティ定義済み |
-| `crates/mfm/` | **完了** | 基本MFMパーサ実装済み |
-| `crates/stream/` | **設計済み** | アーキテクチャ定義、実装未 |
-| `crates/api/middleware/` | **完了** | 7 ミドルウェア実装済み |
-| `crates/api/routes/` | **一部** | 認証(signin/signup/i)・ノート(create/show/delete)・タイムライン(local/global) を実装 |
-| `crates/db/` | **一部** | クライアント + actors/notes/timeline クエリ実装 (surrealdb 3.0.5 対応済) |
-| `crates/core/services/` | **一部** | `auth.rs`(Argon2 + JWT) を実装。`user.rs` は db 依存のため `api/services/` へ配置 |
-| `crates/federation/` | **スタブ** | `FederationService` 定義のみ |
-| `crates/server/` | **スタブ** | `main.rs` のみ |
-| `crates/worker/` | **スタブ** | `main.rs` のみ |
-| `crates/frontend-web/pages/` | **UI完了** | 10ページ、サンプルデータのみ |
-| `crates/frontend-web/api/` | **一部** | auth/notes のみ |
-| `crates/shared/` | **最小限** | Note, User, Notification のみ |
+| `core/models/` | **完了** | 28 エンティティ定義済み |
+| `core/services/` | **最小** | `auth.rs` のみ。note/timeline/notification/drive/search 等は未 |
+| `mfm/` + `shared/mfm/` | **完了(基本)** | 基本MFMパーサ。カスタム絵文字/位置/アニメ/数式は未 |
+| `db/queries/` | **動作** | actors/notes/timeline(home含む)/follows/reactions/favorites/notifications/drive 実装済 |
+| `db` プール/キャッシュ | **未** | コネクションプール無し。Dragonfly キャッシュヘルパ未使用。schema は `surreal.rs` 内インライン |
+| `api/middleware/` | **完了** | 7 ミドルウェア。HTTP署名は**検証**実装済(テスト付)、**生成**は placeholder |
+| `api/routes/` | **基盤完了** | 認証/ノート/タイムライン/ユーザー/通知/ドライブの主要 35 ハンドラ実装・配線済 |
+| `federation/` | **配送は動作** | 配送ワーカー/queue/Accept・Reject/broadcast 実装。HTTP署名生成・AP受信エンドポイント・リレー・リモートactorパースは未 |
+| `stream/` | **基盤完了** | Channel トレイト/レジストリ/接続/9チャンネル実装。`/api/streaming` 未配線 |
+| `server/` | **最小起動** | DB接続・`init_schema()` 済。ミドルウェア層適用/WS/graceful shutdown 未 |
+| `worker/` | **最小起動** | 配送ワーカー spawn のみ。他ジョブ(Push/メディア/export/chart)未 |
+| `frontend-web/api/` | **一部** | auth/notes/users/notifications/dm/client 実装。timeline/drive/reactions 他は未 |
+| `frontend-web/pages/` | **UI完了** | 全ページUI有。Home/Local/Global/Login は実API接続。他はサンプルデータ |
+| `frontend-web/components/` | **一部** | avatar/compose/mfm/post_card/protected/shell。ComposeModal は実投稿未接続 |
+| `shared/` | **最小限** | User/Note/Notification/Signin/Signup/Reaction 系のみ |
+
+凡例: `[x]` 実装・配線済 / `[~]` 部分実装 / `[ ]` 未着手
 
 ---
 
-## 優先度 CRITICAL — バックエンド基盤
+## ロードマップ全体像
 
-### B-1. APIルート実装 (`crates/api/src/routes/`)
-
-`crates/api/src/routes/mod.rs` が完全に空。以下を実装する。
-
-#### 認証 (`routes/auth.rs`)
-- [x] `POST /api/signin` — JWTログイン
-- [x] `POST /api/signup` — アカウント登録
-- [ ] `POST /api/signout` — ログアウト
-- [x] `GET /api/i` — 自分のプロフィール取得
-
-#### ノート (`routes/notes.rs`)
-- [x] `POST /api/notes/create` — 投稿作成
-- [x] `POST /api/notes/delete` — 投稿削除 (本人のみ)
-- [x] `POST /api/notes/show` — 投稿詳細
-- [ ] `POST /api/notes/reactions/create` — リアクション追加
-- [ ] `POST /api/notes/reactions/delete` — リアクション削除
-- [ ] `POST /api/notes/favorites/create` / `delete` — ブックマーク
-- [ ] `POST /api/notes/renote` / `unrenote` — リノート
-- [ ] `POST /api/notes/search` — 投稿検索
-- [ ] `POST /api/notes/search-by-tag` — ハッシュタグ検索
-- [ ] `POST /api/notes/mentions` — メンション一覧
-- [ ] `POST /api/notes/children` — 返信ツリー取得
-- [ ] `POST /api/notes/replies` — 直接返信一覧
-- [ ] `POST /api/notes/renotes` — リノート一覧
-- [ ] `POST /api/notes/conversation` — 会話スレッド取得
-- [ ] `POST /api/notes/state` — 投稿のブックマーク済み・リアクション済み状態
-- [ ] `POST /api/notes/polls/vote` — 投票
-
-#### タイムライン (`routes/timeline.rs`)
-- [ ] `POST /api/notes/timeline` — ホームタイムライン (フォローグラフ未実装のため保留: B-2 `follows.rs` 依存)
-- [x] `POST /api/notes/local-timeline` — ローカルタイムライン
-- [x] `POST /api/notes/global-timeline` — グローバルタイムライン
-- [ ] `POST /api/notes/user-list-timeline` — リストタイムライン
-- [ ] `POST /api/notes/hashtag` — ハッシュタグタイムライン
-
-#### ユーザー (`routes/users.rs`)
-- [ ] `POST /api/users/show` — ユーザー詳細
-- [ ] `POST /api/users/search` — ユーザー検索
-- [ ] `POST /api/users/relation` — 関係ステータス取得
-- [ ] `POST /api/users/followers` — フォロワー一覧
-- [ ] `POST /api/users/following` — フォロー中一覧
-- [ ] `POST /api/users/notes` — ユーザーノート一覧
-- [ ] `POST /api/following/create` / `delete` — フォロー
-- [ ] `POST /api/following/requests/accept` / `reject` / `cancel` / `list` — フォローリクエスト
-- [ ] `POST /api/blocking/create` / `delete` / `list` — ブロック
-- [ ] `POST /api/muting/create` / `delete` / `list` — ミュート
-- [ ] `POST /api/username/available` — ユーザー名チェック
-
-#### 自分自身 (`routes/i.rs`)
-- [ ] `GET  /api/i` — 自分のプロフィール取得 (認証済み)
-- [ ] `POST /api/i/update` — プロフィール更新 (bio, avatar, display name 等)
-- [ ] `POST /api/i/change-password` — パスワード変更
-- [ ] `POST /api/i/2fa/register` / `done` / `unregister` — 2FA 管理
-- [ ] `POST /api/i/regenerate-token` — APIトークン再生成
-- [ ] `POST /api/i/update-email` — メールアドレス変更
-- [ ] `POST /api/i/pin` / `unpin` — ノートのピン留め
-
-#### メタ情報 (`routes/meta.rs`)
-- [ ] `POST /api/meta` — インスタンスメタ情報取得
-- [ ] `POST /api/stats` — インスタンス統計情報
-- [ ] `POST /api/sw/register` / `unregister` — Web Push 購読登録
-
-#### ドライブ (`routes/drive.rs`)
-- [ ] `POST /api/drive/files/create` — ファイルアップロード
-- [ ] `POST /api/drive/files/show` / `delete` / `find` — ファイル操作
-- [ ] `POST /api/drive/files/upload-from-url` — URL からアップロード
-- [ ] `POST /api/drive/files/attached-notes` — 添付先ノート一覧
-- [ ] `POST /api/drive/folders/create` / `show` / `delete` — フォルダ操作
-- [ ] `WS  /api/drive/stream` — ドライブ WebSocket ストリーム
-
-#### 通知 (`routes/notifications.rs`)
-- [ ] `POST /api/notifications/list` — 通知一覧
-- [ ] `POST /api/notifications/read` / `mark-all-as-read` — 既読
-- [ ] `POST /api/notifications/delete` — 削除
-
-#### ユーザーリスト (`routes/user_lists.rs`)
-- [ ] `POST /api/users/lists/create` / `show` / `list` / `delete` / `update`
-- [ ] `POST /api/users/lists/push` / `pull` — メンバー追加/削除
-
-#### アンテナ (`routes/antennas.rs`)
-- [ ] `POST /api/antennas/create` / `show` / `list` / `delete` / `update`
-- [ ] `POST /api/antennas/notes` — アンテナのノート一覧
-
-#### ハッシュタグ (`routes/hashtags.rs`)
-- [ ] `POST /api/hashtags/list` — 一覧
-- [ ] `POST /api/hashtags/show` — 詳細
-- [ ] `POST /api/hashtags/trend` — トレンド
-- [ ] `POST /api/hashtags/users` — 使用ユーザー一覧
-
-#### チャート (`routes/charts.rs`)
-- [ ] `POST /api/charts/instance` / `notes` / `users` / `drive` / `federation`
-- [ ] `POST /api/charts/hashtag`
-- [ ] `POST /api/charts/user/notes` / `following` / `drive` / `reactions`
-
-#### Admin (`routes/admin/`)
-- [ ] `POST /api/admin/accounts/create` / `delete` / `suspend` / `unsuspend`
-- [ ] `POST /api/admin/emoji/add` / `list` / `remove` / `update`
-- [ ] `POST /api/admin/federation/delete-all-files` / `update-instance`
-- [ ] `POST /api/admin/queue/clear` / `stats` / `jobs`
-- [ ] `POST /api/admin/relays/add` / `list` / `remove`
-- [ ] `POST /api/admin/drive/clean-files` / `cleanup`
-- [ ] `POST /api/admin/update-meta` / `vacuum` / `server-info` / `get-table-stats`
-
-#### クリップ (`routes/clips.rs`)
-- [ ] `POST /api/clips/create` / `delete` / `show` / `list` / `update`
-- [ ] `POST /api/clips/add-note` / `remove-note` / `notes` — クリップへのノート管理
-
-#### チャンネル (`routes/channels.rs`)
-- [ ] `POST /api/channels/create` / `delete` / `show` / `list` / `update`
-- [ ] `POST /api/channels/follow` / `unfollow` / `followed`
-- [ ] `POST /api/channels/timeline` — チャンネルタイムライン
-- [ ] `POST /api/channels/featured` — 注目チャンネル一覧
-
-#### OAuth/アプリ (`routes/oauth.rs`)
-- [ ] `POST /api/app/create` / `show` — OAuth アプリ登録・取得
-- [ ] `POST /api/auth/session/generate` / `userkey` — OAuth セッション
-- [ ] `GET  /api/auth/callback` — OAuth コールバック
-
-#### ActivityPub (`routes/activitypub.rs`)
-- [ ] `GET /@:username` — Actor オブジェクト
-- [ ] `POST /users/:id/inbox` — 受信 inbox
-- [ ] `GET /users/:id/outbox` — 送信 outbox
-- [ ] `GET /users/:id/followers` / `following` — フォロワー/フォロー中コレクション
-- [ ] `GET /users/:id/collections/featured` — ピン留めノート
-- [ ] `GET /.well-known/webfinger` — WebFinger
-- [ ] `GET /.well-known/nodeinfo` / `GET /nodeinfo/2.0` — NodeInfo
-
-#### WebSocket (`routes/streaming.rs`)
-- [ ] `GET /api/streaming` — ストリーミング接続ルーター
+```
+Phase 0  基盤の活性化（プール・起動補完・ビルド最適化）      ← P-0/P-1, B-4
+Phase 1  認証縦串の完成（ComposeModal 実投稿・共通UI）       ← B-1認証, F-1, F-3
+Phase 2  タイムライン縦串（fan-out・キャッシュ・ページング）  ← B-2, B-3, F-2, P-2
+Phase 3  ソーシャルグラフ＆通知                              ← B-1 users/i, B-3
+Phase 4  ドライブ＆メディア                                  ← B-1 drive, B-7, F-5, F-12
+Phase 5  WebSocket ストリーミング配線                        ← stream/, B-4
+  ── 並行（Phase 2 以降いつでも開始可）──
+Phase F1 ActivityPub 受信基盤（Actor/WebFinger/inbox/outbox）← B-6
+Phase F2 連合送信の成立（HTTP署名生成・キュー堅牢化）        ← B-5, B-8, P-2
+Phase F3 リレー＆リモートアクター                            ← B-6
+  ──────────
+Phase 6  二次機能（検索/タグ/リスト/クリップ/チャンネル/アンテナ/投票）
+Phase 7  Admin・モデレーション・メタ・チャート・OAuth・Push
+Phase 8  フロント機能拡張（絵文字/DM/設定/MFM高度/UIライブラリ）
+Phase 9  パフォーマンス仕上げ・観測性・負荷テスト・CI         ← P-3/P-4, I-2
+```
 
 ---
 
-### B-2. データベース層 (`crates/db/src/`)
+## Phase 0 — 基盤の活性化（最優先・低難度高効果） ＜P-0 / P-1 / B-4＞
 
-現在 SurrealDB/Dragonfly クライアントのラッパーのみ存在。
-
-#### スキーマ (`db/src/schema/`)
-- [ ] `actor.surql` — ユーザー/アクター テーブル定義
-- [ ] `note.surql` — ノート テーブル定義
-- [ ] `follow.surql` / `block.surql` / `mute.surql` — グラフエッジ定義
-- [ ] `drive_file.surql` / `drive_folder.surql`
-- [ ] `notification.surql`
-- [ ] `user_list.surql` / `antenna.surql`
-- [ ] `emoji.surql` / `hashtag.surql`
-- [ ] `relay.surql` / `instance.surql`
-
-#### クエリ (`db/src/queries/`)
-- [~] `actors.rs` — create / get_by_id / get_by_username / update_token 実装済。フォロワー数更新は未
-- [~] `notes.rs` — 作成/削除/取得 実装済。FETCH句によるN+1防止は未
-- [~] `timeline.rs` — ローカル/グローバル 実装済。ホーム(フォローグラフ)は未
-- [ ] `follows.rs` — グラフクエリ (->follows->)
-- [ ] `notifications.rs` — 通知取得・既読
-- [ ] `drive.rs` — ファイル/フォルダ CRUD
-- [ ] `search.rs` — 全文検索クエリ
-
-#### Dragonflyキャッシュ (`db/src/cache/`)
-- [ ] タイムライン Sorted Set (Fan-out on Write)
-- [ ] ユーザープロフィールキャッシュ
-- [ ] インスタンスメタキャッシュ
-- [ ] カスタム絵文字キャッシュ
+- [ ] **SurrealDB コネクションプール** — 複数 `Surreal<Any>` をラウンドロビンする `DbPool`（`db/src/surreal.rs`, `db/src/lib.rs`, `api/src/state.rs`、設計書 §3-B）
+- [ ] **Dragonfly プール** — `MultiplexedConnection` 単体 → `ConnectionManager`/小プール。**ワーカー BRPOP 用に専用接続**を分離（`db/src/dragonfly.rs`）
+- [ ] `FederationService` を `AppState` のプール済 `reqwest::Client` で初期化（`Client::new()` 二重生成解消、HTTP/2・`pool_max_idle_per_host=32`）
+- [ ] **server/main.rs 補完** — ミドルウェアスタック明示適用（CORS/rate_limit/trace）、graceful shutdown（`axum::serve(...).with_graceful_shutdown`）
+- [x] `init_schema()` を server 起動時に呼ぶ（実装済）／ [ ] worker 起動時にも呼ぶ
+- [ ] **ビルド最適化**（ルート `Cargo.toml`）: `lto="fat"`, `codegen-units=1`, `opt-level=3`, `strip=true`
+- [ ] `mimalloc`/`jemalloc` をグローバルアロケータに設定（server/worker の main）
+- [ ] `RUSTFLAGS="-C target-cpu=native"` をデプロイ手順に記載
 
 ---
 
-### B-3. サービス層 (`crates/core/src/services/`)
+## Phase 1 — 認証縦串の完成 ＜B-1認証 / F-1 / F-3＞
 
-サービスディレクトリが存在するが実装なし。
+### バックエンド（実装済み）
+- [x] `POST /api/signup` / `POST /api/signin` / `GET /api/i` / `POST /api/signout`
+- [x] 認証サービス `core/services/auth.rs`（Argon2 + JWT `typ:"access"`、auth_middleware と整合）
 
-- [x] `auth.rs` — 認証・JWT発行/検証・Argon2ハッシュ (`core/src/services/auth.rs`。JWT は `typ:"access"` を付与し `api` の auth_middleware と整合)
-- [ ] `note.rs` — 投稿作成・削除・タイムライン構築
-- [~] `user.rs` — 登録 / 認証 を実装 (db 依存のため `api/src/services/user.rs` に配置)。フォロー・ブロック・ミュート管理は未
-- [ ] `drive.rs` — ファイルアップロード・サムネイル生成
-- [ ] `notification.rs` — 通知生成・配送
-- [ ] `search.rs` — ノート/ユーザー検索
-- [ ] `timeline.rs` — Fan-out on Write タイムライン管理
-- [ ] `suspend_user.rs` — ユーザーサスペンション
-- [ ] `word_mute.rs` — ワードミュート/フィルター
-- [ ] `poll.rs` — 投票管理・結果集計
-- [ ] `push_notification.rs` — Web Push 配送
-- [ ] `fetch_nodeinfo.rs` — リモートインスタンス NodeInfo 取得
-- [ ] `clip.rs` — クリップ作成・管理・ノート追加
-- [ ] `channel.rs` — チャンネル作成・フォロー・タイムライン
-- [ ] `meta.rs` — インスタンスメタ情報・統計集計
-- [ ] `export.rs` / `import.rs` — データ出力・取り込み処理
-
----
-
-### B-4. サーバー起動 (`crates/server/src/main.rs`)
-
-- [ ] Axum ルーター組み立て (`crates/api` の routes を接続)
-- [ ] ミドルウェアスタック適用 (認証・CORS・レート制限・HTTP署名)
-- [ ] SurrealDB 接続初期化
-- [ ] Dragonfly 接続初期化
-- [ ] WebSocket ストリームハンドラ組み込み
-- [ ] graceful shutdown 実装
-
----
-
-### B-5. ワーカー起動 (`crates/worker/src/main.rs`)
-
-- [ ] ジョブキュー (apalis) 初期化
-- [ ] ActivityPub 配送ジョブ (deliver/inbox)
-- [ ] Relay Announce ジョブ
-- [ ] Web Push 配送ジョブ
-- [ ] ファイル処理ジョブ (サムネイル生成・WebP変換)
-- [ ] データエクスポートジョブ (export-following, export-notes, export-blocking, export-muting)
-- [ ] データインポートジョブ (import-following, import-blocking, import-muting)
-- [ ] チャートデータ集計ジョブ (定期実行)
-
----
-
-## 優先度 HIGH — フェデレーション
-
-### B-6. ActivityPub 実装 (`crates/federation/src/`)
-
-- [ ] `actor/` — Actor オブジェクト生成・署名
-- [ ] `inbox/` — 受信アクティビティ処理 (Create/Delete/Follow/Undo/Accept/Reject/Announce/Like/Update)
-- [ ] `outbox/` — 送信キューイング・Fan-out
-- [ ] Relay 購読フロー (Subscribe: Follow 送信 → Accept 待機 → status 更新)
-- [ ] Relay 受信フロー: `should_persist_note` で関与ありのみ DB 保存、それ以外は Dragonfly バッファ→破棄
-- [ ] Relay 配送フロー: ノート作成時に `fanout_to_relays` 呼び出し
-- [ ] Relay Unsubscribe (Undo Follow 送信)
-- [x] HTTP Signature 検証 (Relay からの受信時に必須) — RSA-SHA256 検証を `api/src/middleware/http_signature.rs` に実装 (openssl使用、ユニットテスト付き)。署名生成側は未実装
-- [ ] visibility フィルタ: `public` のみ配送。`home` / `followers` は配送しない
-- [ ] `remote_actor` 保存条件: フォローした/されたユーザーのみ (Relay 経由の全アクターは保存しない)
-- [ ] Dead Inbox Circuit Breaker (`dead_inbox:{host}` に失敗回数を記録、閾値超で一時停止)
-- [ ] Shared Inbox グルーピング最適化
-- [ ] `i/pin` / `i/unpin` ActivityPub 公開 (featured collection)
-
----
-
-## 優先度 HIGH — フロントエンド API 接続
-
-### F-1. API クライアント基盤 (`crates/frontend-web/src/api/`)
-
-- [ ] APIベースURL設定 (Trunk proxy `/api` / 本番環境変数)
-- [ ] `AuthStore` JWT を全リクエストヘッダに付与する共通クライアント
-- [ ] APIエラー共通ハンドリング (401/400/422/500/ネットワーク)
+### フロント F-1（API クライアント基盤）
+- [x] APIベースURL `/api`（Trunk proxy）、`AuthStore` JWT 付与共通クライアント、429リトライ
+- [ ] APIエラー共通ハンドリング（401/400/422/500/ネットワーク）
 - [ ] ローディング / 空状態 / エラー状態 共通UIコンポーネント
-- [ ] `shared` DTO と実際の API レスポンスの差分確認・修正
+- [ ] `shared` DTO と実 API レスポンスの差分確認・修正
 
-#### 追加が必要な API モジュール
-- [ ] `api/timeline.rs` — ホーム/ローカル/グローバルタイムライン
-- [ ] `api/users.rs` — ユーザー取得・フォロー・検索
-- [ ] `api/notifications.rs` — 通知取得・既読
-- [ ] `api/drive.rs` — ファイルアップロード・一覧・削除
-- [ ] `api/messages.rs` — DM会話一覧・詳細・送信
-- [ ] `api/reactions.rs` — リアクション送信・削除
-- [ ] `api/lists.rs` — ユーザーリスト CRUD
-- [ ] `api/clips.rs` — クリップ CRUD・ノート追加/削除
-- [ ] `api/channels.rs` — チャンネル CRUD・フォロー
-- [ ] `api/antennas.rs` — アンテナ CRUD
-- [ ] `api/hashtags.rs` — ハッシュタグ検索・トレンド
-- [ ] `api/meta.rs` — インスタンスメタ情報・統計
-- [ ] `api/i.rs` — プロフィール更新・パスワード変更・2FA
-
----
-
-### F-2. タイムライン実データ接続
-
-- [ ] `HomePage` のモックデータを `fetch_timeline` に置換
-- [ ] `/local` / `/global` を実 API エンドポイントに接続
-- [ ] `since_id` / `until_id` / `limit` ページング実装
-- [ ] WebSocket 新着差し込みと初回取得データの重複排除
-- [ ] 無限スクロール実装
-
----
-
-### F-3. ComposeModal 実投稿
-
-- [ ] `ComposeModal` の送信を `api::notes::create_note` に接続
+### フロント F-3（ComposeModal 実投稿）
+- [ ] **`ComposeModal` 送信を `api::notes::create_note` に接続**（現状モーダルを閉じるだけ）
 - [ ] 本文・公開範囲・CW・NSFW・添付ファイルID・投票・予約日時・返信先ID
 - [ ] 送信中ボタン disabled / 二重送信防止
-- [ ] 投稿成功時: モーダルを閉じ、下書き削除、タイムライン先頭に差し込み
-- [ ] 投稿失敗時: 入力保持・エラー表示
+- [ ] 成功時: モーダルを閉じ下書き削除・TL先頭へ差し込み／失敗時: 入力保持・エラー表示
 - [ ] `Ctrl+Enter` / `Cmd+Enter` で送信
 
 ---
 
-## 優先度 MEDIUM — フロントエンド機能
+## Phase 2 — タイムライン縦串（Fan-out on Write） ＜B-2 / B-3 / F-2 / P-2＞
 
-### F-4. 絵文字・リアクションピッカー
+### DB（一部実装済み・最適化が残る）
+- [x] `timeline.rs`: ローカル/グローバル/ホーム（フォローグラフ）取得
+- [x] `follows.rs`: follow/unfollow/block/mute、`is_following`/`is_blocking`/`is_muting`、`get_followers`/`get_following`
+- [~] `notes.rs`: 作成/削除/取得実装済。**N+1解消（`FETCH actor_id` で著者同梱）は未**
+- [ ] スキーマ: `note.host` 非正規化＋複合インデックス `(visibility,host,id)`、follow 双方向インデックス `(out,in)`/`(in,out)`
 
-- [ ] `EmojiPicker` コンポーネント (Unicode カテゴリ別 + 最近使用)
-- [ ] `ReactionPicker` コンポーネント
-- [ ] カスタム絵文字 API 接続・表示
-- [ ] キーボードナビゲーション (矢印/Enter/Esc)
-- [ ] ComposeModal 絵文字ボタンに接続
-- [ ] PostActions REACT ボタンに接続
+### Dragonfly キャッシュ（`db/src/cache/` 新設） ＜未着手＞
+- [ ] タイムライン Sorted Set（score=ULID/timestamp、`ZADD`+`ZREMRANGEBYRANK` 上限300・TTL24h）
+- [ ] `note:{id}` ボディキャッシュ（MGET）／ `noteresp:{id}` プリレンダJSON
+- [ ] block/mute セットキャッシュ、ユーザープロフィール、インスタンスメタ、カスタム絵文字
 
----
+### サービス層（`core/src/services/`）
+- [ ] `note.rs` — 投稿作成・削除・タイムライン構築
+- [ ] `timeline.rs` — Fan-out on Write（フォロワー<10,000 Push、≥10,000 Pull ハイブリッド）
 
-### F-5. Drive / メディア添付 UI
-
-- [ ] ComposeModal ドロップゾーン実装 (dragenter/dragover/drop)
-- [ ] ファイル制限: 最大4ファイル / 100MB / MIMEバリデーション
-- [ ] アップロード進捗 UI
-- [ ] 添付プレビュー (画像/動画/その他)
-- [ ] ALT テキスト入力
-- [ ] ファイルマネージャー画面 (`/drive`) 設計・実装
-
----
-
-### F-6. DM 実API接続
-
-- [ ] DM 会話一覧を実 API 取得に置換
-- [ ] DM 会話詳細を実 API 取得に置換
-- [ ] DM 送信フォーム実装 (`NoteVisibility::Specified`)
-- [ ] 未読バッジを API / WebSocket と同期
+### API / フロント
+- [x] `POST /api/notes/{timeline, local-timeline, global-timeline}` 配線済
+- [~] フロント F-2: Home/Local/Global は実API接続済。**ページング（since_id/until_id/limit）・無限スクロール・WS重複排除は未**
+- [ ] フロント `api/timeline.rs` 整理（現状 `notes.rs` 内）
 
 ---
 
-### F-7. 設定画面の充実
+## Phase 3 — ソーシャルグラフ＆通知 ＜B-1 users/i / B-3＞
 
-old-src `settings.*.vue` との差分:
+### API ルート
+- [x] `users/{show,relation,following,followers,notes,search}`、`username/available`
+- [x] `following/{create,delete}`、`blocking/{create,delete}`、`muting/{create,delete}`
+- [x] `notifications/{list,read,mark-all-as-read}`
+- [ ] `following/requests/{accept,reject,cancel,list}` — フォローリクエスト（鍵アカウント）
+- [ ] `blocking/list` / `muting/list` — 一覧
+- [ ] `i/update`（プロフィール）/ `i/change-password` / `i/regenerate-token` / `i/update-email`
+- [ ] `i/pin` / `i/unpin` — ノートのピン留め
 
-- [ ] `SettingsProfilePage` — プロフィール編集フォームを実 API に接続
-- [ ] `SettingsPrivacyPage` — プライバシー設定
-- [ ] `SettingsSecurityPage` — パスワード変更・2FA
-- [ ] `SettingsDrivePage` — ドライブ管理
-- [ ] `SettingsReactionPage` — カスタムリアクション設定
-- [ ] `SettingsMuteBlockPage` — ミュート/ブロック一覧・管理
-- [ ] `SettingsImportExportPage` — データエクスポート
+### サービス層
+- [ ] `core/services/user.rs`（フォロー/ブロック/ミュート管理。現状 `api/services/user.rs` に登録/認証のみ）
+- [ ] `core/services/notification.rs`（mention/reply/reaction/follow 生成・配送フック）
+- [ ] `core/services/word_mute.rs`（ワードミュート/フィルター）、`suspend_user.rs`
 
----
-
-### F-8. リスト管理 UI
-
-- [ ] リスト作成ダイアログ
-- [ ] リスト編集 (メンバー追加/削除)
-- [ ] リストタイムライン画面 (`/lists/:id`)
-- [ ] `users/lists/pull` API 接続 (メンバー削除)
-
----
-
-### F-8b. クリップ管理 UI
-
-- [ ] クリップ一覧ページ (`/clips`)
-- [ ] クリップ作成・削除ダイアログ
-- [ ] ノートをクリップに追加するメニュー項目 (`NoteMenu`)
-- [ ] クリップ詳細ページ (`/clips/:id`) — クリップ内ノート表示
+### フロント
+- [ ] NotificationsPage を実API化（現状サンプル）
+- [ ] ProfilePage を実API化、`FollowButton` コンポーネント（F-13）
+- [ ] SettingsProfile / SettingsSecurity を実 API 接続（F-7 一部）
+- [ ] フロント `api/i.rs`（プロフィール更新・パスワード変更）
 
 ---
 
-### F-8c. チャンネル機能 UI
+## Phase 4 — ドライブ＆メディア ＜B-1 drive / B-7 / F-5 / F-12＞
 
-- [ ] チャンネル一覧ページ (`/channels`) — 参加中 / 注目
-- [ ] チャンネル作成・編集ダイアログ
-- [ ] チャンネルタイムラインページ (`/channels/:id`)
-- [ ] チャンネルフォロー/アンフォローボタン
+### DB / API（一部実装済み）
+- [x] `db/queries/drive.rs`: ファイル CRUD（create/get/list/delete）
+- [x] `drive/files/{create,show,delete}`
+- [ ] `drive/files/{find,upload-from-url,attached-notes}`
+- [ ] `drive/folders/{create,show,delete}`（フォルダ用クエリ含む）
 
----
+### サービス層 B-7
+- [ ] `core/services/drive.rs` — サムネイル生成（`image` クレートで WebP 変換）
+- [ ] 動画サムネイル生成
 
-### F-9. Admin 管理画面の充実
-
-new Frontend では `AdminPage` と `AdminUsersPage` のみ。old-src との差分:
-
-- [ ] インスタンス設定ページ (`instance/index`)
-- [ ] カスタム絵文字管理 (`instance/emojis`)
-- [ ] ファイル管理 (`instance/files`)
-- [ ] サーバー監視 (`instance/monitor`) — CPU/メモリ/ディスク
-- [ ] キュー監視 (`instance/queue`)
-- [ ] 統計ページ (`instance/stats`)
+### フロント
+- [ ] F-5: ドロップゾーン（dragenter/over/drop）、最大4ファイル/100MB/MIME検証、進捗UI、プレビュー、ALTテキスト、ファイルマネージャー `/drive`
+- [ ] F-12: `MediaImage`(lightbox)/`MediaVideo`/`MediaList`/`DriveFileThumbnail`
+- [ ] フロント `api/drive.rs`（アップロード/一覧/削除）
 
 ---
 
-## 優先度 MEDIUM — バックエンド補完
+## Phase 5 — WebSocket ストリーミング配線 ＜stream/ / B-4＞
 
-### B-7. 未実装サービス
-
-- [ ] `drive/image-processor` — サムネイル生成 (WebP変換)
-- [ ] `drive/generate-video-thumbnail` — 動画サムネイル
-- [ ] `word_mute` / `word_filter` — 単語ベースコンテンツフィルタリング
-- [ ] `suspend_user` / `unsuspend_user` — ユーザーサスペンション
-- [ ] `fetch_nodeinfo` — リモートインスタンス NodeInfo 取得
-- [ ] `note/polls/update` — 投票データ更新
+- [x] `stream/`: Channel トレイト・レジストリ・接続・9チャンネル（Home/Global/Hashtag/Admin/QueueStats/ServerStats/Drive/ApLog/UserList）実装
+- [ ] `api/src/routes/streaming.rs`: `GET /api/streaming` ルーター実装
+- [ ] `server/main.rs` に streaming ルート接続
+- [ ] フロント `connect_stream`（実装済）と疎通確認、`Drive` WS（`/api/drive/stream`）
+- [ ] 投稿/通知/リアクション発生時にチャンネルへ publish するフック
 
 ---
 
-### B-8. キューシステム完全実装 (`apalis`)
+## Phase F1 — ActivityPub 受信基盤（Phase 2 以降と並行） ＜B-6＞
 
-- [ ] deliver キュー (ActivityPub 配送)
-- [ ] inbox キュー (受信処理)
-- [ ] 指数バックオフリトライ
-- [ ] Dead Letter Queue
-- [ ] キュー管理 Admin API 接続
-
----
-
-## 優先度 LOW — 品質・完全性
-
-### F-10. ウェルカム/オンボーディング
-
-- [ ] ウェルカムページ (`/welcome`)
-- [ ] サインアップフロー改善 (3ステップ → 実 API)
-- [ ] インスタンス情報表示
+- [ ] `federation/src/actor/`: Person Actor JSON-LD 生成、公開鍵添付
+- [ ] `api/src/routes/activitypub.rs`:
+  - [ ] `GET /@:username`（Actor）
+  - [ ] `GET /.well-known/webfinger`
+  - [ ] `GET /.well-known/nodeinfo` + `GET /nodeinfo/2.0`
+  - [ ] `GET /users/:id/{outbox,followers,following,collections/featured}`
+  - [ ] `POST /users/:id/inbox`（受信。Create/Delete/Follow/Undo/Accept/Reject/Announce/Like/Update）
+- [x] content_negotiation ミドルウェア（`application/activity+json` 振り分け）
+- [x] HTTP Signature **検証**（`api/middleware/http_signature.rs`、RSA-SHA256、ユニットテスト付）
+- [ ] inbox に HTTP署名検証ミドルウェアを適用
 
 ---
 
-### F-11. MFM 高度機能
+## Phase F2 — 連合送信の成立 ＜B-5 / B-8 / P-2＞
 
-現在は基本的なMFM解析のみ。
-
-- [ ] カスタム絵文字レンダリング (`:emoji_name:`)
-- [ ] 位置指定 (`$[x.right ...]` / `$[x.left ...]`)
-- [ ] アニメーション (`$[jelly ...]` / `$[spin ...]`)
-- [ ] 数式レンダリング (KaTeX)
-- [ ] URL プレビュー (OGP 取得 → `url-preview.vue` 相当)
-
----
-
-### F-12. メディアコンポーネント
-
-- [ ] `MediaImage` — lightbox対応画像表示
-- [ ] `MediaVideo` — 動画プレイヤー
-- [ ] `MediaList` — メディアコレクション表示
-- [ ] `DriveFileThumbnail` — ファイルサムネイル
+- [ ] **HTTP署名生成** — `federation/src/service.rs:85` の `"placeholder"` を RSA-SHA256 実署名に置換（`rsa`/`sha2`、`actor.private_key` をプロセス内キャッシュ、`(request-target) host date digest`）
+- [x] 配送ワーカー `run_delivery_worker()` / `process_delivery_task()`（BRPOP ループ実装済）
+- [x] `send_accept_follow` / `send_reject_follow` / `broadcast_to_followers` / `queue_delivery`
+- [ ] **配送の並列化** — 単一 BRPOP → N並列タスク + ホスト単位セマフォ、prefetch（`LMPOP`/パイプライン）
+- [ ] **`sharedInbox` グルーピング**（同一インスタンスへ1回のみ POST、キュー投入前に集約）
+- [ ] **キュー堅牢化** — retry を遅延付きで本キューへ戻すスケジューラ（`federation:scheduled` ZSET）、`federation:dlq`、指数バックオフ+ジッタ
+- [ ] **Dead Inbox Circuit Breaker**（`dead_inbox:{host}` 失敗回数記録、閾値超で一時停止）
+- [ ] visibility フィルタ: `public` のみ配送（`home`/`followers` は配送しない）
+- [ ] worker 他ジョブ: Web Push 配送 / ファイル処理（サムネイル・WebP）/ export・import / chart 集計（定期）
 
 ---
 
-### F-13. UIコンポーネントライブラリ補完
+## Phase F3 — リレー＆リモートアクター ＜B-6＞
 
-- [ ] `Autocomplete` — メンション・ハッシュタグ補完
-- [ ] `UrlPreview` — OGP プレビューカード
-- [ ] `Toast` — トースト通知
-- [ ] `DateSeparator` — タイムライン日付区切り
-- [ ] `RenotePicker` — リノートアクションダイアログ
-- [ ] `FollowButton` — フォロー/フォロー解除
-- [ ] `RelativeTime` — 相対時刻表示
-- [ ] `UserHoverCard` — ユーザーホバーカード
-
----
-
-### F-14. ノート表示コンポーネント補完
-
-`old-src` の `note.sub.vue` / `note-header.vue` / `note-menu.vue` / `note-preview.vue` / `sub-note-content.vue` に相当するもの:
-
-- [ ] `NoteSubView` — 引用・返信先のネスト表示
-- [ ] `NoteHeader` — アバター・ユーザー名・時刻ヘッダ
-- [ ] `NoteMenu` — 編集/削除/ピン/報告等のコンテキストメニュー
-- [ ] `NotePreview` — 通知やDMの中に埋め込まれるプレビューカード
-- [ ] `PollView` — 投票選択肢・進捗バー・結果表示 (`poll.vue` 相当)
-- [ ] `PollEditor` — 投票作成 UI (`ComposeModal` 内)
-- [ ] `VisibilityChooser` — 公開範囲選択ドロップダウン
+- [ ] DB: `relay` / `activity` テーブル（`activity.uri` UNIQUE で dedup）
+- [~] `fetch_remote_actor` — HTTP 取得まで実装済。**JSON-LD パース→Actor 変換が未**（現状 `None` 返却）
+- [ ] `remote_actor:{uri}` stale-while-revalidate キャッシュ（フォロー関係のみ永続化）
+- [ ] リレー購読フロー（Subscribe: Follow送信→Accept待機→status更新）、Unsubscribe（Undo Follow）
+- [ ] リレー受信: `should_persist_note` で関与分のみ DB保存、それ以外は Dragonfly バッファ→破棄
+- [ ] リレー配送: ノート作成時に `fanout_to_relays`
+- [ ] `i/pin`・`i/unpin` の featured collection 公開
 
 ---
 
-## パフォーマンス最適化 (段階的導入)
+## Phase 6 — 二次機能（検索/タグ/リスト/クリップ/チャンネル/アンテナ/投票）
 
-> **設計詳細 (2026-05-29 追記)**: 数万人＋リレー流入を捌くための最適化を全領域調査した結果と
-> 具体設計・負荷テスト/ベンチ設計を **`docs/performance-optimization-plan.md`** にまとめた。
-> 判明したギャップ台帳は **`docs/feature-gap-analysis.md`** (P-G1〜P-G16) を参照。
-> 最重要の発見: 主要ボトルネックは「遅い実装」ではなく**未実装のホットパス**
-> (ホーム TL の fan-out 不在 / ワーカー未起動 / HTTP 署名 placeholder / 接続プール無し / `init_schema()` 未呼び出し)。
+各機能は DBクエリ→サービス→APIルート→フロントAPI→フロントUI の縦串で実装。完了ごとに `shared/` DTO 追加。
 
-### P-0. 前提 — 起動時に活性化すべき既存資産 (調査で判明・最優先)
+### 検索 ＜`db/queries/search.rs`, `core/services/search.rs`＞
+- [ ] `notes/{search,search-by-tag,mentions,children,replies,renotes,conversation,state}`
+- [x] `users/search`
+- [ ] フロント SearchPage を実API化
 
-- [ ] `db/src/surreal.rs:init_schema()` を server/worker 起動時に呼ぶ (21 インデックス定義が現状未適用)
-- [ ] `worker/src/main.rs` で `FederationService::run_delivery_worker()` を起動 (現状キューが溜まるだけ)
-- [ ] `FederationService` を `AppState` のプール済 `reqwest::Client` で初期化 (現状 `Client::new()` 二重生成)
+### ハッシュタグ ＜`routes/hashtags.rs`＞
+- [ ] `hashtags/{list,show,trend,users}`、`notes/hashtag`（タイムライン）
 
-### P-1. Phase 1 — 低難易度・高効果（早期導入推奨）
+### ユーザーリスト ＜`routes/user_lists.rs`＞
+- [ ] `users/lists/{create,show,list,delete,update,push,pull}`、`notes/user-list-timeline`
+- [ ] フロント F-8: 作成ダイアログ/編集/`/lists/:id`/`pull` 接続
 
-- [ ] `mimalloc` または `jemalloc` をグローバルアロケータに設定 (+10〜30%)
-- [ ] リリースビルドに `lto = "fat"`, `codegen-units = 1`, `opt-level = 3`, `strip = true`
-- [ ] `RUSTFLAGS="-C target-cpu=native"` で native 向け最適化
-- [ ] ActivityPub 配送で `sharedInbox` にグルーピング (同一インスタンスへは1回のみ POST。グルーピングをキュー投入前へ移動)
-- [ ] `reqwest::Client` をアプリ全体で共有しコネクション再利用 (`pool_max_idle_per_host = 32`、HTTP/2 有効)
+### クリップ ＜`routes/clips.rs`, `core/services/clip.rs`＞
+- [ ] `clips/{create,delete,show,list,update,add-note,remove-note,notes}`
+- [ ] フロント F-8b: `/clips`/`/clips/:id`/作成削除ダイアログ/NoteMenu 追加項目
 
-### P-2. Phase 2 — 中難易度・大効果
+### チャンネル ＜`routes/channels.rs`, `core/services/channel.rs`＞
+- [ ] `channels/{create,delete,show,list,update,follow,unfollow,followed,timeline,featured}`
+- [ ] フロント F-8c: `/channels`/`/channels/:id`/作成編集ダイアログ/フォローボタン
 
-- [ ] Push型タイムライン (Fan-out on Write) — ZSET にスコア=タイムスタンプで管理
-  - フォロワー < 10,000: Push 型、≥ 10,000 (インフルエンサー): Pull 型ハイブリッド
-  - `ZREMRANGEBYRANK` で上限300件維持、TTL 24時間
-- [ ] Pre-rendered Response Cache — シリアライズ済みJSON を Dragonfly にバイト列で保存して返す
-- [ ] TL 取得の N+1 解消 — `FETCH actor_id` で著者同梱 + note 本体は `note:{id}` を MGET、欠損のみ `IN [...]` で一括取得
-- [ ] ワーカー並列化 — 単一 BRPOP ループ → N 並列タスク + ホスト単位セマフォ、prefetch (`LMPOP`/パイプライン)
-- [ ] キュー堅牢化 — retry を遅延付きで本キューへ戻すスケジューラ (`federation:scheduled` ZSET)、`federation:dlq`、バックオフにジッタ
-- [ ] リレー取り込み — `activity.id` で dedup、`should_persist_note` で関与分のみ DB 保存
-- [ ] Prometheus メトリクス (`metrics` + `metrics-exporter-prometheus`) + Grafana 可視化
-  - API レイテンシ (P50/P95/P99)、DB クエリ時間、Dragonfly ヒット率、AP キュー深度、fan-out レイテンシ
-- [ ] 負荷テスト/ベンチハーネス — シードジェネレータ + `criterion` + 負荷シナリオ (詳細は `docs/performance-optimization-plan.md` §4)
+### アンテナ ＜`routes/antennas.rs`＞
+- [ ] `antennas/{create,show,list,delete,update,notes}`
 
-### P-3. Phase 3 — 中難易度
-
-- [ ] WebSocket ペイロードを MessagePack (`rmp-serde`) に変更 (JSON より高速・小サイズ)
-- [ ] REST API の JSON パースを `simd-json` に変更 (2〜3倍高速)
-- [ ] SurrealDB コネクションプール: 複数クライアントをラウンドロビンで使い回す `DbPool`
-- [ ] `tokio-console` (`console-subscriber`) でランタイムのブロッキング箇所を可視化
-- [ ] `Arc<str>` / `bytes::Bytes` で頻繁なクローンを削減
-- [ ] Nginx で Brotli 圧縮有効化 (`tower-http` の `compression-br` feature)
-- [ ] Nginx で HTTP/2 (`listen 443 ssl http2`) + HTTP/3 QUIC 対応
-
-### P-4. Phase 4 — 高難易度
-
-- [ ] SurrealDB を TiKV バックエンドで構成し Read Replica 追加 (読み取りスケール)
-- [ ] 全文検索を Meilisearch または Tantivy (日本語: lindera + Tantivy) に専門化
-- [ ] サービス分割候補: `mithic-api` / `mithic-federation` / `mithic-timeline` / `mithic-search` (gRPC 連携)
+### 投票
+- [ ] `notes/polls/vote`、`core/services/poll.rs`（集計）、`note/polls/update`
+- [ ] フロント `PollView`/`PollEditor`（F-14）
 
 ---
 
-## 既知リスクと対策
+## Phase 7 — Admin・モデレーション・メタ・チャート・OAuth・Push
 
-| 優先度 | 問題 | 対策 |
-|---|---|---|
-| 高 | SurrealDB 3.0 の本番安定性 | **早期に負荷テストを実施する** |
-| 中 | Dragonfly の一部 Redis 非互換 | Stream系・Pub/Sub コマンドを事前確認 |
-| 中 | `web-push` クレートの保守性 | 代替手段 (VAPID 自前実装) を調査 |
-| 低 | 全文検索が SurrealDB 任せ | Meilisearch の追加を検討 |
+### メタ／統計 ＜`routes/meta.rs`, `core/services/meta.rs`＞
+- [ ] `meta`、`stats`、`sw/{register,unregister}`（Web Push 購読）
+
+### チャート ＜`routes/charts.rs`＞
+- [ ] `charts/{instance,notes,users,drive,federation,hashtag}`、`charts/user/{notes,following,drive,reactions}`
+
+### Admin ＜`routes/admin/`＞
+- [ ] `admin/accounts/{create,delete,suspend,unsuspend}`
+- [ ] `admin/emoji/{add,list,remove,update}`
+- [ ] `admin/federation/{delete-all-files,update-instance}`
+- [ ] `admin/queue/{clear,stats,jobs}`（`get_queue_stats`/`get_queue_jobs` は federation 側に実装済）
+- [ ] `admin/relays/{add,list,remove}`、`admin/drive/{clean-files,cleanup}`
+- [ ] `admin/{update-meta,vacuum,server-info,get-table-stats}`
+
+### OAuth ＜`routes/oauth.rs`＞
+- [ ] `app/{create,show}`、`auth/session/{generate,userkey}`、`GET /api/auth/callback`
+
+### サービス
+- [ ] `core/services/push_notification.rs`（VAPID 配送、保守性懸念あれば自前 VAPID 検討）
+- [ ] `core/services/fetch_nodeinfo.rs`、`export.rs`/`import.rs`（following/notes/blocking/muting）
+
+### フロント F-9
+- [ ] Admin 各画面（instance設定/絵文字/ファイル/監視/キュー/統計）
 
 ---
 
-## インフラ・ビルド
+## Phase 8 — フロント機能拡張
 
-### I-1. Windows 開発環境 OpenSSL 問題
+### F-4 絵文字・リアクションピッカー
+- [ ] `EmojiPicker`（Unicodeカテゴリ別+最近使用）、`ReactionPicker`、カスタム絵文字API接続
+- [ ] キーボードナビ（矢印/Enter/Esc）、ComposeModal/PostActions REACT 接続
 
-- [x] `openssl` 依存を `rsa` / `sha2`（純Rust製）へ置換 (Windowsビルドエラーの解消)
-- [x] `cargo check` が Windows で通るようにする
+### F-6 DM 実API接続
+- [x] フロント `api/dm.rs`（会話一覧/詳細/送信/作成）
+- [ ] DmPage/DmConversationPage を実API化、送信フォーム（`NoteVisibility::Specified`）、未読バッジ同期
+- [ ] バックエンド DM 用ルート/クエリ
+
+### F-7 設定画面の充実
+- [ ] Profile/Privacy/Security(2FA)/Drive/Reaction/MuteBlock/ImportExport 各ページ
+- [ ] 2FA バックエンド: `i/2fa/{register,done,unregister}`
+
+### F-10 オンボーディング
+- [ ] `/welcome`、サインアップ3ステップ実API化、インスタンス情報表示
+
+### F-11 MFM 高度機能
+- [ ] カスタム絵文字 `:name:`、位置指定 `$[x.right]`/`$[x.left]`、アニメーション `$[jelly]`/`$[spin]`
+- [ ] 数式（KaTeX）、URLプレビュー（OGP）— `mfm/` と `shared/mfm/` 両対応
+
+### F-13 UIコンポーネント補完
+- [ ] `Autocomplete`/`UrlPreview`/`Toast`/`DateSeparator`/`RenotePicker`/`FollowButton`/`RelativeTime`/`UserHoverCard`
+
+### F-14 ノート表示コンポーネント補完
+- [ ] `NoteSubView`/`NoteHeader`/`NoteMenu`/`NotePreview`/`PollView`/`PollEditor`/`VisibilityChooser`
+
+### 国際化
+- [ ] `i18n/locales/ja.ftl`・`en.ftl` 整備、フロントに leptos-i18n 導入（現状ハードコード日本語のみ）
 
 ---
 
-### I-2. CI/CD
+## Phase 9 — パフォーマンス仕上げ・観測性・負荷テスト・CI ＜P-3 / P-4 / I-2＞
 
-- [ ] `cargo check --all` が CI で通ることを確認
-- [ ] `cargo fmt --check --all` を CI に追加
-- [ ] `cargo clippy --all` を CI に追加
-- [ ] フロントエンド `trunk build` を CI に追加
+### 観測性 §3-H
+- [ ] `metrics` + `metrics-exporter-prometheus`（API レイテンシ P50/95/99、DBクエリ時間、Dragonfly ヒット率、AP キュー深度、fan-out レイテンシ）+ Grafana
+- [ ] `tokio-console`（`console-subscriber`）
+
+### P-3 最適化
+- [ ] WebSocket ペイロード MessagePack（`rmp-serde`）
+- [ ] REST JSON を `simd-json`
+- [ ] SurrealDB ラウンドロビン `DbPool` 拡張（Phase 0 着手分の発展）
+- [ ] `Arc<str>`/`bytes::Bytes` でクローン削減
+- [ ] `tower-http` Brotli、Nginx HTTP/2 + HTTP/3 QUIC
+
+### P-4 高難度
+- [ ] SurrealDB TiKV バックエンド + Read Replica
+- [ ] 全文検索 Meilisearch / Tantivy（日本語: lindera + Tantivy）
+- [ ] サービス分割候補（api/federation/timeline/search を gRPC 連携）
+
+### 負荷テスト §4
+- [ ] シードジェネレータ（10k/50k ユーザー・べき乗則フォローグラフ）
+- [ ] `criterion` マイクロベンチ、k6/vegeta 負荷シナリオ（投稿スパイク/同時TL取得/リレーバースト）
+- [ ] 合格基準: TL P95<50ms(キャッシュヒット)、10kフォロワー fan-out 数百ms、バースト後キュー深度単調減少
+
+### CI I-2 ＜`.github/workflows/`＞
+- [ ] `cargo check --all` / `cargo fmt --check --all` / `cargo clippy --all` / `trunk build`
 
 ---
 
-## 横断タスク
+## 横断的な進め方（全フェーズ共通）
 
-- [ ] 機能を実装・完了したら本ファイル (`TODO.md`) の対応チェックボックスをチェック済みにする
-- [ ] `crates/shared/` の DTO を実 API レスポンスに合わせて拡充 (CreateFollowRequest, BlockRequest, MuteRequest, FileUploadRequest, ReactionRequest, PollVoteRequest, ClipRequest, ChannelRequest, ListRequest, AntennaRequest, MetaResponse 等)
-- [ ] `crates/i18n/locales/` に `ja.ftl` / `en.ftl` を整備
-- [ ] 主要 UI のアクセシビリティ確認 (focus ring / aria-label / keyboard nav)
-- [ ] モバイル表示を実機幅で確認
-- [ ] `cargo fmt --all` を常時維持
-- [ ] SurrealDB 負荷テストを早期に実施し、ボトルネックを特定する
-- [ ] Dragonfly で使用するすべての Redis コマンドを事前に動作確認する
+1. **DTO先行**: 各機能で `shared/` に Request/Response 型を先に定義し、バック・フロントで共有（CreateFollowRequest, BlockRequest, MuteRequest, FileUploadRequest, PollVoteRequest, ClipRequest, ChannelRequest, ListRequest, AntennaRequest, MetaResponse 等）
+2. **縦串で完結**: 1機能 = DBクエリ→サービス→APIルート→フロントAPI→フロントUI を1単位で完成
+3. **ドキュメント更新（CLAUDE.md §7 必須）**: 機能完了ごとに本ファイルのチェックボックスを更新、`docs/feature-gap-analysis.md` の該当項目を更新し冒頭「検証日」を書き換え
+4. **品質ゲート**: 各フェーズ完了時に `cargo fmt --all` / `cargo clippy --all -D warnings` / `cargo check --all`、`trunk build` を通す
+5. **コミット規約**: Conventional Commits
+
+## エンドツーエンド検証
+
+- **Phase 1-2 後**: `cargo run -p mithic-server` + `trunk serve` → signup→login→投稿→Home/Local/Global TL→相互フォローで fan-out 確認
+- **Phase 3-5 後**: フォロー通知、ドライブ添付サムネイル、2ブラウザでリアルタイム差し込み
+- **Phase F1-F3 後**: WebFinger/Actor 取得、外部インスタンス（Mastodon テスト）と Follow/Note 双方向疎通、テストリレー流入の dedup 確認
+- **Phase 9**: 負荷テストで合格基準測定、Prometheus/Grafana 可視化、CI グリーン
+
+---
+
+## 完了済み（参考）
+
+- [x] `core/models/` 28 エンティティ定義
+- [x] `api/middleware/` 7 種（auth/cors/rate_limit/http_signature(検証)/content_negotiation/locale）
+- [x] 認証・ノート・タイムライン(home含む)・ユーザー・通知・ドライブの主要 API ルート 35 ハンドラ
+- [x] `db/queries/` actors/notes/timeline/follows/reactions/favorites/notifications/drive
+- [x] federation 配送ワーカー・Accept/Reject/broadcast・queue 管理
+- [x] `stream/` チャンネル基盤（9 チャンネル）
+- [x] I-1: `openssl` 依存を `rsa`/`sha2`（純Rust）へ置換、Windows ビルド対応
+- [x] db クエリ層を surrealdb 3.0.5 API へ追従、`cargo check`/`clippy -D warnings` 通過
