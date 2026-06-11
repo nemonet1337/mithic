@@ -21,8 +21,8 @@ pub enum NotificationType {
     UserSignup,
 }
 
+// DB の snake_case フィールドと一致させるため rename しない
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct Notification {
     pub id: NotificationId,
     pub created_at: DateTime<Utc>,

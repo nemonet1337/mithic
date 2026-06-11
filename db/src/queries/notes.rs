@@ -26,13 +26,13 @@ pub async fn create_note(client: &SurrealClient, note: &Note) -> anyhow::Result<
                 created_at: $created_at,
                 text: $text,
                 cw: $cw,
-                actor_id: type::thing('user', $actor_id),
+                actor_id: type::record('user', $actor_id),
                 visibility: $visibility,
                 renote_count: $renote_count,
                 replies_count: $replies_count,
                 reactions: $reactions,
-                reply_id: if $reply_id != None { type::thing('note', $reply_id) } else { None },
-                renote_id: if $renote_id != None { type::thing('note', $renote_id) } else { None },
+                reply_id: if $reply_id != None { type::record('note', $reply_id) } else { None },
+                renote_id: if $renote_id != None { type::record('note', $renote_id) } else { None },
                 file_ids: $file_ids,
                 tags: $tags,
                 has_poll: $has_poll
@@ -71,7 +71,7 @@ pub async fn get_note_by_id(client: &SurrealClient, id: &NoteId) -> anyhow::Resu
                 reply_id.id AS reply_id,
                 renote_id.id AS renote_id
             FROM note 
-            WHERE id = $id 
+            WHERE id = type::record('note', $id)
             LIMIT 1;
         ",
         )
@@ -85,7 +85,7 @@ pub async fn get_note_by_id(client: &SurrealClient, id: &NoteId) -> anyhow::Resu
 pub async fn delete_note(client: &SurrealClient, id: &NoteId) -> anyhow::Result<()> {
     let id_str = id.to_string();
     client
-        .query("DELETE note WHERE id = $id;")
+        .query("DELETE note WHERE id = type::record('note', $id);")
         .bind(("id", id_str))
         .await?;
     Ok(())

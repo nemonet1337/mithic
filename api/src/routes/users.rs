@@ -258,12 +258,16 @@ pub async fn search(
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
-    let rows: Vec<serde_json::Value> = response
+    let rows: Vec<surrealdb::types::Value> = response
         .take(0)
         .map_err(|e| AppError::Internal(e.to_string()))?;
     let actors: Vec<Actor> = rows
         .into_iter()
-        .map(|v| serde_json::from_value::<Actor>(v).map_err(|e| AppError::Internal(e.to_string())))
+        .map(|v| {
+            let mut json = v.into_json_value();
+            mithic_db::queries::strip_record_prefixes(&mut json);
+            serde_json::from_value::<Actor>(json).map_err(|e| AppError::Internal(e.to_string()))
+        })
         .collect::<Result<Vec<Actor>>>()?;
     let users = actors.iter().map(actor_to_user).collect();
     Ok(Json(users))
@@ -306,7 +310,7 @@ pub async fn user_notes(
                 reply_id.id AS reply_id,
                 renote_id.id AS renote_id
             FROM note
-            WHERE actor_id = type::thing('user', $user)
+            WHERE actor_id = type::record('user', $user)
             ORDER BY id DESC
             LIMIT $limit;
             ",
@@ -316,13 +320,15 @@ pub async fn user_notes(
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
-    let rows: Vec<serde_json::Value> = response
+    let rows: Vec<surrealdb::types::Value> = response
         .take(0)
         .map_err(|e| AppError::Internal(e.to_string()))?;
     let notes: Vec<mithic_core::models::note::Note> = rows
         .into_iter()
         .map(|v| {
-            serde_json::from_value::<mithic_core::models::note::Note>(v)
+            let mut json = v.into_json_value();
+            mithic_db::queries::strip_record_prefixes(&mut json);
+            serde_json::from_value::<mithic_core::models::note::Note>(json)
                 .map_err(|e| AppError::Internal(e.to_string()))
         })
         .collect::<Result<Vec<mithic_core::models::note::Note>>>()?;

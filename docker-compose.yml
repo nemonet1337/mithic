@@ -50,7 +50,8 @@ services:
       target: server
     restart: unless-stopped
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
       SURREALDB_ENDPOINT: ws://surrealdb:8000
       DRAGONFLY_URL: redis://dragonfly:6379
@@ -76,7 +77,8 @@ services:
       target: worker
     restart: unless-stopped
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
       SURREALDB_ENDPOINT: ws://surrealdb:8000
       DRAGONFLY_URL: redis://dragonfly:6379

@@ -715,6 +715,8 @@ pub fn LoginPage() -> impl IntoView {
 
 #[component]
 pub fn SignupPage() -> impl IntoView {
+    let auth = expect_context::<AuthStore>();
+    let navigate = use_navigate();
     let signup_handle = RwSignal::new(String::new());
     let display_name = RwSignal::new(String::new());
     let email = RwSignal::new(String::new());
@@ -724,6 +726,38 @@ pub fn SignupPage() -> impl IntoView {
     let agreed_tos = RwSignal::new(false);
     let handle_available = RwSignal::<Option<bool>>::new(None);
     let error = RwSignal::<Option<String>>::new(None);
+    let busy = RwSignal::new(false);
+
+    // 新規登録の実 API 呼び出し
+    let do_register = move |_| {
+        if busy.get_untracked() {
+            return;
+        }
+        busy.set(true);
+        error.set(None);
+        let auth = auth.clone();
+        let navigate = navigate.clone();
+        wasm_bindgen_futures::spawn_local(async move {
+            use crate::api::auth::{RegisterRequest, register};
+            let request = RegisterRequest {
+                handle: signup_handle.get_untracked(),
+                display_name: Some(display_name.get_untracked()).filter(|s| !s.is_empty()),
+                email: Some(email.get_untracked()).filter(|s| !s.is_empty()),
+                password: password.get_untracked(),
+            };
+            match register(&request).await {
+                Ok(pair) => {
+                    busy.set(false);
+                    auth.login(pair.access_token, pair.user);
+                    navigate("/", Default::default());
+                }
+                Err(e) => {
+                    busy.set(false);
+                    error.set(Some(e.to_string()));
+                }
+            }
+        });
+    };
 
     // ハンドル可用性チェック (簡易デバウンス)
     Effect::new(move |_| {
@@ -885,8 +919,9 @@ pub fn SignupPage() -> impl IntoView {
                     </label>
 
                     <button class="wf-btn accent full lg"
-                        disabled=move || !can_proceed.get()>
-                        "次へ →"
+                        disabled=move || !can_proceed.get() || busy.get()
+                        on:click=do_register>
+                        {move || if busy.get() { "登録中…" } else { "アカウント作成 →" }}
                     </button>
 
                     <p style="font-size:11px;color:var(--ink-3);text-align:center">

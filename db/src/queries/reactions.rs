@@ -15,12 +15,12 @@ pub async fn add_reaction(
             BEGIN TRANSACTION;
             INSERT INTO note_reaction {
                 id: $id,
-                note_id: type::thing('note', $note_id),
-                actor_id: type::thing('user', $actor_id),
+                note_id: type::record('note', $note_id),
+                actor_id: type::record('user', $actor_id),
                 reaction: $reaction,
                 created_at: $created_at
             };
-            UPDATE note SET reactions[$reaction] = <int>(reactions[$reaction] OR 0) + 1 WHERE id = $note_id;
+            UPDATE note SET reactions[$reaction] = <int>(reactions[$reaction] OR 0) + 1 WHERE id = type::record('note', $note_id);
             COMMIT TRANSACTION;
             ",
         )
@@ -44,8 +44,8 @@ pub async fn remove_reaction(
         .query(
             "
             BEGIN TRANSACTION;
-            DELETE note_reaction WHERE note_id = type::thing('note', $note_id) AND actor_id = type::thing('user', $actor_id) AND reaction = $reaction;
-            UPDATE note SET reactions[$reaction] = <int>(reactions[$reaction] OR 1) - 1 WHERE id = $note_id;
+            DELETE note_reaction WHERE note_id = type::record('note', $note_id) AND actor_id = type::record('user', $actor_id) AND reaction = $reaction;
+            UPDATE note SET reactions[$reaction] = <int>(reactions[$reaction] OR 1) - 1 WHERE id = type::record('note', $note_id);
             COMMIT TRANSACTION;
             ",
         )

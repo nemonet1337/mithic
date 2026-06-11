@@ -1,14 +1,14 @@
 use redis::Client;
-use redis::aio::MultiplexedConnection;
+use redis::aio::ConnectionManager;
 
-/// Dragonflyクライアント型（Redis互換）
-pub type DragonflyClient = MultiplexedConnection;
+use crate::DragonflyClient;
 
-/// Dragonflyクライアントを作成・接続
+/// Dragonflyクライアントを作成・接続。
+/// `ConnectionManager` を使うことで切断時に自動再接続する。
 pub async fn create_client(url: &str) -> anyhow::Result<DragonflyClient> {
     let client = Client::open(url)?;
-    let connection = client.get_multiplexed_async_connection().await?;
-    Ok(connection)
+    let manager = ConnectionManager::new(client.clone()).await?;
+    Ok(DragonflyClient::new(manager, client))
 }
 
 /// キャッシュキー生成ヘルパー

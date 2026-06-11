@@ -17,8 +17,8 @@ pub async fn add_favorite(
             "
             INSERT INTO bookmark {
                 id: $id,
-                user_id: type::thing('user', $user),
-                note_id: type::thing('note', $note),
+                user_id: type::record('user', $user),
+                note_id: type::record('note', $note),
                 created_at: $created_at
             };
             ",
@@ -43,7 +43,7 @@ pub async fn remove_favorite(
     client
         .query(
             "
-            DELETE bookmark WHERE user_id = type::thing('user', $user) AND note_id = type::thing('note', $note);
+            DELETE bookmark WHERE user_id = type::record('user', $user) AND note_id = type::record('note', $note);
             ",
         )
         .bind(("user", user_str))
@@ -64,7 +64,7 @@ pub async fn is_favorited(
     let mut response = client
         .query(
             "
-            SELECT VALUE count() FROM bookmark WHERE user_id = type::thing('user', $user) AND note_id = type::thing('note', $note);
+            SELECT VALUE count() FROM bookmark WHERE user_id = type::record('user', $user) AND note_id = type::record('note', $note);
             ",
         )
         .bind(("user", user_str))

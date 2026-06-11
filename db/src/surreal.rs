@@ -29,16 +29,18 @@ impl Default for SurrealConfig {
 
 /// SurrealDBクライアントを作成・接続
 pub async fn create_client(config: &SurrealConfig) -> anyhow::Result<DbClient> {
-    // WebSocket接続
+    // WebSocket接続 (mem:// 等の組み込みエンジンも endpoint 指定で利用可能)
     let client = connect(&config.endpoint).await?;
 
-    // 認証
-    client
-        .signin(Root {
-            username: config.username.clone(),
-            password: config.password.clone(),
-        })
-        .await?;
+    // 認証 (組み込みメモリエンジンは認証不要)
+    if !config.endpoint.starts_with("mem") {
+        client
+            .signin(Root {
+                username: config.username.clone(),
+                password: config.password.clone(),
+            })
+            .await?;
+    }
 
     // 名前空間とデータベース選択
     client
@@ -47,6 +49,19 @@ pub async fn create_client(config: &SurrealConfig) -> anyhow::Result<DbClient> {
         .await?;
 
     Ok(client)
+}
+
+/// 指定サイズの接続プールを作成する (TODO Phase 0: DbPool)
+pub async fn create_pool(
+    config: &SurrealConfig,
+    size: usize,
+) -> anyhow::Result<crate::SurrealClient> {
+    let size = size.max(1);
+    let mut connections = Vec::with_capacity(size);
+    for _ in 0..size {
+        connections.push(create_client(config).await?);
+    }
+    Ok(crate::SurrealClient::new(connections))
 }
 
 /// テーブル初期化（スキーマ定義）
@@ -60,6 +75,9 @@ pub async fn init_schema(client: &DbClient) -> anyhow::Result<()> {
         DEFINE FIELD IF NOT EXISTS username ON user TYPE string;
         DEFINE FIELD IF NOT EXISTS username_lower ON user TYPE string;
         DEFINE FIELD IF NOT EXISTS name ON user TYPE option<string>;
+        DEFINE FIELD IF NOT EXISTS bio ON user TYPE option<string>;
+        DEFINE FIELD IF NOT EXISTS uri ON user TYPE option<string>;
+        DEFINE FIELD IF NOT EXISTS featured ON user TYPE option<string>;
         DEFINE FIELD IF NOT EXISTS password_hash ON user TYPE option<string>;
         DEFINE FIELD IF NOT EXISTS email ON user TYPE option<string>;
         DEFINE FIELD IF NOT EXISTS created_at ON user TYPE datetime;
@@ -98,12 +116,17 @@ pub async fn init_schema(client: &DbClient) -> anyhow::Result<()> {
         DEFINE FIELD IF NOT EXISTS visibility ON note TYPE string DEFAULT 'public';
         DEFINE FIELD IF NOT EXISTS renote_count ON note TYPE int DEFAULT 0;
         DEFINE FIELD IF NOT EXISTS replies_count ON note TYPE int DEFAULT 0;
-        DEFINE FIELD IF NOT EXISTS reactions ON note TYPE object DEFAULT {};
+        DEFINE FIELD IF NOT EXISTS reactions ON note TYPE object FLEXIBLE DEFAULT {};
         DEFINE FIELD IF NOT EXISTS reply_id ON note TYPE option<record<note>>;
         DEFINE FIELD IF NOT EXISTS renote_id ON note TYPE option<record<note>>;
         DEFINE FIELD IF NOT EXISTS file_ids ON note TYPE array<string> DEFAULT [];
         DEFINE FIELD IF NOT EXISTS tags ON note TYPE array<string> DEFAULT [];
         DEFINE FIELD IF NOT EXISTS has_poll ON note TYPE bool DEFAULT false;
+        DEFINE FIELD IF NOT EXISTS uri ON note TYPE option<string>;
+        DEFINE FIELD IF NOT EXISTS host ON note TYPE option<string>;
+        DEFINE FIELD IF NOT EXISTS mentions ON note TYPE array<string> DEFAULT [];
+        DEFINE FIELD IF NOT EXISTS emojis ON note TYPE array<string> DEFAULT [];
+        DEFINE FIELD IF NOT EXISTS visible_user_ids ON note TYPE array<string> DEFAULT [];
         DEFINE INDEX IF NOT EXISTS idx_note_actor_id ON note COLUMNS actor_id;
         DEFINE INDEX IF NOT EXISTS idx_note_created_at ON note COLUMNS created_at;
         DEFINE INDEX IF NOT EXISTS idx_note_visibility_created ON note COLUMNS visibility, created_at;

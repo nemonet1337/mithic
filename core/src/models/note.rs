@@ -18,32 +18,50 @@ pub enum NoteVisibility {
     Specified,
 }
 
+// DB の snake_case フィールドと一致させるため rename しない
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
-#[serde(rename_all = "camelCase")]
 pub struct Note {
     pub id: NoteId,
     pub created_at: DateTime<Utc>,
+    #[serde(default)]
     pub reply_id: Option<NoteId>,
+    #[serde(default)]
     pub renote_id: Option<NoteId>,
     #[validate(length(max = 8192))]
+    #[serde(default)]
     pub text: Option<String>,
     #[validate(length(max = 512))]
+    #[serde(default)]
     pub cw: Option<String>,
     pub actor_id: ActorId,
+    #[serde(default)]
     pub renote_count: i32,
+    #[serde(default)]
     pub replies_count: i32,
+    #[serde(default)]
     pub reactions: HashMap<String, i32>,
+    #[serde(default)]
     pub visibility: NoteVisibility,
     #[validate(length(max = 512))]
+    #[serde(default)]
     pub uri: Option<String>,
+    #[serde(default)]
     pub file_ids: Vec<String>,
+    #[serde(default)]
     pub visible_user_ids: Vec<ActorId>,
+    #[serde(default)]
     pub mentions: Vec<ActorId>,
+    #[serde(default)]
     pub emojis: Vec<String>,
+    #[serde(default)]
     pub tags: Vec<String>,
+    #[serde(default)]
     pub has_poll: bool,
+    #[serde(default)]
     pub actor_host: Option<String>,
+    #[serde(default)]
     pub reply_actor_id: Option<ActorId>,
+    #[serde(default)]
     pub renote_actor_id: Option<ActorId>,
 }
 

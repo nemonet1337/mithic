@@ -10,6 +10,8 @@ pub struct AppConfig {
     pub surrealdb_username: String,
     pub surrealdb_password: String,
 
+    pub surrealdb_pool_size: usize,
+
     pub dragonfly_url: String,
 
     pub jwt_secret: String,
@@ -38,6 +40,11 @@ impl AppConfig {
                 .unwrap_or_else(|_| "root".to_string()),
             surrealdb_password: env::var("SURREALDB_PASSWORD")
                 .unwrap_or_else(|_| "root".to_string()),
+
+            surrealdb_pool_size: env::var("SURREALDB_POOL_SIZE")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(4),
 
             dragonfly_url: env::var("DRAGONFLY_URL")
                 .unwrap_or_else(|_| "redis://localhost:6379".to_string()),

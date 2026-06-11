@@ -33,7 +33,7 @@ pub async fn create_actor(client: &SurrealClient, actor: &Actor) -> anyhow::Resu
                 uri: $uri,
                 public_key: $public_key,
                 private_key: $private_key,
-                token: $token
+                token: $user_token
             };
         ",
         )
@@ -61,7 +61,7 @@ pub async fn create_actor(client: &SurrealClient, actor: &Actor) -> anyhow::Resu
         .bind(("uri", actor.uri.clone()))
         .bind(("public_key", actor.public_key.clone()))
         .bind(("private_key", actor.private_key.clone()))
-        .bind(("token", actor.token.clone()))
+        .bind(("user_token", actor.token.clone()))
         .await?;
 
     let rows: Vec<surrealdb::types::Value> = response.take(0)?;
@@ -77,7 +77,7 @@ pub async fn get_actor_by_id(
 ) -> anyhow::Result<Option<Actor>> {
     let id_str = id.to_string();
     let mut response = client
-        .query("SELECT * FROM user WHERE id = $id LIMIT 1;")
+        .query("SELECT * FROM user WHERE id = type::record('user', $id) LIMIT 1;")
         .bind(("id", id_str))
         .await?;
     let rows: Vec<surrealdb::types::Value> = response.take(0)?;
@@ -104,9 +104,9 @@ pub async fn update_actor_token(
 ) -> anyhow::Result<()> {
     let id_str = id.to_string();
     client
-        .query("UPDATE user SET token = $token WHERE id = $id;")
+        .query("UPDATE user SET token = $user_token WHERE id = type::record('user', $id);")
         .bind(("id", id_str))
-        .bind(("token", token))
+        .bind(("user_token", token))
         .await?;
     Ok(())
 }

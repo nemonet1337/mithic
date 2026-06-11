@@ -218,10 +218,10 @@ fn verify_signature(
     date: &str,
     headers: &axum::http::HeaderMap,
 ) -> Result<bool, SignatureError> {
-    use rsa::{RsaPublicKey, pkcs1::DecodeRsaPublicKey, pkcs8::DecodePublicKey};
     use rsa::pkcs1v15::VerifyingKey;
-    use rsa::signature::Verifier;
     use rsa::sha2::Sha256;
+    use rsa::signature::Verifier;
+    use rsa::{RsaPublicKey, pkcs1::DecodeRsaPublicKey, pkcs8::DecodePublicKey};
 
     if signature.algorithm != "rsa-sha256" && signature.algorithm != "hs2019" {
         warn!("Unsupported algorithm: {}", signature.algorithm);
@@ -245,15 +245,13 @@ fn verify_signature(
     // Parse the public key. Try PKCS#8 first, then fall back to PKCS#1.
     let pkey = match RsaPublicKey::from_public_key_pem(public_key_pem) {
         Ok(key) => key,
-        Err(_) => {
-            match RsaPublicKey::from_pkcs1_pem(public_key_pem) {
-                Ok(key) => key,
-                Err(e) => {
-                    warn!("Failed to parse public key PEM as PKCS#8 or PKCS#1: {}", e);
-                    return Ok(false);
-                }
+        Err(_) => match RsaPublicKey::from_pkcs1_pem(public_key_pem) {
+            Ok(key) => key,
+            Err(e) => {
+                warn!("Failed to parse public key PEM as PKCS#8 or PKCS#1: {}", e);
+                return Ok(false);
             }
-        }
+        },
     };
 
     let verifying_key = VerifyingKey::<Sha256>::new(pkey);
@@ -342,18 +340,20 @@ async fn fetch_actor_public_key(state: &AppState, key_id: &str) -> Result<String
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rsa::{RsaPrivateKey, RsaPublicKey, pkcs8::EncodePublicKey};
-    use rsa::pkcs1v15::SigningKey;
-    use rsa::signature::{RandomizedSigner, SignatureEncoding};
-    use rsa::sha2::Sha256;
     use rand::thread_rng;
+    use rsa::pkcs1v15::SigningKey;
+    use rsa::sha2::Sha256;
+    use rsa::signature::{RandomizedSigner, SignatureEncoding};
+    use rsa::{RsaPrivateKey, RsaPublicKey, pkcs8::EncodePublicKey};
 
     /// Generate an RSA-2048 key pair, returning (RsaPrivateKey, public key PEM string).
     fn gen_keypair() -> (RsaPrivateKey, String) {
         let mut rng = thread_rng();
         let private_key = RsaPrivateKey::new(&mut rng, 2048).unwrap();
         let public_key = RsaPublicKey::from(&private_key);
-        let public_pem = public_key.to_public_key_pem(rsa::pkcs8::LineEnding::LF).unwrap();
+        let public_pem = public_key
+            .to_public_key_pem(rsa::pkcs8::LineEnding::LF)
+            .unwrap();
         (private_key, public_pem)
     }
 
