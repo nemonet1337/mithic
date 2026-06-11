@@ -1,6 +1,6 @@
 # Mithic 統合 Todo / 実装ロードマップ
 
-**更新日**: 2026-06-04
+**更新日**: 2026-06-11
 **参照**: `old-src/` との機能比較, 全クレート実装インベントリ調査 (2026-06-04), `docs/performance-optimization-plan.md`, `docs/feature-gap-analysis.md`
 
 > **本ファイルについて (2026-06-04 全面刷新)**:
@@ -59,13 +59,13 @@ Phase 9  パフォーマンス仕上げ・観測性・負荷テスト・CI      
 
 ## Phase 0 — 基盤の活性化（最優先・低難度高効果） ＜P-0 / P-1 / B-4＞
 
-- [ ] **SurrealDB コネクションプール** — 複数 `Surreal<Any>` をラウンドロビンする `DbPool`（`db/src/surreal.rs`, `db/src/lib.rs`, `api/src/state.rs`、設計書 §3-B）
-- [ ] **Dragonfly プール** — `MultiplexedConnection` 単体 → `ConnectionManager`/小プール。**ワーカー BRPOP 用に専用接続**を分離（`db/src/dragonfly.rs`）
-- [ ] `FederationService` を `AppState` のプール済 `reqwest::Client` で初期化（`Client::new()` 二重生成解消、HTTP/2・`pool_max_idle_per_host=32`）
-- [ ] **server/main.rs 補完** — ミドルウェアスタック明示適用（CORS/rate_limit/trace）、graceful shutdown（`axum::serve(...).with_graceful_shutdown`）
-- [x] `init_schema()` を server 起動時に呼ぶ（実装済）／ [ ] worker 起動時にも呼ぶ
-- [ ] **ビルド最適化**（ルート `Cargo.toml`）: `lto="fat"`, `codegen-units=1`, `opt-level=3`, `strip=true`
-- [ ] `mimalloc`/`jemalloc` をグローバルアロケータに設定（server/worker の main）
+- [x] **SurrealDB コネクションプール** — 複数 `Surreal<Any>` をラウンドロビンする `SurrealClient` プール（`db/src/lib.rs::create_pool`、`SURREALDB_POOL_SIZE` で設定）
+- [x] **Dragonfly プール** — `ConnectionManager` 化（自動再接続）。ワーカー BRPOP は `dedicated_connection()` で専用接続を分離（`db/src/lib.rs`）
+- [x] `FederationService` を `AppState` のプール済 `reqwest::Client` で初期化（worker 側も同一設定で共有）
+- [x] **server/main.rs 補完** — CORS/Trace/Compression レイヤ適用、graceful shutdown（SIGINT/SIGTERM）。rate_limit の全体適用は未
+- [x] `init_schema()` を server / worker 双方の起動時に呼ぶ
+- [x] **ビルド最適化**（ルート `Cargo.toml`）: `lto="fat"`, `codegen-units=1`, `opt-level=3`, `strip=true`（WASM は `opt-level="z"`）
+- [x] `mimalloc` をグローバルアロケータに設定（server/worker の main）
 - [ ] `RUSTFLAGS="-C target-cpu=native"` をデプロイ手順に記載
 
 ---
@@ -80,14 +80,14 @@ Phase 9  パフォーマンス仕上げ・観測性・負荷テスト・CI      
 - [x] APIベースURL `/api`（Trunk proxy）、`AuthStore` JWT 付与共通クライアント、429リトライ
 - [ ] APIエラー共通ハンドリング（401/400/422/500/ネットワーク）
 - [ ] ローディング / 空状態 / エラー状態 共通UIコンポーネント
-- [ ] `shared` DTO と実 API レスポンスの差分確認・修正
+- [x] `shared` DTO と実 API レスポンスの差分確認・修正（`/api/v1/*` ルートを新設しフロントと整合。LoginRequest/TokenPair/RefreshRequest/StreamEvent を shared に追加）
 
 ### フロント F-3（ComposeModal 実投稿）
-- [ ] **`ComposeModal` 送信を `api::notes::create_note` に接続**（現状モーダルを閉じるだけ）
-- [ ] 本文・公開範囲・CW・NSFW・添付ファイルID・投票・予約日時・返信先ID
-- [ ] 送信中ボタン disabled / 二重送信防止
-- [ ] 成功時: モーダルを閉じ下書き削除・TL先頭へ差し込み／失敗時: 入力保持・エラー表示
-- [ ] `Ctrl+Enter` / `Cmd+Enter` で送信
+- [x] **`ComposeModal` 送信を `api::notes::create_note` に接続**
+- [~] 本文・公開範囲・CW・NSFW は送信。添付ファイルID・投票・予約日時・返信先IDの UI は未
+- [x] 送信中ボタン disabled / 二重送信防止
+- [x] 成功時: モーダルを閉じ下書き削除（TL差し込みは WebSocket 経由）／失敗時: 入力保持・エラー表示
+- [x] `Ctrl+Enter` / `Cmd+Enter` で送信
 
 ---
 
@@ -96,21 +96,21 @@ Phase 9  パフォーマンス仕上げ・観測性・負荷テスト・CI      
 ### DB（一部実装済み・最適化が残る）
 - [x] `timeline.rs`: ローカル/グローバル/ホーム（フォローグラフ）取得
 - [x] `follows.rs`: follow/unfollow/block/mute、`is_following`/`is_blocking`/`is_muting`、`get_followers`/`get_following`
-- [~] `notes.rs`: 作成/削除/取得実装済。**N+1解消（`FETCH actor_id` で著者同梱）は未**
+- [x] `notes.rs`/`timeline.rs`: 作成/削除/取得 + **N+1解消（`actor_id.* AS author` で著者同梱、`NoteWithAuthor`）**
 - [ ] スキーマ: `note.host` 非正規化＋複合インデックス `(visibility,host,id)`、follow 双方向インデックス `(out,in)`/`(in,out)`
 
 ### Dragonfly キャッシュ（`db/src/cache/` 新設） ＜未着手＞
-- [ ] タイムライン Sorted Set（score=ULID/timestamp、`ZADD`+`ZREMRANGEBYRANK` 上限300・TTL24h）
+- [~] タイムライン Sorted Set ヘルパ実装済（`db/src/cache.rs::timeline_push/timeline_range`）。書き込みパスへの組込みは未
 - [ ] `note:{id}` ボディキャッシュ（MGET）／ `noteresp:{id}` プリレンダJSON
 - [ ] block/mute セットキャッシュ、ユーザープロフィール、インスタンスメタ、カスタム絵文字
 
 ### サービス層（`core/src/services/`）
-- [ ] `note.rs` — 投稿作成・削除・タイムライン構築
+- [x] `note.rs`（`api/src/services/note.rs`）— 投稿作成（タグ抽出・通知・ストリーム配信・AP配送フック込み）
 - [ ] `timeline.rs` — Fan-out on Write（フォロワー<10,000 Push、≥10,000 Pull ハイブリッド）
 
 ### API / フロント
 - [x] `POST /api/notes/{timeline, local-timeline, global-timeline}` 配線済
-- [~] フロント F-2: Home/Local/Global は実API接続済。**ページング（since_id/until_id/limit）・無限スクロール・WS重複排除は未**
+- [~] フロント F-2: Home/Local/Global 実API接続 + until_id ページング（さらに読み込む）+ WS 差し込み。無限スクロール自動化・WS重複排除は未
 - [ ] フロント `api/timeline.rs` 整理（現状 `notes.rs` 内）
 
 ---
@@ -128,7 +128,7 @@ Phase 9  パフォーマンス仕上げ・観測性・負荷テスト・CI      
 
 ### サービス層
 - [ ] `core/services/user.rs`（フォロー/ブロック/ミュート管理。現状 `api/services/user.rs` に登録/認証のみ）
-- [ ] `core/services/notification.rs`（mention/reply/reaction/follow 生成・配送フック）
+- [~] 通知生成: reply/reaction/renote/follow を生成し WS 配信（`api/src/services/note.rs::publish_notification`）。mention は未
 - [ ] `core/services/word_mute.rs`（ワードミュート/フィルター）、`suspend_user.rs`
 
 ### フロント
@@ -161,22 +161,22 @@ Phase 9  パフォーマンス仕上げ・観測性・負荷テスト・CI      
 ## Phase 5 — WebSocket ストリーミング配線 ＜stream/ / B-4＞
 
 - [x] `stream/`: Channel トレイト・レジストリ・接続・9チャンネル（Home/Global/Hashtag/Admin/QueueStats/ServerStats/Drive/ApLog/UserList）実装
-- [ ] `api/src/routes/streaming.rs`: `GET /api/streaming` ルーター実装
-- [ ] `server/main.rs` に streaming ルート接続
-- [ ] フロント `connect_stream`（実装済）と疎通確認、`Drive` WS（`/api/drive/stream`）
-- [ ] 投稿/通知/リアクション発生時にチャンネルへ publish するフック
+- [x] `api/src/routes/streaming.rs`: `GET /api/streaming`（`?token=` JWT 認証 + WS アップグレード）
+- [x] `server/main.rs`（`create_router`）に streaming ルート接続
+- [~] フロント `connect_stream` と疎通確認済（note/notification イベント受信を E2E 検証）。`Drive` WS は未
+- [x] 投稿/通知（reply/reaction/renote/follow）発生時に publish するフック（`AppState::publish_stream`）
 
 ---
 
 ## Phase F1 — ActivityPub 受信基盤（Phase 2 以降と並行） ＜B-6＞
 
-- [ ] `federation/src/actor/`: Person Actor JSON-LD 生成、公開鍵添付
+- [x] Person Actor JSON-LD 生成、公開鍵添付（`api/src/routes/activitypub.rs::build_actor_document`）
 - [ ] `api/src/routes/activitypub.rs`:
-  - [ ] `GET /@:username`（Actor）
-  - [ ] `GET /.well-known/webfinger`
-  - [ ] `GET /.well-known/nodeinfo` + `GET /nodeinfo/2.0`
+  - [x] `GET /users/:username`（Actor、`/@:username` エイリアスは未）
+  - [x] `GET /.well-known/webfinger`
+  - [x] `GET /.well-known/nodeinfo` + `GET /nodeinfo/2.0`
   - [ ] `GET /users/:id/{outbox,followers,following,collections/featured}`
-  - [ ] `POST /users/:id/inbox`（受信。Create/Delete/Follow/Undo/Accept/Reject/Announce/Like/Update）
+  - [~] `POST /users/:username/inbox` + `POST /inbox`（Follow→自動Accept返送、Undo(Follow) 処理。Create/Like/Announce 等は受理のみ）
 - [x] content_negotiation ミドルウェア（`application/activity+json` 振り分け）
 - [x] HTTP Signature **検証**（`api/middleware/http_signature.rs`、RSA-SHA256、ユニットテスト付）
 - [ ] inbox に HTTP署名検証ミドルウェアを適用
@@ -185,14 +185,14 @@ Phase 9  パフォーマンス仕上げ・観測性・負荷テスト・CI      
 
 ## Phase F2 — 連合送信の成立 ＜B-5 / B-8 / P-2＞
 
-- [ ] **HTTP署名生成** — `federation/src/service.rs:85` の `"placeholder"` を RSA-SHA256 実署名に置換（`rsa`/`sha2`、`actor.private_key` をプロセス内キャッシュ、`(request-target) host date digest`）
+- [x] **HTTP署名生成** — RSA-SHA256 実署名（`(request-target) host date digest`、秘密鍵プロセス内キャッシュ）。signup 時に RSA-2048 鍵ペア生成
 - [x] 配送ワーカー `run_delivery_worker()` / `process_delivery_task()`（BRPOP ループ実装済）
 - [x] `send_accept_follow` / `send_reject_follow` / `broadcast_to_followers` / `queue_delivery`
-- [ ] **配送の並列化** — 単一 BRPOP → N並列タスク + ホスト単位セマフォ、prefetch（`LMPOP`/パイプライン）
-- [ ] **`sharedInbox` グルーピング**（同一インスタンスへ1回のみ POST、キュー投入前に集約）
-- [ ] **キュー堅牢化** — retry を遅延付きで本キューへ戻すスケジューラ（`federation:scheduled` ZSET）、`federation:dlq`、指数バックオフ+ジッタ
+- [~] **配送の並列化** — 並列4ワーカー（各専用 BRPOP 接続）。ホスト単位セマフォ・prefetch は未
+- [x] **`sharedInbox` グルーピング**（`broadcast_to_followers` で重複排除しキュー投入）
+- [x] **キュー堅牢化** — `federation:scheduled` ZSET スケジューラ、`federation:dlq`、指数バックオフ+ジッタ
 - [ ] **Dead Inbox Circuit Breaker**（`dead_inbox:{host}` 失敗回数記録、閾値超で一時停止）
-- [ ] visibility フィルタ: `public` のみ配送（`home`/`followers` は配送しない）
+- [x] visibility フィルタ: `public` のみ配送（`services/note.rs` + `FederationService::should_deliver`）
 - [ ] worker 他ジョブ: Web Push 配送 / ファイル処理（サムネイル・WebP）/ export・import / chart 集計（定期）
 
 ---
@@ -200,7 +200,7 @@ Phase 9  パフォーマンス仕上げ・観測性・負荷テスト・CI      
 ## Phase F3 — リレー＆リモートアクター ＜B-6＞
 
 - [ ] DB: `relay` / `activity` テーブル（`activity.uri` UNIQUE で dedup）
-- [~] `fetch_remote_actor` — HTTP 取得まで実装済。**JSON-LD パース→Actor 変換が未**（現状 `None` 返却）
+- [x] `fetch_remote_actor` — JSON-LD パース→Actor 変換（`parse_remote_actor`、inbox 受信時に未知アクターを永続化）
 - [ ] `remote_actor:{uri}` stale-while-revalidate キャッシュ（フォロー関係のみ永続化）
 - [ ] リレー購読フロー（Subscribe: Follow送信→Accept待機→status更新）、Unsubscribe（Undo Follow）
 - [ ] リレー受信: `should_persist_note` で関与分のみ DB保存、それ以外は Dragonfly バッファ→破棄
@@ -327,7 +327,7 @@ Phase 9  パフォーマンス仕上げ・観測性・負荷テスト・CI      
 - [ ] 合格基準: TL P95<50ms(キャッシュヒット)、10kフォロワー fan-out 数百ms、バースト後キュー深度単調減少
 
 ### CI I-2 ＜`.github/workflows/`＞
-- [ ] `cargo check --all` / `cargo fmt --check --all` / `cargo clippy --all` / `trunk build`
+- [x] `cargo fmt --check` / `cargo clippy -D warnings` / `cargo test` / frontend wasm check（`.github/workflows/ci.yml`）
 
 ---
 
@@ -358,3 +358,8 @@ Phase 9  パフォーマンス仕上げ・観測性・負荷テスト・CI      
 - [x] `stream/` チャンネル基盤（9 チャンネル）
 - [x] I-1: `openssl` 依存を `rsa`/`sha2`（純Rust）へ置換、Windows ビルド対応
 - [x] db クエリ層を surrealdb 3.0.5 API へ追従、`cargo check`/`clippy -D warnings` 通過
+- [x] (2026-06-11) `/api/v1/*` 互換ルート群（auth login/register/refresh/logout、users me/check-handle/show/notes/follow、timelines、notes CRUD/replies/quotes/reactions/renotes、notifications、health）— フロントエンドと完全整合
+- [x] (2026-06-11) DB 層の重大バグ修正: SurrealDB 3 レコードID正規化（`rows_to` で `table:ulid` を剥離）、`type::thing`→`type::record` 全置換、`$token` 予約変数回避、RELATE の括弧構文、`reactions` の `TYPE object FLEXIBLE` 化、モデル serde を DB の snake_case に整合
+- [x] (2026-06-11) E2E スモークテスト合格: 登録→ログイン→投稿→3種TL→フォロー→リアクション→リノート→返信→通知→WebSocket リアルタイム配信→WebFinger/NodeInfo/Actor→リフレッシュトークン
+- [x] (2026-06-11) Docker 動作確認の障害除去: Dockerfile のパス誤り修正（`crates/` 前提）、healthcheck 用 curl 追加、`.env` を任意化、nginx に `/api/streaming` WS・ActivityPub プロキシ追加、フロント release ビルドのコンパイルエラー修正
+- [x] CI: `.github/workflows/ci.yml`（fmt/clippy/test/wasm check、既存）— Phase 9 I-2 充足

@@ -2,7 +2,6 @@ pub use shared::{
     CreateNoteRequest, Note, NoteVisibility, Notification, NotificationType, ReactionSummary, User,
 };
 
-#[cfg(debug_assertions)]
 pub fn sample_user(username: &str, display_name: &str) -> User {
     let mut user = User::local(username, display_name);
     user.bio = Some(
@@ -14,7 +13,6 @@ pub fn sample_user(username: &str, display_name: &str) -> User {
     user
 }
 
-#[cfg(debug_assertions)]
 pub fn sample_notes() -> Vec<Note> {
     let hana = sample_user("hana", "Hana K.");
     let riku = sample_user("riku", "Riku M.");
@@ -53,7 +51,6 @@ pub fn sample_notes() -> Vec<Note> {
     ]
 }
 
-#[cfg(debug_assertions)]
 pub fn sample_notifications() -> Vec<Notification> {
     let mut notes = sample_notes();
     let note = notes.remove(0);
@@ -89,7 +86,6 @@ pub fn sample_notifications() -> Vec<Notification> {
     ]
 }
 
-#[cfg(debug_assertions)]
 fn note(id: &str, author: User, content: &str, created_at: &str, accent: bool) -> Note {
     Note {
         id: id.into(),
