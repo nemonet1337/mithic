@@ -132,8 +132,8 @@ Phase 9  パフォーマンス仕上げ・観測性・負荷テスト・CI      
 - [ ] `core/services/word_mute.rs`（ワードミュート/フィルター）、`suspend_user.rs`
 
 ### フロント
-- [ ] NotificationsPage を実API化（現状サンプル）
-- [ ] ProfilePage を実API化、`FollowButton` コンポーネント（F-13）
+- [x] NotificationsPage を実API化（一覧取得・全既読 API 接続）
+- [x] ProfilePage を実API化（プロフィール・投稿一覧・フォロー/解除ボタン）。独立 `FollowButton` コンポーネント化は未（F-13）
 - [ ] SettingsProfile / SettingsSecurity を実 API 接続（F-7 一部）
 - [ ] フロント `api/i.rs`（プロフィール更新・パスワード変更）
 
