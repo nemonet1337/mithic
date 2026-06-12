@@ -41,7 +41,7 @@ async-trait = "0.1"
 tokio-util = "0.7"
 
 # Web framework
-axum = { version = "0.8", features = ["macros", "multipart"] }
+axum = { version = "0.8", features = ["macros", "multipart", "ws"] }
 tower = { version = "0.5", features = ["full"] }
 tower-http = { version = "0.6", features = ["cors", "trace", "compression-gzip"] }
 
@@ -96,6 +96,9 @@ validator = { version = "0.20", features = ["derive"] }
 # Web Push
 web-push = "0.11"
 
+# Memory allocator (server/worker)
+mimalloc = "0.1"
+
 # Image processing
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif"] }
 
@@ -109,3 +112,14 @@ mithic-federation = { path = "federation" }
 mithic-stream     = { path = "stream" }
 mithic-api        = { path = "api" }
 shared            = { path = "shared" }
+
+# リリースビルド最適化 (TODO Phase 0 / P-1)
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+strip = true
+
+# WASM フロントエンドはバイナリサイズ優先
+[profile.release.package.frontend-web]
+opt-level = "z"

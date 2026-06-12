@@ -34,10 +34,10 @@ pub async fn create_notification(
             INSERT INTO notification {
                 id: $id,
                 created_at: $created_at,
-                user_id: type::thing('user', $recipient),
+                user_id: type::record('user', $recipient),
                 notification_type: $notification_type,
-                notifier_id: if $sender != None { type::thing('user', $sender) } else { None },
-                note_id: if $note != None { type::thing('note', $note) } else { None },
+                notifier_id: if $sender != None { type::record('user', $sender) } else { None },
+                note_id: if $note != None { type::record('note', $note) } else { None },
                 reaction: $reaction,
                 is_read: $is_read
             };
@@ -76,7 +76,7 @@ pub async fn get_notifications(
                 reaction,
                 is_read
             FROM notification
-            WHERE user_id = type::thing('user', $recipient)
+            WHERE user_id = type::record('user', $recipient)
             ORDER BY created_at DESC
             LIMIT $limit;
             ",
@@ -99,7 +99,7 @@ pub async fn mark_notification_as_read(
     client
         .query(
             "
-            UPDATE notification SET is_read = true WHERE id = $id AND user_id = type::thing('user', $recipient);
+            UPDATE notification SET is_read = true WHERE id = type::record('notification', $id) AND user_id = type::record('user', $recipient);
             ",
         )
         .bind(("id", id.to_string()))
@@ -118,7 +118,7 @@ pub async fn mark_all_notifications_as_read(
     client
         .query(
             "
-            UPDATE notification SET is_read = true WHERE user_id = type::thing('user', $recipient) AND is_read = false;
+            UPDATE notification SET is_read = true WHERE user_id = type::record('user', $recipient) AND is_read = false;
             ",
         )
         .bind(("recipient", recipient_str))

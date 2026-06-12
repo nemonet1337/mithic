@@ -2,7 +2,7 @@ pub mod mfm;
 pub mod types;
 
 pub use types::{
-    CreateNoteRequest, MeResponse, MediaAttachment, Note, NoteVisibility, Notification,
-    NotificationType, ReactionRequest, ReactionSummary, SigninRequest, SigninResponse,
-    SignupRequest, User, UserRelation,
+    CreateNoteRequest, LoginRequest, MeResponse, MediaAttachment, Note, NoteVisibility,
+    Notification, NotificationType, ReactionRequest, ReactionSummary, RefreshRequest,
+    SigninRequest, SigninResponse, SignupRequest, StreamEvent, TokenPair, User, UserRelation,
 };

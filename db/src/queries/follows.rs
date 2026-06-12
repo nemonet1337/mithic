@@ -13,7 +13,7 @@ pub async fn follow_user(
     client
         .query(
             "
-            RELATE type::thing('user', $follower) -> follow -> type::thing('user', $followee)
+            RELATE (type::record('user', $follower)) -> follow -> (type::record('user', $followee))
             SET created_at = $created_at;
             ",
         )
@@ -36,7 +36,7 @@ pub async fn unfollow_user(
     client
         .query(
             "
-            DELETE follow WHERE in = type::thing('user', $follower) AND out = type::thing('user', $followee);
+            DELETE follow WHERE in = type::record('user', $follower) AND out = type::record('user', $followee);
             ",
         )
         .bind(("follower", follower_str))
@@ -58,7 +58,7 @@ pub async fn block_user(
     client
         .query(
             "
-            RELATE type::thing('user', $blocker) -> block -> type::thing('user', $blocked)
+            RELATE (type::record('user', $blocker)) -> block -> (type::record('user', $blocked))
             SET created_at = $created_at;
             ",
         )
@@ -81,7 +81,7 @@ pub async fn unblock_user(
     client
         .query(
             "
-            DELETE block WHERE in = type::thing('user', $blocker) AND out = type::thing('user', $blocked);
+            DELETE block WHERE in = type::record('user', $blocker) AND out = type::record('user', $blocked);
             ",
         )
         .bind(("blocker", blocker_str))
@@ -103,7 +103,7 @@ pub async fn mute_user(
     client
         .query(
             "
-            RELATE type::thing('user', $muter) -> mute -> type::thing('user', $muted)
+            RELATE (type::record('user', $muter)) -> mute -> (type::record('user', $muted))
             SET created_at = $created_at;
             ",
         )
@@ -126,7 +126,7 @@ pub async fn unmute_user(
     client
         .query(
             "
-            DELETE mute WHERE in = type::thing('user', $muter) AND out = type::thing('user', $muted);
+            DELETE mute WHERE in = type::record('user', $muter) AND out = type::record('user', $muted);
             ",
         )
         .bind(("muter", muter_str))
@@ -147,7 +147,7 @@ pub async fn is_following(
     let mut response = client
         .query(
             "
-            SELECT VALUE count() FROM follow WHERE in = type::thing('user', $follower) AND out = type::thing('user', $followee);
+            SELECT VALUE count() FROM follow WHERE in = type::record('user', $follower) AND out = type::record('user', $followee);
             ",
         )
         .bind(("follower", follower_str))
@@ -169,7 +169,7 @@ pub async fn is_blocking(
     let mut response = client
         .query(
             "
-            SELECT VALUE count() FROM block WHERE in = type::thing('user', $blocker) AND out = type::thing('user', $blocked);
+            SELECT VALUE count() FROM block WHERE in = type::record('user', $blocker) AND out = type::record('user', $blocked);
             ",
         )
         .bind(("blocker", blocker_str))
@@ -191,7 +191,7 @@ pub async fn is_muting(
     let mut response = client
         .query(
             "
-            SELECT VALUE count() FROM mute WHERE in = type::thing('user', $muter) AND out = type::thing('user', $muted);
+            SELECT VALUE count() FROM mute WHERE in = type::record('user', $muter) AND out = type::record('user', $muted);
             ",
         )
         .bind(("muter", muter_str))
@@ -210,7 +210,7 @@ pub async fn get_following(
     let mut response = client
         .query(
             "
-            SELECT out.* AS actor FROM follow WHERE in = type::thing('user', $user);
+            SELECT out.* AS actor FROM follow WHERE in = type::record('user', $user);
             ",
         )
         .bind(("user", user_str))
@@ -219,7 +219,11 @@ pub async fn get_following(
     let rows: Vec<surrealdb::types::Value> = response.take(0)?;
     let actors: Vec<serde_json::Value> = rows
         .into_iter()
-        .filter_map(|val| val.into_json_value().get("actor").cloned())
+        .filter_map(|val| {
+            let mut json = val.into_json_value();
+            crate::queries::strip_record_prefixes(&mut json);
+            json.get("actor").cloned()
+        })
         .collect();
 
     let mut parsed_actors = Vec::new();
@@ -239,7 +243,7 @@ pub async fn get_followers(
     let mut response = client
         .query(
             "
-            SELECT in.* AS actor FROM follow WHERE out = type::thing('user', $user);
+            SELECT in.* AS actor FROM follow WHERE out = type::record('user', $user);
             ",
         )
         .bind(("user", user_str))
@@ -248,7 +252,11 @@ pub async fn get_followers(
     let rows: Vec<surrealdb::types::Value> = response.take(0)?;
     let actors: Vec<serde_json::Value> = rows
         .into_iter()
-        .filter_map(|val| val.into_json_value().get("actor").cloned())
+        .filter_map(|val| {
+            let mut json = val.into_json_value();
+            crate::queries::strip_record_prefixes(&mut json);
+            json.get("actor").cloned()
+        })
         .collect();
 
     let mut parsed_actors = Vec::new();

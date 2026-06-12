@@ -71,7 +71,7 @@ pub async fn create_drive_file(client: &SurrealClient, file: &DriveFile) -> anyh
             "
             INSERT INTO drive_file {
                 id: $id,
-                user_id: type::thing('user', $owner),
+                user_id: type::record('user', $owner),
                 name: $name,
                 mime_type: $mime_type,
                 size: $size,
@@ -116,7 +116,7 @@ pub async fn get_drive_file(
                 url,
                 thumbnail_url
             FROM drive_file
-            WHERE id = $id
+            WHERE id = type::record('drive_file', $id)
             LIMIT 1;
             ",
         )
@@ -152,7 +152,7 @@ pub async fn get_user_drive_files(
                 url,
                 thumbnail_url
             FROM drive_file
-            WHERE user_id = type::thing('user', $owner)
+            WHERE user_id = type::record('user', $owner)
             ORDER BY created_at DESC
             LIMIT $limit;
             ",
@@ -177,7 +177,7 @@ pub async fn delete_drive_file(client: &SurrealClient, id: &FileId) -> anyhow::R
     client
         .query(
             "
-            DELETE drive_file WHERE id = $id;
+            DELETE drive_file WHERE id = type::record('drive_file', $id);
             ",
         )
         .bind(("id", id_str))

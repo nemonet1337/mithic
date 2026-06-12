@@ -1,12 +1,9 @@
-use std::collections::HashMap;
-
 use axum::{Json, extract::State};
-use mithic_core::models::actor::ActorId;
-use mithic_core::models::note::{Note, NoteId};
+use mithic_core::models::note::NoteId;
 use mithic_core::{AppError, Result};
-use mithic_db::queries::{get_actor_by_id, get_global_timeline, get_local_timeline};
+use mithic_db::queries::{NoteWithAuthor, get_global_timeline, get_local_timeline};
 use serde::Deserialize;
-use shared::{Note as NoteDto, User};
+use shared::Note as NoteDto;
 
 use crate::dto::{actor_to_user, note_to_dto};
 use crate::state::AppState;
@@ -29,30 +26,9 @@ fn parse_id(raw: &Option<String>) -> Result<Option<NoteId>> {
     }
 }
 
-async fn resolve_authors(state: &AppState, notes: &[Note]) -> Result<HashMap<ActorId, User>> {
-    let mut authors: HashMap<ActorId, User> = HashMap::new();
-    for note in notes {
-        if authors.contains_key(&note.actor_id) {
-            continue;
-        }
-        if let Some(actor) = get_actor_by_id(state.surreal(), &note.actor_id)
-            .await
-            .map_err(|e| AppError::Internal(e.to_string()))?
-        {
-            authors.insert(note.actor_id, actor_to_user(&actor));
-        }
-    }
-    Ok(authors)
-}
-
-fn to_dtos(notes: Vec<Note>, authors: &HashMap<ActorId, User>) -> Vec<NoteDto> {
-    notes
-        .into_iter()
-        .filter_map(|note| {
-            authors
-                .get(&note.actor_id)
-                .map(|author| note_to_dto(&note, author.clone()))
-        })
+fn to_dtos(rows: Vec<NoteWithAuthor>) -> Vec<NoteDto> {
+    rows.into_iter()
+        .map(|row| note_to_dto(&row.note, actor_to_user(&row.author)))
         .collect()
 }
 
@@ -64,12 +40,11 @@ pub async fn local(
     let since_id = parse_id(&request.since_id)?;
     let until_id = parse_id(&request.until_id)?;
 
-    let notes = get_local_timeline(state.surreal(), limit, since_id, until_id)
+    let rows = get_local_timeline(state.surreal(), limit, since_id, until_id)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
-    let authors = resolve_authors(&state, &notes).await?;
-    Ok(Json(to_dtos(notes, &authors)))
+    Ok(Json(to_dtos(rows)))
 }
 
 pub async fn global(
@@ -80,10 +55,9 @@ pub async fn global(
     let since_id = parse_id(&request.since_id)?;
     let until_id = parse_id(&request.until_id)?;
 
-    let notes = get_global_timeline(state.surreal(), limit, since_id, until_id)
+    let rows = get_global_timeline(state.surreal(), limit, since_id, until_id)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
-    let authors = resolve_authors(&state, &notes).await?;
-    Ok(Json(to_dtos(notes, &authors)))
+    Ok(Json(to_dtos(rows)))
 }

@@ -23,6 +23,19 @@ pub async fn login(body: &LoginRequest) -> Result<TokenPair, ApiError> {
     request("POST", "v1/auth/login", None, Some(body)).await
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RegisterRequest {
+    pub handle: String,
+    pub display_name: Option<String>,
+    pub email: Option<String>,
+    pub password: String,
+}
+
+pub async fn register(body: &RegisterRequest) -> Result<TokenPair, ApiError> {
+    request("POST", "v1/auth/register", None, Some(body)).await
+}
+
 pub async fn logout(token: &str) -> Result<(), ApiError> {
     request::<(), ()>("POST", "v1/auth/logout", Some(token), None).await
 }

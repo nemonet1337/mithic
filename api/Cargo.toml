@@ -34,3 +34,5 @@ ulid              = { workspace = true }
 uuid              = { workspace = true }
 validator         = { workspace = true }
 hex               = { workspace = true }
+surrealdb         = { workspace = true }
+url               = { workspace = true }

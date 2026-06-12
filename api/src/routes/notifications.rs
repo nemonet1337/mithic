@@ -22,7 +22,7 @@ pub struct NotificationReadRequest {
     pub notification_id: String,
 }
 
-fn notif_type_to_dto(nt: NotificationType) -> NotifTypeDto {
+pub fn notif_type_to_dto(nt: NotificationType) -> NotifTypeDto {
     match nt {
         NotificationType::Mention => NotifTypeDto::Mention,
         NotificationType::Reply => NotifTypeDto::Reply,

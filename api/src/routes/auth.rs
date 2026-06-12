@@ -12,7 +12,7 @@ pub async fn signup(
     State(state): State<AppState>,
     Json(request): Json<SignupRequest>,
 ) -> Result<Json<SigninResponse>> {
-    let actor = register_user(state.surreal(), request).await?;
+    let actor = register_user(state.surreal(), request, &state.config().instance_url).await?;
 
     let token = generate_jwt(
         &actor.id.to_string(),

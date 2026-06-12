@@ -1,7 +1,7 @@
 # =============================================================================
 # Stage 1: cargo-chef installer (shared base for dep caching)
 # =============================================================================
-FROM rust:1.85-bookworm AS chef
+FROM rust:1.94-bookworm AS chef
 RUN cargo install cargo-chef --locked
 WORKDIR /app
 
@@ -38,7 +38,7 @@ RUN cargo build --release \
 # =============================================================================
 # Stage 5: Build frontend WASM with Trunk
 # =============================================================================
-FROM rust:1.85-bookworm AS frontend-builder
+FROM rust:1.94-bookworm AS frontend-builder
 RUN apt-get update && apt-get install -y \
     pkg-config \
     libssl-dev \
@@ -54,7 +54,7 @@ RUN curl -sSLf \
 
 WORKDIR /app
 COPY . .
-WORKDIR /app/crates/frontend-web
+WORKDIR /app/frontend-web
 
 # trunk build downloads wasm-bindgen, wasm-opt, and Tailwind CLI at build time
 RUN trunk build --release
@@ -63,9 +63,11 @@ RUN trunk build --release
 # Stage 6: Server runtime image
 # =============================================================================
 FROM debian:bookworm-slim AS server
+# curl はコンテナの healthcheck に必要
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     libssl3 \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=backend-builder /app/target/release/mithic-server /usr/local/bin/
@@ -90,6 +92,6 @@ ENTRYPOINT ["mithic-worker"]
 # Stage 8: Frontend — nginx serving WASM dist
 # =============================================================================
 FROM nginx:alpine AS frontend
-COPY --from=frontend-builder /app/crates/frontend-web/dist /usr/share/nginx/html
+COPY --from=frontend-builder /app/frontend-web/dist /usr/share/nginx/html
 COPY infra/nginx/nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80

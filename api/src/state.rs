@@ -4,6 +4,7 @@ use mithic_config::AppConfig;
 use mithic_db::{DragonflyClient, SurrealClient};
 use mithic_federation::FederationService;
 
+use crate::events::{StreamBroadcast, StreamReceiver, StreamSender};
 use crate::middleware::RateLimiter;
 
 #[derive(Debug, Clone)]
@@ -19,6 +20,7 @@ struct AppStateInner {
     pub http_client: reqwest::Client,
     pub federation_service: FederationService,
     pub rate_limiter: RateLimiter,
+    pub stream_tx: StreamSender,
 }
 
 impl AppState {
@@ -41,6 +43,7 @@ impl AppState {
         );
 
         let rate_limiter = RateLimiter::new();
+        let stream_tx = crate::events::channel();
 
         Ok(Self {
             inner: Arc::new(AppStateInner {
@@ -50,6 +53,7 @@ impl AppState {
                 http_client,
                 federation_service,
                 rate_limiter,
+                stream_tx,
             }),
         })
     }
@@ -71,6 +75,16 @@ impl AppState {
     }
     pub fn rate_limiter(&self) -> &RateLimiter {
         &self.inner.rate_limiter
+    }
+
+    /// ストリームイベントを購読する
+    pub fn subscribe_stream(&self) -> StreamReceiver {
+        self.inner.stream_tx.subscribe()
+    }
+
+    /// ストリームイベントを発行する (購読者ゼロは無視)
+    pub fn publish_stream(&self, event: StreamBroadcast) {
+        let _ = self.inner.stream_tx.send(event);
     }
 }
 

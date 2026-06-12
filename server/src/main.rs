@@ -1,34 +1,41 @@
 use anyhow::Result;
 use tracing::info;
 
+// mimalloc をグローバルアロケータに設定 (TODO Phase 0)
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 #[tokio::main]
 async fn main() -> Result<()> {
     dotenvy::dotenv().ok();
 
     tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
+        )
         .init();
 
     let config = mithic_config::AppConfig::from_env()?;
 
-    info!("Connecting to SurrealDB at {}", config.surrealdb_endpoint);
-    let surreal = mithic_db::create_surreal_client(&mithic_db::SurrealConfig {
+    info!(
+        "Connecting to SurrealDB at {} (pool size {})",
+        config.surrealdb_endpoint, config.surrealdb_pool_size
+    );
+    let surreal_config = mithic_db::SurrealConfig {
         endpoint: config.surrealdb_endpoint.clone(),
         namespace: config.surrealdb_namespace.clone(),
         database: config.surrealdb_database.clone(),
         username: config.surrealdb_username.clone(),
         password: config.surrealdb_password.clone(),
-    })
-    .await?;
+    };
+    let surreal_client =
+        mithic_db::create_pool(&surreal_config, config.surrealdb_pool_size).await?;
 
     info!("Initializing SurrealDB schema");
-    mithic_db::init_schema(&surreal).await?;
+    mithic_db::init_schema(surreal_client.get()).await?;
 
     info!("Connecting to Dragonfly at {}", config.dragonfly_url);
-    let dragonfly = mithic_db::create_dragonfly_client(&config.dragonfly_url).await?;
-
-    let surreal_client = mithic_db::SurrealClient(surreal);
-    let dragonfly_client = mithic_db::DragonflyClient(dragonfly);
+    let dragonfly_client = mithic_db::create_dragonfly_client(&config.dragonfly_url).await?;
 
     let state = mithic_api::AppState::new(surreal_client, dragonfly_client, config.clone())?;
     let app = mithic_api::routes::create_router(state);
@@ -36,7 +43,35 @@ async fn main() -> Result<()> {
     let addr = format!("0.0.0.0:{}", config.server_port);
     info!("Starting server on {}", addr);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
-    axum::serve(listener, app).await?;
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await?;
 
+    info!("Server shut down gracefully");
     Ok(())
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("failed to install SIGTERM handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
+    info!("Shutdown signal received");
 }

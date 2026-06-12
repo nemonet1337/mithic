@@ -177,7 +177,33 @@ pub fn StatusDetailPage() -> impl IntoView {
 #[component]
 pub fn NotificationsPage() -> impl IntoView {
     let notification_store = expect_context::<NotificationStore>();
-    let notifications = sample_notifications();
+    let auth = expect_context::<AuthStore>();
+    let token = auth.token;
+    let notifications = RwSignal::<Vec<crate::models::Notification>>::new(vec![]);
+
+    // 実 API から通知一覧を取得
+    Effect::new(move |_| {
+        if let Some(tok) = token.get() {
+            wasm_bindgen_futures::spawn_local(async move {
+                match crate::api::notifications::fetch_notifications(&tok, None).await {
+                    Ok(fetched) => notifications.set(fetched),
+                    Err(e) => web_sys::console::error_1(&e.to_string().into()),
+                }
+            });
+        }
+    });
+
+    let mark_all_read = move |_| {
+        notification_store.mark_notifications_read();
+        notifications.update(|items| items.iter_mut().for_each(|n| n.is_read = true));
+        if let Some(tok) = token.get_untracked() {
+            wasm_bindgen_futures::spawn_local(async move {
+                if let Err(e) = crate::api::notifications::mark_all_read(&tok).await {
+                    web_sys::console::error_1(&e.to_string().into());
+                }
+            });
+        }
+    };
     view! {
         <Shell active="notif">
             <div class="wf-spread notification-actions">
@@ -189,7 +215,7 @@ pub fn NotificationsPage() -> impl IntoView {
                         </span>
                     </Show>
                     <button class="wf-btn sm ghost"
-                        on:click=move |_| notification_store.mark_notifications_read()>
+                        on:click=mark_all_read>
                         "既読に"
                     </button>
                 </div>
@@ -201,7 +227,10 @@ pub fn NotificationsPage() -> impl IntoView {
                 <span class="t">"フォロー"</span>
             </div>
             <section class="timeline-list">
-                {notifications.into_iter().map(|notification| {
+                <For
+                    each=move || notifications.get()
+                    key=|notification| notification.id.clone()
+                    children=|notification| {
                     let sender = notification.sender.clone();
                     let note   = notification.note.clone();
                     let unread_class = if notification.is_read { "notification-card" } else { "notification-card unread" };
@@ -275,7 +304,7 @@ pub fn NotificationsPage() -> impl IntoView {
                             </div>
                         </article>
                     }
-                }).collect_view()}
+                } />
             </section>
         </Shell>
     }
@@ -369,31 +398,94 @@ fn MessageBubble(#[prop(default = false)] mine: bool, #[prop(into)] text: String
 #[component]
 pub fn ProfilePage() -> impl IntoView {
     let params = use_params_map();
+    let auth = expect_context::<AuthStore>();
+    let token = auth.token;
     let handle = move || {
         params
             .read()
             .get("username")
             .unwrap_or_else(|| "hana".into())
     };
-    let user = sample_user("hana", "Hana K.");
+    let user = RwSignal::<Option<crate::models::User>>::new(None);
+    let notes = RwSignal::<Vec<Note>>::new(vec![]);
+    let is_following = RwSignal::new(false);
+    let follow_busy = RwSignal::new(false);
+
+    // プロフィールと投稿一覧を実 API から取得
+    Effect::new(move |_| {
+        let username = handle();
+        if let Some(tok) = token.get() {
+            wasm_bindgen_futures::spawn_local(async move {
+                match crate::api::users::fetch_user(&tok, &username).await {
+                    Ok(fetched) => user.set(Some(fetched)),
+                    Err(e) => web_sys::console::error_1(&e.to_string().into()),
+                }
+                match crate::api::users::fetch_user_notes(&tok, &username).await {
+                    Ok(fetched) => notes.set(fetched),
+                    Err(e) => web_sys::console::error_1(&e.to_string().into()),
+                }
+            });
+        }
+    });
+
+    let toggle_follow = move |_| {
+        if follow_busy.get_untracked() {
+            return;
+        }
+        let (Some(tok), Some(target)) = (token.get_untracked(), user.get_untracked()) else {
+            return;
+        };
+        follow_busy.set(true);
+        let currently = is_following.get_untracked();
+        wasm_bindgen_futures::spawn_local(async move {
+            let result = if currently {
+                crate::api::users::unfollow(&tok, &target.id).await
+            } else {
+                crate::api::users::follow(&tok, &target.id).await
+            };
+            follow_busy.set(false);
+            match result {
+                Ok(()) => is_following.set(!currently),
+                Err(e) => web_sys::console::error_1(&e.to_string().into()),
+            }
+        });
+    };
+
     view! {
         <Shell active="profile">
             <section class="profile-head wf-card raised">
                 <div class="profile-banner" />
                 <div class="profile-main">
-                    <Avatar user=user.clone() size=AvatarSize::Xl />
+                    {move || user.get().map(|u| view! { <Avatar user=u size=AvatarSize::Xl /> })}
                     <div class="wf-grow">
                         <span class="wf-label">"ACTIVITYPUB · " {move || if handle().contains('@') { "REMOTE" } else { "LOCAL" }}</span>
-                        <h1 class="wf-hand profile-name">{user.name()}</h1>
+                        <h1 class="wf-hand profile-name">{move || user.get().map(|u| u.name()).unwrap_or_default()}</h1>
                         <span class="wf-mono muted-text">{move || format!("@{}", handle())}</span>
-                        <p>{user.bio.clone().unwrap_or_default()}</p>
-                        <div class="wf-row stats"><span>{user.notes_count.to_string()} " 投稿"</span><span>{user.followers_count.to_string()} " フォロワー"</span><span>{user.following_count.to_string()} " フォロー"</span></div>
+                        <p>{move || user.get().and_then(|u| u.bio).unwrap_or_default()}</p>
+                        <div class="wf-row stats">
+                            <span>{move || user.get().map(|u| u.notes_count).unwrap_or(0).to_string()} " 投稿"</span>
+                            <span>{move || user.get().map(|u| u.followers_count).unwrap_or(0).to_string()} " フォロワー"</span>
+                            <span>{move || user.get().map(|u| u.following_count).unwrap_or(0).to_string()} " フォロー"</span>
+                        </div>
                     </div>
-                    <div class="wf-row"><button class="wf-btn accent">"フォロー"</button><button class="wf-btn icon ghost">"···"</button></div>
+                    <div class="wf-row">
+                        <Show when=move || auth.me.get().zip(user.get()).map(|(me, u)| me.id != u.id).unwrap_or(false)>
+                            <button class="wf-btn accent" disabled=move || follow_busy.get() on:click=toggle_follow>
+                                {move || if is_following.get() { "フォロー中" } else { "フォロー" }}
+                            </button>
+                        </Show>
+                        <button class="wf-btn icon ghost">"···"</button>
+                    </div>
                 </div>
             </section>
             <div class="wf-tabs profile-tabs"><span class="t on">"投稿"</span><span class="t">"返信"</span><span class="t">"メディア"</span><span class="t">"いいね"</span></div>
-            <section class="timeline-list">{sample_notes().into_iter().map(|note| view! { <PostCard note=note /> }).collect_view()}</section>
+            <section class="timeline-list">
+                <For
+                    each=move || notes.get()
+                    key=|note| note.id.clone()
+                    children=|note| view! { <PostCard note=note /> }
+                />
+            </section>
         </Shell>
     }
 }
@@ -715,6 +807,8 @@ pub fn LoginPage() -> impl IntoView {
 
 #[component]
 pub fn SignupPage() -> impl IntoView {
+    let auth = expect_context::<AuthStore>();
+    let navigate = use_navigate();
     let signup_handle = RwSignal::new(String::new());
     let display_name = RwSignal::new(String::new());
     let email = RwSignal::new(String::new());
@@ -724,6 +818,38 @@ pub fn SignupPage() -> impl IntoView {
     let agreed_tos = RwSignal::new(false);
     let handle_available = RwSignal::<Option<bool>>::new(None);
     let error = RwSignal::<Option<String>>::new(None);
+    let busy = RwSignal::new(false);
+
+    // 新規登録の実 API 呼び出し
+    let do_register = move |_| {
+        if busy.get_untracked() {
+            return;
+        }
+        busy.set(true);
+        error.set(None);
+        let auth = auth.clone();
+        let navigate = navigate.clone();
+        wasm_bindgen_futures::spawn_local(async move {
+            use crate::api::auth::{RegisterRequest, register};
+            let request = RegisterRequest {
+                handle: signup_handle.get_untracked(),
+                display_name: Some(display_name.get_untracked()).filter(|s| !s.is_empty()),
+                email: Some(email.get_untracked()).filter(|s| !s.is_empty()),
+                password: password.get_untracked(),
+            };
+            match register(&request).await {
+                Ok(pair) => {
+                    busy.set(false);
+                    auth.login(pair.access_token, pair.user);
+                    navigate("/", Default::default());
+                }
+                Err(e) => {
+                    busy.set(false);
+                    error.set(Some(e.to_string()));
+                }
+            }
+        });
+    };
 
     // ハンドル可用性チェック (簡易デバウンス)
     Effect::new(move |_| {
@@ -885,8 +1011,9 @@ pub fn SignupPage() -> impl IntoView {
                     </label>
 
                     <button class="wf-btn accent full lg"
-                        disabled=move || !can_proceed.get()>
-                        "次へ →"
+                        disabled=move || !can_proceed.get() || busy.get()
+                        on:click=do_register>
+                        {move || if busy.get() { "登録中…" } else { "アカウント作成 →" }}
                     </button>
 
                     <p style="font-size:11px;color:var(--ink-3);text-align:center">
