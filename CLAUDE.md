@@ -144,7 +144,6 @@ mithic/
 ├── docs/
 ├── infra/
 ├── scripts/
-└── old-src/
 ```
 
 ## 3. 各クレートの実装内容と現状

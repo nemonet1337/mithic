@@ -1,0 +1,40 @@
+version: "3.8"
+
+services:
+  surrealdb:
+    image: surrealdb/surrealdb:latest
+    container_name: mithic-surrealdb
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - surrealdb_data:/data
+    command: start --log trace --user admin --pass admin --port 8000
+
+  dragonfly:
+    image: dragonflydb/dragonfly:latest
+    container_name: mithic-dragonfly
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+  mithic-dev:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+    container_name: mithic-dev
+    depends_on:
+      - surrealdb
+      - dragonfly
+    ports:
+      - "3000:3000"
+    volumes:
+      - ..:/workspace:cached
+      - /var/run/docker.sock:/var/run/docker.sock:cached
+    environment:
+      - CARGO_HOME=/root/.cargo
+      - SURREALDB_URL=ws://surrealdb:8000/rpc
+      - DRAGONFLY_URL=redis://dragonfly:6379
+
+volumes:
+  surrealdb_data:

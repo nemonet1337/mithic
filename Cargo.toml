@@ -116,8 +116,8 @@ shared            = { path = "shared" }
 # リリースビルド最適化 (TODO Phase 0 / P-1)
 [profile.release]
 opt-level = 3
-lto = "fat"
-codegen-units = 1
+lto = "thin"
+codegen-units = 16
 strip = true
 
 # WASM フロントエンドはバイナリサイズ優先

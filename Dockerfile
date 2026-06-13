@@ -3,6 +3,7 @@
 # =============================================================================
 FROM rust:1.94-bookworm AS chef
 RUN cargo install cargo-chef --locked
+ENV CARGO_BUILD_JOBS=2
 WORKDIR /app
 
 # =============================================================================

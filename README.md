@@ -66,3 +66,19 @@ cargo check -p frontend-web --target wasm32-unknown-unknown
 ## ライセンス
 
 AGPL-3.0
+
+## DevContainer
+
+VS Code DevContainerを使用して開発環境を構築できます。
+
+### Podmanを使用する場合
+
+```bash
+# podman-composeのインストール
+pip install podman-compose
+
+# コンテナの起動
+podman-compose -f .devcontainer/docker-compose.yml up -d --build
+```
+
+Podman固有の注意事項は `.devcontainer/PODMAN.md` を参照してください。
