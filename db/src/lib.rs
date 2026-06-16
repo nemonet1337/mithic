@@ -1,9 +1,11 @@
 pub mod cache;
 pub mod dragonfly;
 pub mod queries;
+pub mod storage;
 pub mod surreal;
 
 pub use dragonfly::create_client as create_dragonfly_client;
+pub use storage::create_storage_client;
 pub use surreal::{
     SurrealConfig, create_client as create_surreal_client, create_pool, init_schema,
 };
@@ -84,8 +86,8 @@ impl DragonflyClient {
     }
 
     /// ブロッキングコマンド (BRPOP 等) 用の専用コネクションを払い出す
-    pub async fn dedicated_connection(&self) -> anyhow::Result<redis::aio::MultiplexedConnection> {
-        Ok(self.client.get_multiplexed_async_connection().await?)
+    pub fn dedicated_connection(&self) -> anyhow::Result<redis::Connection> {
+        Ok(self.client.get_connection()?)
     }
 
     pub fn manager(&self) -> ConnectionManager {

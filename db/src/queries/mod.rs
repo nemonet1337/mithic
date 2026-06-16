@@ -7,14 +7,20 @@ pub mod notifications;
 pub mod reactions;
 pub mod timeline;
 
-pub use actors::{create_actor, get_actor_by_id, get_actor_by_username, update_actor_token};
-pub use drive::{create_drive_file, delete_drive_file, get_drive_file, get_user_drive_files};
+pub use actors::{
+    create_actor, get_actor_by_id, get_actor_by_username, get_actor_by_username_or_email,
+    update_actor_token,
+};
+pub use drive::{
+    create_drive_file, delete_drive_file, get_drive_file, get_drive_file_by_hash,
+    get_user_drive_files,
+};
 pub use favorites::{add_favorite, is_favorited, remove_favorite};
 pub use follows::{
     block_user, follow_user, get_followers, get_following, is_blocking, is_following, is_muting,
     mute_user, unblock_user, unfollow_user, unmute_user,
 };
-pub use notes::{create_note, delete_note, get_note_by_id};
+pub use notes::{create_note, delete_note, get_note_by_id, get_note_by_uri};
 pub use notifications::{
     create_notification, get_notifications, mark_all_notifications_as_read,
     mark_notification_as_read,

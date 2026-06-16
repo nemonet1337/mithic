@@ -24,3 +24,5 @@ rsa         = { workspace = true }
 surrealdb   = { workspace = true }
 redis       = { workspace = true }
 tokio       = { workspace = true }
+apalis      = { workspace = true }
+apalis-redis = { workspace = true }

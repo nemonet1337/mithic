@@ -3,7 +3,9 @@ use mithic_core::models::actor::Actor;
 use mithic_core::services::auth::{generate_jwt, hash_password, verify_password};
 use mithic_core::{AppError, Result};
 use mithic_db::SurrealClient;
-use mithic_db::queries::{create_actor, get_actor_by_username, update_actor_token};
+use mithic_db::queries::{
+    create_actor, get_actor_by_username, get_actor_by_username_or_email, update_actor_token,
+};
 use shared::{SigninRequest, SignupRequest};
 
 /// ActivityPub 連合用の RSA-2048 鍵ペアを生成する (PEM)
@@ -51,7 +53,7 @@ pub async fn register_user(
 
     let mut actor = Actor::new_local(request.username, request.name);
     actor.password_hash = Some(password_hash);
-    actor.email = request.email;
+    actor.email = request.email.map(|e| e.to_lowercase());
     actor.private_key = Some(private_pem);
     actor.public_key = Some(public_pem);
 
@@ -72,7 +74,7 @@ pub async fn authenticate_user(
     request: SigninRequest,
     config: &AppConfig,
 ) -> Result<(String, Actor)> {
-    let mut actor = get_actor_by_username(surreal, &request.username)
+    let mut actor = get_actor_by_username_or_email(surreal, &request.username)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?
         .ok_or_else(|| AppError::Unauthorized("Invalid username or password".to_string()))?;

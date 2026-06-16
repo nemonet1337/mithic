@@ -21,3 +21,6 @@ tracing-subscriber = { workspace = true }
 anyhow        = { workspace = true }
 dotenvy       = { workspace = true }
 mimalloc      = { workspace = true }
+apalis        = { workspace = true }
+apalis-redis  = { workspace = true }
+mithic-federation = { workspace = true }

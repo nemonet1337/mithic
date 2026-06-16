@@ -19,3 +19,4 @@ async-trait = { workspace = true }
 futures     = { workspace = true }
 futures-util = { workspace = true }
 redis       = { workspace = true }
+surrealdb   = { workspace = true }

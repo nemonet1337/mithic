@@ -2,8 +2,9 @@
 # Stage 1: cargo-chef installer (shared base for dep caching)
 # =============================================================================
 FROM rust:1.94-bookworm AS chef
+RUN apt-get update && apt-get install -y clang mold && rm -rf /var/lib/apt/lists/*
 RUN cargo install cargo-chef --locked
-ENV CARGO_BUILD_JOBS=2
+ENV CARGO_BUILD_JOBS=4
 WORKDIR /app
 
 # =============================================================================
@@ -22,7 +23,9 @@ RUN apt-get update && apt-get install -y \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=planner /app/recipe.json recipe.json
-RUN cargo chef cook --release \
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/app/target,sharing=locked \
+    cargo chef cook --release \
     --package mithic-server \
     --package mithic-worker \
     --recipe-path recipe.json
@@ -32,9 +35,13 @@ RUN cargo chef cook --release \
 # =============================================================================
 FROM backend-deps AS backend-builder
 COPY . .
-RUN cargo build --release \
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/app/target,sharing=locked \
+    cargo build --release \
     --package mithic-server \
-    --package mithic-worker
+    --package mithic-worker && \
+    cp /app/target/release/mithic-server /app/mithic-server && \
+    cp /app/target/release/mithic-worker /app/mithic-worker
 
 # =============================================================================
 # Stage 5: Build frontend WASM with Trunk
@@ -44,6 +51,8 @@ RUN apt-get update && apt-get install -y \
     pkg-config \
     libssl-dev \
     curl \
+    clang \
+    mold \
     && rm -rf /var/lib/apt/lists/*
 
 RUN rustup target add wasm32-unknown-unknown
@@ -58,7 +67,9 @@ COPY . .
 WORKDIR /app/frontend-web
 
 # trunk build downloads wasm-bindgen, wasm-opt, and Tailwind CLI at build time
-RUN trunk build --release
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/app/target,sharing=locked \
+    trunk build --release
 
 # =============================================================================
 # Stage 6: Server runtime image
@@ -71,7 +82,7 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=backend-builder /app/target/release/mithic-server /usr/local/bin/
+COPY --from=backend-builder /app/mithic-server /usr/local/bin/
 
 EXPOSE 3000
 ENTRYPOINT ["mithic-server"]
@@ -85,14 +96,16 @@ RUN apt-get update && apt-get install -y \
     libssl3 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=backend-builder /app/target/release/mithic-worker /usr/local/bin/
+COPY --from=backend-builder /app/mithic-worker /usr/local/bin/
 
 ENTRYPOINT ["mithic-worker"]
 
 # =============================================================================
-# Stage 8: Frontend — nginx serving WASM dist
+# Stage 8: Frontend — caddy serving WASM dist
 # =============================================================================
-FROM nginx:alpine AS frontend
-COPY --from=frontend-builder /app/frontend-web/dist /usr/share/nginx/html
-COPY infra/nginx/nginx.conf /etc/nginx/conf.d/default.conf
+FROM caddy:alpine AS frontend
+COPY --from=frontend-builder /app/frontend-web/dist /usr/share/caddy
+COPY infra/caddy/Caddyfile /etc/caddy/Caddyfile
 EXPOSE 80
+EXPOSE 443
+EXPOSE 3000

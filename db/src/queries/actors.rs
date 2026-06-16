@@ -97,6 +97,21 @@ pub async fn get_actor_by_username(
     Ok(rows_to::<Actor>(rows)?.into_iter().next())
 }
 
+pub async fn get_actor_by_username_or_email(
+    client: &SurrealClient,
+    username_or_email: &str,
+) -> anyhow::Result<Option<Actor>> {
+    let identifier_lower = username_or_email.to_lowercase();
+    let mut response = client
+        .query(
+            "SELECT * FROM user WHERE username_lower = $identifier OR email = $identifier LIMIT 1;",
+        )
+        .bind(("identifier", identifier_lower))
+        .await?;
+    let rows: Vec<surrealdb::types::Value> = response.take(0)?;
+    Ok(rows_to::<Actor>(rows)?.into_iter().next())
+}
+
 pub async fn update_actor_token(
     client: &SurrealClient,
     id: &ActorId,

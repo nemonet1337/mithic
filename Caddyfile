@@ -1,0 +1,63 @@
+# Mithic Caddyfile
+# Modern Reverse Proxy configuration
+
+{
+    admin off
+}
+
+:80, :3000 {
+    log {
+        output stdout
+    }
+
+    # Web Root
+    root * /usr/share/caddy
+
+    # Compression (Gzip & Zstandard)
+    encode gzip zstd
+
+    # Bot Matcher (Discordbot, Twitterbot, Slackbot, Googlebot, etc. for OGP)
+    @bots {
+        header_regexp User-Agent "(?i)(discordbot|twitterbot|slackbot|telegrambot|whatsapp|googlebot|bingbot|facebot|facebookexternalhit|baiduspider|yandexbot)"
+        path_regexp "^/(notes|profile)/"
+    }
+    reverse_proxy @bots server:3000
+
+    # API endpoints proxy
+    reverse_proxy /api/* server:3000
+
+    # WebSocket connections proxy
+    @ws {
+        header Connection *Upgrade*
+        header Upgrade    websocket
+    }
+    reverse_proxy @ws server:3000
+
+    # ActivityPub / Federation endpoints proxy
+    @activitypub {
+        path_regexp "^/(\.well-known/|nodeinfo|users/|inbox)"
+    }
+    reverse_proxy @activitypub server:3000
+
+    # WASM & JS - long cache (Trunk content-addressed)
+    @immutable_assets {
+        path *.wasm *.js
+    }
+    header @immutable_assets Cache-Control "public, max-age=31536000, immutable"
+
+    # Static assets
+    @cached_assets {
+        path *.css *.svg *.ico *.png *.jpg *.webp *.woff2
+    }
+    header @cached_assets Cache-Control "public, max-age=604800, no-transform"
+
+    # SPA routing fallback
+    try_files {path} {path}/ /index.html
+
+    @index {
+        path /index.html
+    }
+    header @index Cache-Control "no-cache"
+
+    file_server
+}

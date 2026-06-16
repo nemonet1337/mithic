@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use apalis::prelude::*;
 use base64::prelude::*;
 use reqwest::Client;
 use rsa::RsaPrivateKey;
@@ -16,19 +17,23 @@ use tracing::{error, info, warn};
 use mithic_core::models::Actor;
 use mithic_db::{DragonflyClient, SurrealClient};
 
-/// 配送待ちキュー (BRPOP で取り出す)
-const QUEUE_KEY: &str = "federation:queue";
-/// リトライ予約 ZSET (score = 再投入予定 unix 秒)
-const SCHEDULED_KEY: &str = "federation:scheduled";
+/// apalis-redis で使用されるキー名
+const QUEUE_KEY: &str = "apalis:job:mithic::ActivityDelivery:pending";
+const SCHEDULED_KEY: &str = "apalis:job:mithic::ActivityDelivery:processing";
 /// 最終的に断念した配送
 const DLQ_KEY: &str = "federation:dlq";
-/// 配送リトライ上限
-const MAX_ATTEMPTS: i64 = 5;
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ActivityDelivery {
+    pub inbox_url: String,
+    pub activity: serde_json::Value,
+}
 
 #[derive(Debug, Clone)]
 pub struct FederationService {
     surreal: Arc<SurrealClient>,
     dragonfly: DragonflyClient,
+    storage: apalis_redis::RedisStorage<ActivityDelivery>,
     http_client: Client,
     instance_url: String,
     /// actor URI → パース済み秘密鍵のプロセス内キャッシュ
@@ -39,12 +44,14 @@ impl FederationService {
     pub fn new(
         surreal: SurrealClient,
         dragonfly: DragonflyClient,
+        storage: apalis_redis::RedisStorage<ActivityDelivery>,
         http_client: Client,
         instance_url: String,
     ) -> Self {
         Self {
             surreal: Arc::new(surreal),
             dragonfly,
+            storage,
             http_client,
             instance_url,
             key_cache: Arc::new(RwLock::new(HashMap::new())),
@@ -64,20 +71,16 @@ impl FederationService {
         if inbox_urls.is_empty() {
             return Ok(());
         }
-        let mut conn = self.dragonfly.manager();
-        let mut pipe = redis::pipe();
+        let mut storage = self.storage.clone();
         for inbox_url in inbox_urls {
-            let delivery = serde_json::json!({
-                "inbox_url": inbox_url,
-                "activity": activity,
-                "attempts": 0,
-            });
-            pipe.cmd("LPUSH")
-                .arg(QUEUE_KEY)
-                .arg(delivery.to_string())
-                .ignore();
+            let delivery = ActivityDelivery {
+                inbox_url,
+                activity: activity.clone(),
+            };
+            if let Err(e) = storage.push(delivery).await {
+                error!("Failed to push delivery to apalis: {}", e);
+            }
         }
-        pipe.query_async::<()>(&mut conn).await?;
         Ok(())
     }
 
@@ -371,130 +374,34 @@ impl FederationService {
         Ok(parse_remote_actor(&data))
     }
 
-    /// 配送ワーカーを並列起動する (TODO Phase F2: 配送の並列化)
-    pub async fn run_delivery_workers(&self, concurrency: usize) -> anyhow::Result<()> {
-        let concurrency = concurrency.max(1);
-        info!("Starting {} federation delivery workers", concurrency);
-
-        let mut handles = Vec::new();
-        for worker_id in 0..concurrency {
-            let service = self.clone();
-            handles.push(tokio::spawn(async move {
-                if let Err(e) = service.run_delivery_worker_loop(worker_id).await {
-                    error!("Delivery worker {} terminated: {}", worker_id, e);
-                }
-            }));
-        }
-
-        // リトライスケジューラ
-        let service = self.clone();
-        handles.push(tokio::spawn(async move {
-            service.run_retry_scheduler().await;
-        }));
-
-        for handle in handles {
-            let _ = handle.await;
-        }
-        Ok(())
+    fn to_apalis_error(&self, err: anyhow::Error) -> apalis::prelude::Error {
+        let box_err: Box<dyn std::error::Error + Send + Sync> = err.into();
+        apalis::prelude::Error::Failed(std::sync::Arc::new(box_err))
     }
 
-    /// 後方互換: 単一ワーカー起動
-    pub async fn run_delivery_worker(&self) -> anyhow::Result<()> {
-        self.run_delivery_workers(1).await
-    }
+    pub async fn process_delivery_task(
+        &self,
+        job: ActivityDelivery,
+    ) -> Result<(), apalis::prelude::Error> {
+        let inbox_url = &job.inbox_url;
+        let activity = &job.activity;
 
-    async fn run_delivery_worker_loop(&self, worker_id: usize) -> anyhow::Result<()> {
-        // BRPOP は接続を占有するため専用コネクションを使う
-        let mut conn = self.dragonfly.dedicated_connection().await?;
-        info!("Federation delivery worker {} started", worker_id);
-        loop {
-            let delivery_json: Option<String> = match redis::cmd("BRPOP")
-                .arg(QUEUE_KEY)
-                .arg(30i64)
-                .query_async::<Option<(String, String)>>(&mut conn)
-                .await
-            {
-                Ok(opt) => opt.map(|(_, val)| val),
-                Err(e) => {
-                    warn!(
-                        "Worker {} lost queue connection: {}; reconnecting",
-                        worker_id, e
-                    );
-                    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-                    conn = self.dragonfly.dedicated_connection().await?;
-                    continue;
-                }
-            };
+        let parsed_url = url::Url::parse(inbox_url)
+            .map_err(|e| self.to_apalis_error(anyhow::anyhow!("Invalid inbox URL: {e}")))?;
+        let host = parsed_url
+            .host_str()
+            .ok_or_else(|| self.to_apalis_error(anyhow::anyhow!("Invalid inbox URL: no host")))?;
 
-            if let Some(delivery_json) = delivery_json {
-                match serde_json::from_str::<serde_json::Value>(&delivery_json) {
-                    Ok(delivery) => {
-                        if let Err(e) = self.process_delivery_task(delivery).await {
-                            error!("Failed to process delivery: {}", e);
-                        }
-                    }
-                    Err(e) => {
-                        error!("Invalid delivery JSON: {}", e);
-                    }
-                }
-            }
+        // Dead Inbox Circuit Breaker (P-G8 / P-G9)
+        if self.is_inbox_dead(host).await {
+            warn!("Skipping delivery to dead inbox host: {}", host);
+            return Ok(());
         }
-    }
-
-    /// `federation:scheduled` ZSET の期限が来たリトライを本キューへ戻す
-    async fn run_retry_scheduler(&self) {
-        info!("Federation retry scheduler started");
-        loop {
-            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
-
-            let now = chrono::Utc::now().timestamp();
-            let mut conn = self.dragonfly.manager();
-
-            let due: Vec<String> = match redis::cmd("ZRANGEBYSCORE")
-                .arg(SCHEDULED_KEY)
-                .arg("-inf")
-                .arg(now)
-                .arg("LIMIT")
-                .arg(0)
-                .arg(100)
-                .query_async::<Vec<String>>(&mut conn)
-                .await
-            {
-                Ok(items) => items,
-                Err(e) => {
-                    warn!("Retry scheduler poll failed: {}", e);
-                    continue;
-                }
-            };
-
-            for item in due {
-                let mut pipe = redis::pipe();
-                pipe.cmd("ZREM").arg(SCHEDULED_KEY).arg(&item).ignore();
-                pipe.cmd("LPUSH").arg(QUEUE_KEY).arg(&item).ignore();
-                if let Err(e) = pipe.query_async::<()>(&mut conn).await {
-                    warn!("Failed to requeue scheduled delivery: {}", e);
-                }
-            }
-        }
-    }
-
-    async fn process_delivery_task(&self, delivery: serde_json::Value) -> anyhow::Result<()> {
-        let inbox_url = delivery
-            .get("inbox_url")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow::anyhow!("Missing inbox_url"))?;
-        let activity = delivery
-            .get("activity")
-            .ok_or_else(|| anyhow::anyhow!("Missing activity"))?;
-        let attempts = delivery
-            .get("attempts")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(0);
 
         let actor_id = activity
             .get("actor")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow::anyhow!("Missing actor in activity"))?;
+            .ok_or_else(|| self.to_apalis_error(anyhow::anyhow!("Missing actor in activity")))?;
 
         let actor_result: Option<Actor> = self
             .surreal
@@ -510,53 +417,75 @@ impl FederationService {
                 serde_json::from_value::<Actor>(json).ok()
             });
 
-        let actor = actor_result.ok_or_else(|| anyhow::anyhow!("Actor not found: {}", actor_id))?;
+        let actor = actor_result.ok_or_else(|| {
+            self.to_apalis_error(anyhow::anyhow!("Actor not found: {}", actor_id))
+        })?;
 
         match self.deliver_signed(inbox_url, activity, &actor).await {
-            Ok(_) => Ok(()),
+            Ok(_) => {
+                self.clear_inbox_dead(host).await;
+                Ok(())
+            }
             Err(e) => {
                 error!("Delivery failed to {}: {}", inbox_url, e);
-                let mut conn = self.dragonfly.manager();
-                if attempts < MAX_ATTEMPTS {
-                    // 指数バックオフ + ジッタで再スケジュール
-                    let backoff_secs = 60i64 * (1 << attempts.min(6));
-                    let jitter = (std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .map(|d| d.subsec_nanos())
-                        .unwrap_or(0) as i64)
-                        % 30;
-                    let retry_at = chrono::Utc::now().timestamp() + backoff_secs + jitter;
-                    let retry_delivery = serde_json::json!({
-                        "inbox_url": inbox_url,
-                        "activity": activity,
-                        "attempts": attempts + 1,
-                    });
-                    redis::cmd("ZADD")
-                        .arg(SCHEDULED_KEY)
-                        .arg(retry_at)
-                        .arg(retry_delivery.to_string())
-                        .query_async::<()>(&mut conn)
-                        .await?;
-                    warn!(
-                        "Scheduled retry for {} (attempt {}, in {}s)",
-                        inbox_url,
-                        attempts + 1,
-                        backoff_secs + jitter
-                    );
-                } else {
-                    // 上限超過は DLQ へ
-                    redis::cmd("LPUSH")
-                        .arg(DLQ_KEY)
-                        .arg(delivery.to_string())
-                        .query_async::<()>(&mut conn)
-                        .await?;
-                    error!(
-                        "Giving up on delivery to {} after {} attempts (moved to DLQ)",
-                        inbox_url, attempts
-                    );
-                }
-                Err(e)
+                self.handle_delivery_failure(host).await;
+                Err(self.to_apalis_error(e))
             }
+        }
+    }
+
+    async fn is_inbox_dead(&self, host: &str) -> bool {
+        let mut conn = self.dragonfly.manager();
+        let key = format!("dead_inbox:{}", host);
+        redis::cmd("EXISTS")
+            .arg(&key)
+            .query_async::<i32>(&mut conn)
+            .await
+            .unwrap_or(0)
+            == 1
+    }
+
+    async fn clear_inbox_dead(&self, host: &str) {
+        let mut conn = self.dragonfly.manager();
+        let key_dead = format!("dead_inbox:{}", host);
+        let key_fail = format!("inbox_failures:{}", host);
+        let _: Result<(), _> = redis::cmd("DEL")
+            .arg(&key_dead)
+            .arg(&key_fail)
+            .query_async(&mut conn)
+            .await;
+    }
+
+    async fn handle_delivery_failure(&self, host: &str) {
+        let mut conn = self.dragonfly.manager();
+        let key_fail = format!("inbox_failures:{}", host);
+        let key_dead = format!("dead_inbox:{}", host);
+
+        let failures: i32 = match redis::cmd("INCR")
+            .arg(&key_fail)
+            .query_async::<i32>(&mut conn)
+            .await
+        {
+            Ok(val) => val,
+            Err(e) => {
+                warn!("Failed to increment inbox failure count: {}", e);
+                return;
+            }
+        };
+
+        if failures >= 5 {
+            warn!(
+                "Inbox host {} failed {} times. Marking as dead for 1 hour.",
+                host, failures
+            );
+            // 1時間 (3600秒) 配送をブロック
+            let _: Result<(), _> = redis::cmd("SET")
+                .arg(&key_dead)
+                .arg("1")
+                .arg("EX")
+                .arg(3600)
+                .query_async(&mut conn)
+                .await;
         }
     }
 }

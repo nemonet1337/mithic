@@ -34,7 +34,11 @@ pub trait Channel: Send + Sync {
     fn id(&self) -> &str;
 
     /// Initialize the channel
-    async fn init(&self, redis: &DragonflyClient) -> anyhow::Result<()>;
+    async fn init(
+        &self,
+        surreal: &mithic_db::SurrealClient,
+        redis: &DragonflyClient,
+    ) -> anyhow::Result<()>;
 
     /// Handle incoming message from client
     async fn on_message(&self, msg_type: &str, body: serde_json::Value);

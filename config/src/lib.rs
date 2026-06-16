@@ -22,6 +22,15 @@ pub struct AppConfig {
 
     pub storage_type: String,
     pub local_storage_path: String,
+    pub storage_s3_endpoint: Option<String>,
+    pub storage_s3_bucket: Option<String>,
+    pub storage_s3_access_key: Option<String>,
+    pub storage_s3_secret_key: Option<String>,
+    pub storage_s3_region: Option<String>,
+    pub storage_s3_public_url: Option<String>,
+    pub storage_gcs_bucket: Option<String>,
+    pub storage_gcs_credentials: Option<String>,
+    pub storage_gcs_public_url: Option<String>,
 
     pub instance_url: String,
     pub instance_name: String,
@@ -67,6 +76,15 @@ impl AppConfig {
             storage_type: env::var("STORAGE_TYPE").unwrap_or_else(|_| "local".to_string()),
             local_storage_path: env::var("LOCAL_STORAGE_PATH")
                 .unwrap_or_else(|_| "./files".to_string()),
+            storage_s3_endpoint: env::var("STORAGE_S3_ENDPOINT").ok(),
+            storage_s3_bucket: env::var("STORAGE_S3_BUCKET").ok(),
+            storage_s3_access_key: env::var("STORAGE_S3_ACCESS_KEY").ok(),
+            storage_s3_secret_key: env::var("STORAGE_S3_SECRET_KEY").ok(),
+            storage_s3_region: env::var("STORAGE_S3_REGION").ok(),
+            storage_s3_public_url: env::var("STORAGE_S3_PUBLIC_URL").ok(),
+            storage_gcs_bucket: env::var("STORAGE_GCS_BUCKET").ok(),
+            storage_gcs_credentials: env::var("STORAGE_GCS_CREDENTIALS").ok(),
+            storage_gcs_public_url: env::var("STORAGE_GCS_PUBLIC_URL").ok(),
 
             instance_url: env::var("INSTANCE_URL")
                 .unwrap_or_else(|_| "http://localhost:3000".to_string()),

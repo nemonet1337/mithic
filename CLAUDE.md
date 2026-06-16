@@ -346,3 +346,21 @@ Note, User, Notification, CreateNoteRequest, MediaAttachment, NoteVisibility の
 - **コミット規約**: Conventional Commits
 - **ドキュメント**: コードコメント、APIドキュメント
 - **ライセンス**: AGPL-3.0 の遵守
+
+## 10. 実装作業は agy（Antigravity CLI / Gemini）に委譲すること
+
+このプロジェクトのコーディング作業（新規実装・修正・リファクタリング）は、原則として **`agy` コマンド（Antigravity CLI 経由の Gemini 3.5 Flash (High)）** に委譲して進めること。セットアップ手順は `Bridge.md` を参照。
+
+### 委譲フロー
+
+1. **作業前確認**: まず `mcp__agy__agy_status` を呼び、`agy CLI [ok]`（疎通成功）を確認する（quota 消費なし）。`not found` の場合は `Bridge.md` のトラブルシュートに従って復旧する。
+2. **実装依頼**: コーディングタスクは `mcp__agy__agy_ask`（新規セッション）/ `mcp__agy__agy_continue`（継続セッション）で agy に依頼する。依頼プロンプトには、対象ファイル・要件・既存コードの規約（rustfmt / Conventional Commits / 本ガイドラインの責務分離）を明示する。
+3. **画像が必要な場合**: UI モックや図を渡すときは `mcp__agy__agy_image` を使う。
+4. **レビュー**: agy はファイル書込み・コマンド実行を自律的に行うエージェント。**生成・変更された内容は必ず Claude がレビューする**こと。コミット前に `git diff` で差分を確認し、本ガイドライン（技術スタック・ActivityPub 準拠・責務分離・パフォーマンス方針）に適合しているか検証する。
+5. **ドキュメント同期**: 実装完了時は本ガイドライン §7 に従い `docs/feature-gap-analysis.md` と `TODO.md` を更新する。
+
+### 注意事項
+
+- `GEMINI_API_KEY` / `ANTIGRAVITY_API_KEY` / `GOOGLE_API_KEY` を環境変数に設定しないこと（OAuth サブスク枠をバイパスし従量課金になる）。
+- agy は承認ゲート無しで動作するため、未信頼テキストをそのまま流さない。
+- agy の応答が空・混在する場合は `mcp__agy__agy_status` で診断する（詳細は `Bridge.md`）。

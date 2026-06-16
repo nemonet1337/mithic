@@ -14,10 +14,18 @@ pub enum AvatarSize {
 impl AvatarSize {
     pub fn class_name(self) -> &'static str {
         match self {
-            Self::Sm => "sm",
-            Self::Md => "",
-            Self::Lg => "lg",
-            Self::Xl => "xl",
+            Self::Sm => "w-8 h-8",
+            Self::Md => "w-10 h-10",
+            Self::Lg => "w-14 h-14",
+            Self::Xl => "w-20 h-20",
+        }
+    }
+    pub fn text_size(self) -> &'static str {
+        match self {
+            Self::Sm => "text-xs",
+            Self::Md => "text-sm",
+            Self::Lg => "text-base",
+            Self::Xl => "text-xl",
         }
     }
 }
@@ -32,12 +40,12 @@ pub enum AvatarAccent {
 }
 
 impl AvatarAccent {
-    fn extra_class(self) -> &'static str {
+    fn bg_class(self) -> &'static str {
         match self {
-            Self::None => "",
-            Self::Accent => " accent",
-            Self::Accent2 => " accent2",
-            Self::Ink => " ink",
+            Self::None => "bg-primary/20 text-primary",
+            Self::Accent => "bg-primary text-primary-content",
+            Self::Accent2 => "bg-secondary text-secondary-content",
+            Self::Ink => "bg-base-content text-base-100",
         }
     }
 }
@@ -52,19 +60,31 @@ pub fn Avatar(
     let label = user.handle();
     let name = user.name();
     let avatar_url = user.avatar_url.clone();
-    let size_cls = size.class_name();
-    let class = if size_cls.is_empty() {
-        format!("wf-av{} avatar-content", accent.extra_class())
-    } else {
-        format!("wf-av {} avatar-content{}", size_cls, accent.extra_class())
-    };
+    let size_class = size.class_name();
+    let text_class = size.text_size();
+    let accent_class = accent.bg_class();
+
     view! {
-        <div class=class aria-label=label>
-            {if let Some(url) = avatar_url {
-                view! { <img src=url alt=name loading="lazy" /> }.into_any()
-            } else {
-                view! { <span>{initials}</span> }.into_any()
-            }}
+        <div class="avatar" aria-label=label>
+            <div class=format!(
+                "{} rounded-full ring-2 ring-base-300 ring-offset-base-100 ring-offset-1",
+                size_class
+            )>
+                {if let Some(url) = avatar_url {
+                    view! {
+                        <img src=url alt=name loading="lazy" class="object-cover" />
+                    }.into_any()
+                } else {
+                    view! {
+                        <div class=format!(
+                            "placeholder flex items-center justify-center w-full h-full rounded-full {} {}",
+                            accent_class, text_class
+                        )>
+                            <span class="font-bold uppercase">{initials}</span>
+                        </div>
+                    }.into_any()
+                }}
+            </div>
         </div>
     }
 }

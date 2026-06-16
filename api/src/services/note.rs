@@ -13,7 +13,7 @@ use shared::{CreateNoteRequest, Note as NoteDto, Notification as NotifDto};
 
 use crate::dto::{actor_to_user, note_to_dto, visibility_from_dto};
 use crate::events::StreamBroadcast;
-use crate::routes::notifications::notif_type_to_dto;
+use crate::routes::misskey::notifications::notif_type_to_dto;
 use crate::state::AppState;
 
 fn parse_note_id(raw: &str) -> Result<NoteId> {

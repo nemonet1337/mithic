@@ -15,4 +15,6 @@
 
 # claude
 .claude
-frontend-web/dist/
+
+# node
+/frontend-web/node_modules

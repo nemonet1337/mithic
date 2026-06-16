@@ -17,6 +17,12 @@ pub async fn create_note(client: &SurrealClient, note: &Note) -> anyhow::Result<
     let actor_id_str = note.actor_id.to_string();
     let reply_id_str = note.reply_id.map(|id| id.to_string());
     let renote_id_str = note.renote_id.map(|id| id.to_string());
+    let mentions_strs: Vec<String> = note.mentions.iter().map(|id| id.to_string()).collect();
+    let visible_user_ids_strs: Vec<String> = note
+        .visible_user_ids
+        .iter()
+        .map(|id| id.to_string())
+        .collect();
 
     let _response = client
         .query(
@@ -35,7 +41,12 @@ pub async fn create_note(client: &SurrealClient, note: &Note) -> anyhow::Result<
                 renote_id: if $renote_id != None { type::record('note', $renote_id) } else { None },
                 file_ids: $file_ids,
                 tags: $tags,
-                has_poll: $has_poll
+                has_poll: $has_poll,
+                uri: $uri,
+                actor_host: $actor_host,
+                emojis: $emojis,
+                mentions: $mentions.map(|$id| type::record('user', $id)),
+                visible_user_ids: $visible_user_ids.map(|$id| type::record('user', $id))
             };
         ",
         )
@@ -53,6 +64,11 @@ pub async fn create_note(client: &SurrealClient, note: &Note) -> anyhow::Result<
         .bind(("file_ids", note.file_ids.clone()))
         .bind(("tags", note.tags.clone()))
         .bind(("has_poll", note.has_poll))
+        .bind(("uri", note.uri.clone()))
+        .bind(("actor_host", note.actor_host.clone()))
+        .bind(("emojis", note.emojis.clone()))
+        .bind(("mentions", mentions_strs))
+        .bind(("visible_user_ids", visible_user_ids_strs))
         .await?;
 
     get_note_by_id(client, &note.id)
@@ -89,4 +105,26 @@ pub async fn delete_note(client: &SurrealClient, id: &NoteId) -> anyhow::Result<
         .bind(("id", id_str))
         .await?;
     Ok(())
+}
+
+pub async fn get_note_by_uri(client: &SurrealClient, uri: &str) -> anyhow::Result<Option<Note>> {
+    let uri_str = uri.to_string();
+    let mut response = client
+        .query(
+            "
+            SELECT 
+                *,
+                actor_id.id AS actor_id,
+                reply_id.id AS reply_id,
+                renote_id.id AS renote_id
+            FROM note 
+            WHERE uri = $uri
+            LIMIT 1;
+        ",
+        )
+        .bind(("uri", uri_str))
+        .await?;
+
+    let rows: Vec<surrealdb::types::Value> = response.take(0)?;
+    Ok(rows_to::<Note>(rows)?.into_iter().next())
 }

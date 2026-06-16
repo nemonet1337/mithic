@@ -48,6 +48,7 @@ tower-http = { version = "0.6", features = ["cors", "trace", "compression-gzip"]
 # Database
 surrealdb = { version = "3", features = ["protocol-ws", "kv-mem"] }
 redis = { version = "1.2", features = ["tokio-comp", "connection-manager"] }
+object_store = { version = "0.13.2", features = ["aws", "gcp"] }
 
 # HTTP client
 reqwest = { version = "0.13", features = ["json"] }
@@ -95,6 +96,10 @@ validator = { version = "0.20", features = ["derive"] }
 
 # Web Push
 web-push = "0.11"
+
+# Background Jobs
+apalis = { version = "0.6" }
+apalis-redis = { version = "0.6" }
 
 # Memory allocator (server/worker)
 mimalloc = "0.1"

@@ -185,3 +185,36 @@ pub async fn delete_drive_file(client: &SurrealClient, id: &FileId) -> anyhow::R
 
     Ok(())
 }
+
+pub async fn get_drive_file_by_hash(
+    client: &SurrealClient,
+    hash: &str,
+) -> anyhow::Result<Option<DriveFile>> {
+    let mut response = client
+        .query(
+            "
+            SELECT 
+                id,
+                created_at,
+                name,
+                mime_type,
+                size,
+                user_id.id AS owner_id,
+                md5 AS hash,
+                url,
+                thumbnail_url
+            FROM drive_file
+            WHERE md5 = $hash
+            LIMIT 1;
+            ",
+        )
+        .bind(("hash", hash.to_string()))
+        .await?;
+
+    let rows: Vec<serde_json::Value> = response.take(0)?;
+    if let Some(row) = rows.into_iter().next() {
+        Ok(map_row_to_file(row))
+    } else {
+        Ok(None)
+    }
+}

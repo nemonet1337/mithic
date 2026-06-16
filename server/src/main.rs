@@ -1,4 +1,5 @@
 use anyhow::Result;
+use apalis_redis::RedisStorage;
 use tracing::info;
 
 // mimalloc をグローバルアロケータに設定 (TODO Phase 0)
@@ -36,8 +37,11 @@ async fn main() -> Result<()> {
 
     info!("Connecting to Dragonfly at {}", config.dragonfly_url);
     let dragonfly_client = mithic_db::create_dragonfly_client(&config.dragonfly_url).await?;
+    let apalis_conn = apalis_redis::connect(config.dragonfly_url.clone()).await?;
+    let storage = RedisStorage::new(apalis_conn);
 
-    let state = mithic_api::AppState::new(surreal_client, dragonfly_client, config.clone())?;
+    let state =
+        mithic_api::AppState::new(surreal_client, dragonfly_client, storage, config.clone())?;
     let app = mithic_api::routes::create_router(state);
 
     let addr = format!("0.0.0.0:{}", config.server_port);

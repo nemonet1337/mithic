@@ -14,7 +14,11 @@ macro_rules! impl_channel {
             fn id(&self) -> &str {
                 &self.base.id
             }
-            async fn init(&self, _redis: &DragonflyClient) -> anyhow::Result<()> {
+            async fn init(
+                &self,
+                _surreal: &mithic_db::SurrealClient,
+                _redis: &DragonflyClient,
+            ) -> anyhow::Result<()> {
                 Ok(())
             }
             async fn on_message(&self, _msg_type: &str, _body: serde_json::Value) {}
@@ -62,7 +66,69 @@ impl GlobalTimelineChannel {
     }
 }
 
-impl_channel!(GlobalTimelineChannel, "globalTimeline");
+#[async_trait]
+impl Channel for GlobalTimelineChannel {
+    fn name(&self) -> &str {
+        "globalTimeline"
+    }
+    fn id(&self) -> &str {
+        &self.base.id
+    }
+    async fn init(
+        &self,
+        surreal: &mithic_db::SurrealClient,
+        _redis: &DragonflyClient,
+    ) -> anyhow::Result<()> {
+        let db = surreal.clone();
+        let sender = self.sender().clone();
+
+        tokio::spawn(async move {
+            use futures::StreamExt;
+            let mut stream = match db.select::<Vec<serde_json::Value>>("note").live().await {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::error!("Failed to start live query on note: {}", e);
+                    return;
+                }
+            };
+
+            tracing::info!("SurrealDB Live Query started for globalTimeline");
+
+            while let Some(notification) = stream.next().await {
+                match notification {
+                    Ok(n) => {
+                        let action_str = format!("{:?}", n.action).to_uppercase();
+                        if action_str == "CREATE" {
+                            let mut val = n.data;
+                            if val.get("visibility").and_then(|v| v.as_str()) == Some("public") {
+                                mithic_db::queries::strip_record_prefixes(&mut val);
+                                let msg = ChannelMessage::new("note", val);
+                                if sender.send(msg).is_err() {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!("Error in globalTimeline live select: {}", e);
+                        break;
+                    }
+                }
+            }
+            tracing::info!("SurrealDB Live Query stopped for globalTimeline");
+        });
+
+        Ok(())
+    }
+    async fn on_message(&self, _msg_type: &str, _body: serde_json::Value) {}
+    async fn dispose(&self) {}
+    fn sender(&self) -> &UnboundedSender<ChannelMessage> {
+        self.sender.get().expect("sender not initialized")
+    }
+    fn set_sender(&self, sender: UnboundedSender<ChannelMessage>) {
+        let _ = self.sender.set(sender);
+    }
+}
 
 pub struct HashtagChannel {
     base: ChannelBase,

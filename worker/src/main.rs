@@ -3,6 +3,9 @@
 //! バックグラウンドワーカープロセス。
 //! フェデレーション配送キューの並列処理とリトライスケジューラを担当する。
 
+use apalis::prelude::*;
+use apalis_redis::RedisStorage;
+use mithic_federation::{ActivityDelivery, FederationService};
 use tracing::info;
 
 // mimalloc をグローバルアロケータに設定 (TODO Phase 0)
@@ -48,27 +51,35 @@ async fn main() -> anyhow::Result<()> {
         .build()
         .unwrap_or_default();
 
+    let apalis_conn = apalis_redis::connect(config.dragonfly_url.clone()).await?;
+    let storage = RedisStorage::new(apalis_conn);
+
     let federation_service = mithic_federation::FederationService::new(
         surreal_client,
         dragonfly_client,
+        storage.clone(),
         http_client,
         config.instance_url.clone(),
     );
 
-    // 配送ワーカー (並列) + リトライスケジューラを起動
-    tokio::spawn(async move {
-        if let Err(e) = federation_service
-            .run_delivery_workers(DELIVERY_CONCURRENCY)
-            .await
-        {
-            tracing::error!("Federation delivery workers failed: {}", e);
-        }
-    });
+    info!("Worker started. Running monitor...");
 
-    info!("Worker started. Waiting for jobs...");
-
-    tokio::signal::ctrl_c().await?;
-    info!("Worker shutting down...");
+    Monitor::new()
+        .register_with_count(DELIVERY_CONCURRENCY, {
+            WorkerBuilder::new("federation-delivery-worker")
+                .data(federation_service)
+                .backend(storage)
+                .build_fn(deliver_activity_job)
+        })
+        .run()
+        .await?;
 
     Ok(())
+}
+
+async fn deliver_activity_job(
+    job: ActivityDelivery,
+    service: Data<FederationService>,
+) -> Result<(), apalis::prelude::Error> {
+    service.process_delivery_task(job).await
 }

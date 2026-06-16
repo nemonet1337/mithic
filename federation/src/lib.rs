@@ -1,3 +1,3 @@
 pub mod service;
 
-pub use service::FederationService;
+pub use service::{ActivityDelivery, FederationService};
