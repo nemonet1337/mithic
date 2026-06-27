@@ -1,9 +1,9 @@
-use serde::Deserialize;
-
-use crate::SurrealClient;
+use crate::{DragonflyClient, SurrealClient};
+use crate::cache::timeline_range;
 use crate::queries::rows_to;
 use mithic_core::models::actor::Actor;
 use mithic_core::models::note::{Note, NoteId};
+use serde::Deserialize;
 
 /// 著者を同梱したノート行 (N+1 解消用)
 #[derive(Debug, Clone, Deserialize)]
@@ -13,7 +13,6 @@ pub struct NoteWithAuthor {
     pub author: Actor,
 }
 
-/// SELECT 句: ノート本体 + リンク先 ID の平坦化 + 著者レコードの同梱
 const NOTE_WITH_AUTHOR_FIELDS: &str = "
     *,
     actor_id.id AS actor_id,
@@ -21,6 +20,8 @@ const NOTE_WITH_AUTHOR_FIELDS: &str = "
     renote_id.id AS renote_id,
     actor_id.* AS author
 ";
+
+const TIMELINE_CACHE_KEY: &str = "home_timeline";
 
 async fn fetch_notes(
     client: &SurrealClient,
@@ -55,6 +56,42 @@ async fn fetch_notes(
     }
 
     let mut response = q.await?;
+    let rows: Vec<surrealdb::types::Value> = response.take(0)?;
+    rows_to::<NoteWithAuthor>(rows)
+}
+
+/// キャッシュファーストのホームタイムライン取得
+pub async fn get_home_timeline_cached(
+    dragonfly: &DragonflyClient,
+    surreal: &SurrealClient,
+    user_id: String,
+    limit: usize,
+) -> anyhow::Result<Vec<NoteWithAuthor>> {
+    let key = format!("{}:{}", TIMELINE_CACHE_KEY, user_id);
+    let cloned_dragonfly = dragonfly.clone();
+    let cloned_key = key.clone();
+    let cached_ids: Vec<String> = timeline_range(&cloned_dragonfly, &cloned_key, limit as isize)
+        .await
+        .unwrap_or_default();
+
+    if cached_ids.is_empty() {
+        let actor_id: mithic_core::models::actor::ActorId = user_id.parse()
+            .map_err(|_| anyhow::anyhow!("Invalid actor id"))?;
+        return get_home_timeline(surreal, &actor_id, limit, None, None).await;
+    }
+
+    let id_records: Vec<String> = cached_ids
+        .iter()
+        .map(|id| format!("note:{}", id))
+        .collect();
+
+    let mut response = surreal
+        .query(format!(
+            "SELECT {NOTE_WITH_AUTHOR_FIELDS} FROM note WHERE id IN $ids ORDER BY id DESC;"
+        ))
+        .bind(("ids", id_records))
+        .await?;
+
     let rows: Vec<surrealdb::types::Value> = response.take(0)?;
     rows_to::<NoteWithAuthor>(rows)
 }
@@ -168,4 +205,13 @@ pub async fn get_note_quotes(
         .await?;
     let rows: Vec<surrealdb::types::Value> = response.take(0)?;
     rows_to::<NoteWithAuthor>(rows)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn timeline_keys_format() {
+        assert_eq!(format!("{}:u1", TIMELINE_CACHE_KEY), "home_timeline:u1");
+    }
 }

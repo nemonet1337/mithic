@@ -136,6 +136,18 @@ pub async fn unmute_user(
     Ok(())
 }
 
+pub async fn count_followers(
+    client: &SurrealClient,
+    actor_id: &ActorId,
+) -> anyhow::Result<usize> {
+    let mut response = client
+        .query("SELECT VALUE count() FROM follow WHERE out = type::record('user', $actor_id)")
+        .bind(("actor_id", actor_id.to_string()))
+        .await?;
+    let counts: Vec<usize> = response.take(0)?;
+    Ok(counts.into_iter().next().unwrap_or(0))
+}
+
 pub async fn is_following(
     client: &SurrealClient,
     follower_id: &ActorId,

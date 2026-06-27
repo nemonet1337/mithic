@@ -5,8 +5,51 @@ use argon2::{
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
+use totp_rs::{Algorithm, Secret, TOTP};
 
 use crate::error::{AppError, Result};
+
+/// TOTP シークレットを生成し、(base32シークレット, otpauth URL) を返す
+pub fn generate_totp_secret() -> Result<(String, String)> {
+    let totp = TOTP::new(
+        Algorithm::SHA1,
+        6,
+        1,
+        30,
+        Secret::default()
+            .to_bytes()
+            .map_err(|e| AppError::Internal(e.to_string()))?,
+        Some("mithic".to_string()),
+        "".to_string(),
+    )
+    .map_err(|e| AppError::Internal(format!("TOTP error: {}", e)))?;
+
+    let secret_base32 = totp.get_secret_base32();
+    let url = totp.get_url();
+    Ok((secret_base32, url))
+}
+
+/// TOTP コードを検証する
+pub fn verify_totp(secret: &str, code: &str) -> Result<bool> {
+    let totp = TOTP::new(
+        Algorithm::SHA1,
+        6,
+        1,
+        30,
+        Secret::Encoded(secret.to_string())
+            .to_bytes()
+            .map_err(|e| AppError::Internal(e.to_string()))?,
+        Some("mithic".to_string()),
+        "".to_string(),
+    )
+    .map_err(|e| AppError::Internal(format!("TOTP error: {}", e)))?;
+
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|_| AppError::Internal("Time went backwards".to_string()))?
+        .as_secs();
+    Ok(totp.check(code, now))
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {

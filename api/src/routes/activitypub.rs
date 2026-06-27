@@ -32,8 +32,13 @@ pub fn router() -> Router<AppState> {
         .route("/.well-known/nodeinfo", get(nodeinfo_discovery))
         .route("/nodeinfo/2.0", get(nodeinfo))
         .route("/users/{username}", get(actor_document))
+        .route("/@{username}", get(actor_redirect))
         .route("/users/{username}/inbox", post(inbox))
         .route("/inbox", post(shared_inbox))
+        .route("/users/{username}/outbox", get(outbox))
+        .route("/users/{username}/followers", get(followers))
+        .route("/users/{username}/following", get(following))
+        .route("/users/{username}/collections/featured", get(featured))
 }
 
 fn activity_response(body: Value) -> Response {
@@ -214,6 +219,56 @@ async fn actor_document(
         &actor,
         &state.config().instance_url,
     )))
+}
+
+async fn actor_redirect(
+    Path(username): Path<String>,
+) -> impl IntoResponse {
+    (StatusCode::TEMPORARY_REDIRECT, [(header::LOCATION, format!("/users/{}", username))])
+}
+
+async fn outbox(
+    State(_state): State<AppState>,
+    Path(_username): Path<String>,
+) -> Result<Json<Value>> {
+    Ok(Json(json!({
+        "@context": "https://www.w3.org/ns/activitystreams",
+        "type": "OrderedCollection",
+        "totalItems": 0
+    })))
+}
+
+async fn followers(
+    State(_state): State<AppState>,
+    Path(_username): Path<String>,
+) -> Result<Json<Value>> {
+    Ok(Json(json!({
+        "@context": "https://www.w3.org/ns/activitystreams",
+        "type": "OrderedCollection",
+        "totalItems": 0
+    })))
+}
+
+async fn following(
+    State(_state): State<AppState>,
+    Path(_username): Path<String>,
+) -> Result<Json<Value>> {
+    Ok(Json(json!({
+        "@context": "https://www.w3.org/ns/activitystreams",
+        "type": "OrderedCollection",
+        "totalItems": 0
+    })))
+}
+
+async fn featured(
+    State(_state): State<AppState>,
+    Path(_username): Path<String>,
+) -> Result<Json<Value>> {
+    Ok(Json(json!({
+        "@context": "https://www.w3.org/ns/activitystreams",
+        "type": "OrderedCollection",
+        "totalItems": 0
+    })))
 }
 
 // ---------------------------------------------------------------------------

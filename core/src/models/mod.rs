@@ -1,3 +1,4 @@
+pub mod activity;
 pub mod actor;
 pub mod antenna;
 pub mod block;
@@ -26,6 +27,7 @@ pub mod user_list;
 pub mod user_note_pining;
 pub mod user_publickey;
 
+pub use activity::{Activity, ActivityId};
 pub use actor::{Actor, ActorId, ActorType, UpdateProfileRequest};
 pub use antenna::{
     Antenna, AntennaId, AntennaNote, AntennaNoteId, AntennaNoteResponse, AntennaResponse,

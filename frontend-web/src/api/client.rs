@@ -2,7 +2,7 @@ use gloo_net::http::{Request, Response};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 pub fn api_base() -> &'static str {
-    "/api"
+    "/api/v1"
 }
 
 #[derive(Debug, Clone, Deserialize)]

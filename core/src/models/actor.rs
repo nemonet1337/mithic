@@ -73,6 +73,10 @@ pub struct Actor {
     pub password_hash: Option<String>,
     #[serde(default)]
     pub email: Option<String>,
+    #[serde(default)]
+    pub totp_secret: Option<String>,
+    #[serde(default)]
+    pub totp_verified: bool,
 }
 
 impl Actor {
@@ -106,6 +110,8 @@ impl Actor {
             token: None,
             password_hash: None,
             email: None,
+            totp_secret: None,
+            totp_verified: false,
         }
     }
 

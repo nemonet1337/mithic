@@ -1,7 +1,6 @@
 [workspace]
 members = [
     "config",
-    "mfm",
     "i18n",
     "db",
     "core",
@@ -68,6 +67,7 @@ secrecy = "0.10"
 jsonwebtoken = "10"
 argon2 = "0.5"
 rand = "0.10"
+totp-rs = { version = "5", features = ["gen_secret", "otpauth"] }
 
 # ActivityPub
 sigh = "1.0.3"
@@ -117,6 +117,9 @@ mithic-federation = { path = "federation" }
 mithic-stream     = { path = "stream" }
 mithic-api        = { path = "api" }
 shared            = { path = "shared" }
+
+# UI
+# leptos_i18n = "0.5"  # Use direct dep in frontend-web
 
 # リリースビルド最適化 (TODO Phase 0 / P-1)
 [profile.release]

@@ -18,9 +18,9 @@ pub async fn follow(
     surreal
         .query(
             "
-            UPDATE user SET following_count += 1 WHERE id = type::record('user', $follower);
-            UPDATE user SET followers_count += 1 WHERE id = type::record('user', $followee);
-            ",
+        UPDATE user SET following_count += 1 WHERE id = type::record('user', $follower);
+        UPDATE user SET followers_count += 1 WHERE id = type::record('user', $followee);
+        ",
         )
         .bind(("follower", follower_str))
         .bind(("followee", followee_str))
@@ -42,9 +42,9 @@ pub async fn unfollow(
     surreal
         .query(
             "
-            UPDATE user SET following_count = <int>(following_count OR 1) - 1 WHERE id = type::record('user', $follower);
-            UPDATE user SET followers_count = <int>(followers_count OR 1) - 1 WHERE id = type::record('user', $followee);
-            ",
+        UPDATE user SET following_count = <int>(following_count OR 1) - 1 WHERE id = type::record('user', $follower);
+        UPDATE user SET followers_count = <int>(followers_count OR 1) - 1 WHERE id = type::record('user', $followee);
+        ",
         )
         .bind(("follower", follower_str))
         .bind(("followee", followee_str))

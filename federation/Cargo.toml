@@ -26,3 +26,4 @@ redis       = { workspace = true }
 tokio       = { workspace = true }
 apalis      = { workspace = true }
 apalis-redis = { workspace = true }
+dashmap     = "6"

@@ -25,7 +25,7 @@ pub async fn signup(
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
     let user = actor_to_user(&actor);
-    Ok(Json(SigninResponse { token, user }))
+    Ok(Json(SigninResponse { token, user, requires_2fa: None, temp_token: None }))
 }
 
 pub async fn signin(
@@ -34,7 +34,7 @@ pub async fn signin(
 ) -> Result<Json<SigninResponse>> {
     let (token, actor) = authenticate_user(state.surreal(), request, state.config()).await?;
     let user = actor_to_user(&actor);
-    Ok(Json(SigninResponse { token, user }))
+    Ok(Json(SigninResponse { token, user, requires_2fa: None, temp_token: None }))
 }
 
 pub async fn me(

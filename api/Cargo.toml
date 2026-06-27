@@ -20,6 +20,7 @@ tower             = { workspace = true }
 tower-http        = { workspace = true }
 serde             = { workspace = true }
 serde_json        = { workspace = true }
+simd-json         = { version = "0.13", features = ["serde"] }
 chrono            = { workspace = true }
 anyhow            = { workspace = true }
 tracing           = { workspace = true }
@@ -40,3 +41,5 @@ url               = { workspace = true }
 object_store      = { workspace = true }
 apalis            = { workspace = true }
 apalis-redis      = { workspace = true }
+metrics           = "0.24"
+metrics-exporter-prometheus = "0.16"

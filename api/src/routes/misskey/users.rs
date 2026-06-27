@@ -1,9 +1,11 @@
 use crate::dto::actor_to_user;
 use crate::services::relationship::{block, follow, mute, unblock, unfollow, unmute};
 use crate::state::AppState;
-use axum::{Extension, Json, extract::State};
+use axum::{Extension, Json, extract::State, http::StatusCode};
 use mithic_core::models::actor::{Actor, ActorId};
+use mithic_core::models::notification::Notification;
 use mithic_core::{AppError, AuthUser, Result};
+use mithic_db::cache;
 use mithic_db::queries::{
     get_actor_by_id, get_actor_by_username, get_followers, get_following, is_blocking,
     is_following, is_muting,
@@ -56,6 +58,42 @@ fn parse_actor_id(raw: &str) -> Result<ActorId> {
         .map_err(|_| AppError::Validation("Invalid user id".to_string()))
 }
 
+/// Check if target is blocked by user, using cache
+async fn check_blocking_cached(
+    state: &AppState,
+    blocker_id: &ActorId,
+    blocked_id: &ActorId,
+) -> anyhow::Result<bool> {
+    if cache::block_set_contains(
+        state.dragonfly(),
+        &blocker_id.to_string(),
+        &blocked_id.to_string(),
+    )
+    .await
+    {
+        return Ok(true);
+    }
+    is_blocking(state.surreal(), blocker_id, blocked_id).await
+}
+
+/// Check if target is muted by user, using cache
+async fn check_muting_cached(
+    state: &AppState,
+    muter_id: &ActorId,
+    muted_id: &ActorId,
+) -> anyhow::Result<bool> {
+    if cache::mute_set_contains(
+        state.dragonfly(),
+        &muter_id.to_string(),
+        &muted_id.to_string(),
+    )
+    .await
+    {
+        return Ok(true);
+    }
+    is_muting(state.surreal(), muter_id, muted_id).await
+}
+
 pub async fn show(
     State(state): State<AppState>,
     Json(request): Json<UserShowRequest>,
@@ -95,15 +133,15 @@ pub async fn relation(
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
-    let is_blocking_val = is_blocking(state.surreal(), &my_id, &target_id)
+    let is_blocking_val = check_blocking_cached(&state, &my_id, &target_id)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
-    let is_blocked_val = is_blocking(state.surreal(), &target_id, &my_id)
+    let is_blocked_val = check_blocking_cached(&state, &target_id, &my_id)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
-    let is_muted_val = is_muting(state.surreal(), &my_id, &target_id)
+    let is_muted_val = check_muting_cached(&state, &my_id, &target_id)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
@@ -189,6 +227,14 @@ pub async fn block_route(
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
+    let _ = cache::block_set_add(
+        state.dragonfly(),
+        &my_id.to_string(),
+        &target_id.to_string(),
+        cache::BLOCK_MUTE_SET_TTL,
+    )
+    .await;
+
     relation(State(state), Extension(auth), Json(request)).await
 }
 
@@ -203,6 +249,13 @@ pub async fn unblock_route(
     unblock(state.surreal(), &my_id, &target_id)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
+
+    let _ = cache::block_set_remove(
+        state.dragonfly(),
+        &my_id.to_string(),
+        &target_id.to_string(),
+    )
+    .await;
 
     relation(State(state), Extension(auth), Json(request)).await
 }
@@ -219,6 +272,14 @@ pub async fn mute_route(
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
+    let _ = cache::mute_set_add(
+        state.dragonfly(),
+        &my_id.to_string(),
+        &target_id.to_string(),
+        cache::BLOCK_MUTE_SET_TTL,
+    )
+    .await;
+
     relation(State(state), Extension(auth), Json(request)).await
 }
 
@@ -233,6 +294,13 @@ pub async fn unmute_route(
     unmute(state.surreal(), &my_id, &target_id)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
+
+    let _ = cache::mute_set_remove(
+        state.dragonfly(),
+        &my_id.to_string(),
+        &target_id.to_string(),
+    )
+    .await;
 
     relation(State(state), Extension(auth), Json(request)).await
 }
@@ -284,6 +352,241 @@ pub async fn available(
     Ok(Json(AvailableResponse {
         available: actor.is_none(),
     }))
+}
+
+// ---------------------------------------------------------------------------
+// Follow requests (for locked accounts)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FollowRequestAction {
+    pub user_id: String,
+}
+
+pub async fn list_follow_requests(
+    State(state): State<AppState>,
+    Extension(_auth): Extension<AuthUser>,
+) -> Result<Json<Vec<User>>> {
+    let user_id = _auth.user_id;
+
+    let mut response = state
+        .surreal()
+        .query(
+            "
+            SELECT out.* AS actor FROM follow WHERE in = type::record('user', $user) AND is_accepted = false;
+            ",
+        )
+        .bind(("user", user_id.to_string()))
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+    let rows: Vec<surrealdb::types::Value> = response
+        .take(0)
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let actors: Vec<serde_json::Value> = rows
+        .into_iter()
+        .filter_map(|val| {
+            let mut json = val.into_json_value();
+            mithic_db::queries::strip_record_prefixes(&mut json);
+            json.get("actor").cloned()
+        })
+        .collect();
+
+    let mut users = Vec::new();
+    for actor_val in actors {
+        if let Ok(actor) = serde_json::from_value::<Actor>(actor_val) {
+            users.push(actor_to_user(&actor));
+        }
+    }
+    Ok(Json(users))
+}
+
+pub async fn accept_follow_request(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthUser>,
+    Json(request): Json<FollowRequestAction>,
+) -> Result<Json<UserRelation>> {
+    let my_id = auth.user_id;
+    let target_id = parse_actor_id(&request.user_id)?;
+
+    state
+        .surreal()
+        .query(
+            "
+            UPDATE follow SET is_accepted = true WHERE in = type::record('user', $me) AND out = type::record('user', $target);
+            UPDATE user SET following_count = <int>(following_count OR 0) + 1 WHERE id = type::record('user', $target);
+            ",
+        )
+        .bind(("me", my_id.to_string()))
+        .bind(("target", target_id.to_string()))
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+    let mut notif = Notification::new(
+        mithic_core::models::notification::NotificationType::FollowRequestAccepted,
+        target_id,
+        Some(my_id),
+        None,
+    );
+    publish_follow_request_accepted_notification(&state, &mut notif).await;
+
+    relation(
+        State(state),
+        Extension(auth),
+        Json(TargetUserRequest {
+            user_id: request.user_id,
+        }),
+    )
+    .await
+}
+
+pub async fn reject_follow_request(
+    State(state): State<AppState>,
+    Extension(_auth): Extension<AuthUser>,
+    Json(request): Json<FollowRequestAction>,
+) -> Result<StatusCode> {
+    let my_id = _auth.user_id;
+    let target_id = parse_actor_id(&request.user_id)?;
+
+    state
+        .surreal()
+        .query(
+            "
+            DELETE follow WHERE in = type::record('user', $me) AND out = type::record('user', $target) AND is_accepted = false;
+            ",
+        )
+        .bind(("me", my_id.to_string()))
+        .bind(("target", target_id.to_string()))
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn cancel_follow_request(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthUser>,
+    Json(request): Json<FollowRequestAction>,
+) -> Result<Json<UserRelation>> {
+    let my_id = auth.user_id;
+    let target_id = parse_actor_id(&request.user_id)?;
+
+    unfollow(state.surreal(), &my_id, &target_id)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    relation(
+        State(state),
+        Extension(auth),
+        Json(TargetUserRequest {
+            user_id: request.user_id,
+        }),
+    )
+    .await
+}
+
+pub async fn list_blocking(
+    State(state): State<AppState>,
+    _auth: Extension<AuthUser>,
+    Json(request): Json<UserListQueryRequest>,
+) -> Result<Json<Vec<User>>> {
+    let user_id = parse_actor_id(&request.user_id)?;
+    let limit = request.limit.unwrap_or(20).min(100);
+
+    let mut response = state
+        .surreal()
+        .query(
+            "
+            SELECT out.* AS actor FROM block WHERE in = type::record('user', $user) LIMIT $limit;
+            ",
+        )
+        .bind(("user", user_id.to_string()))
+        .bind(("limit", limit))
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+    let rows: Vec<surrealdb::types::Value> = response
+        .take(0)
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let actors: Vec<serde_json::Value> = rows
+        .into_iter()
+        .filter_map(|val| {
+            let mut json = val.into_json_value();
+            mithic_db::queries::strip_record_prefixes(&mut json);
+            json.get("actor").cloned()
+        })
+        .collect();
+
+    let mut users = Vec::new();
+    for actor_val in actors {
+        if let Ok(actor) = serde_json::from_value::<Actor>(actor_val) {
+            users.push(actor_to_user(&actor));
+        }
+    }
+    Ok(Json(users))
+}
+
+pub async fn list_muting(
+    State(state): State<AppState>,
+    _auth: Extension<AuthUser>,
+    Json(request): Json<UserListQueryRequest>,
+) -> Result<Json<Vec<User>>> {
+    let user_id = parse_actor_id(&request.user_id)?;
+    let limit = request.limit.unwrap_or(20).min(100);
+
+    let mut response = state
+        .surreal()
+        .query(
+            "
+            SELECT out.* AS actor FROM mute WHERE in = type::record('user', $user) LIMIT $limit;
+            ",
+        )
+        .bind(("user", user_id.to_string()))
+        .bind(("limit", limit))
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+    let rows: Vec<surrealdb::types::Value> = response
+        .take(0)
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let actors: Vec<serde_json::Value> = rows
+        .into_iter()
+        .filter_map(|val| {
+            let mut json = val.into_json_value();
+            mithic_db::queries::strip_record_prefixes(&mut json);
+            json.get("actor").cloned()
+        })
+        .collect();
+
+    let mut users = Vec::new();
+    for actor_val in actors {
+        if let Ok(actor) = serde_json::from_value::<Actor>(actor_val) {
+            users.push(actor_to_user(&actor));
+        }
+    }
+    Ok(Json(users))
+}
+
+async fn publish_follow_request_accepted_notification(
+    state: &AppState,
+    notif: &mut mithic_core::models::notification::Notification,
+) {
+    if let Err(e) = mithic_db::queries::create_notification(state.surreal(), notif).await {
+        tracing::warn!("Failed to persist notification: {}", e);
+    }
+    let dto = shared::Notification {
+        id: notif.id.to_string(),
+        created_at: notif.created_at.to_rfc3339(),
+        notification_type: shared::NotificationType::FollowRequestAccepted,
+        sender: None,
+        note: None,
+        reaction: notif.reaction.clone(),
+        is_read: notif.is_read,
+    };
+    state.publish_stream(crate::events::StreamBroadcast::Notification {
+        user_id: notif.recipient_id.to_string(),
+        notification: Box::new(dto),
+    });
 }
 
 #[derive(Debug, Deserialize)]

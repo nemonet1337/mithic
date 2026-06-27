@@ -9,25 +9,25 @@ pub struct HandleAvailability {
 }
 
 pub async fn fetch_user(token: &str, username: &str) -> Result<User, ApiError> {
-    request::<User, ()>("GET", &format!("v1/users/{}", username), Some(token), None).await
+    request::<User, ()>("GET", &format!("users/{}", username), Some(token), None).await
 }
 
 pub async fn fetch_user_notes(token: &str, username: &str) -> Result<Vec<Note>, ApiError> {
     request::<Vec<Note>, ()>(
         "GET",
-        &format!("v1/users/{}/notes", username),
+        &format!("users/{}/notes", username),
         Some(token),
         None,
     )
     .await
 }
 
-pub async fn check_handle(handle: &str) -> Result<HandleAvailability, ApiError> {
+pub async fn check_handle(username: &str) -> Result<HandleAvailability, ApiError> {
     request::<HandleAvailability, ()>(
-        "GET",
-        &format!("v1/users/check-handle?handle={}", handle),
+        "POST",
+        "users/check-handle",
         None,
-        None,
+        Some(&serde_json::json!({ "username": username })),
     )
     .await
 }
@@ -35,9 +35,9 @@ pub async fn check_handle(handle: &str) -> Result<HandleAvailability, ApiError> 
 pub async fn follow(token: &str, user_id: &str) -> Result<(), ApiError> {
     request::<(), ()>(
         "POST",
-        &format!("v1/users/{}/follow", user_id),
+        "follows",
         Some(token),
-        None,
+        Some(&serde_json::json!({ "user_id": user_id })),
     )
     .await
 }
@@ -45,7 +45,7 @@ pub async fn follow(token: &str, user_id: &str) -> Result<(), ApiError> {
 pub async fn unfollow(token: &str, user_id: &str) -> Result<(), ApiError> {
     request::<(), ()>(
         "DELETE",
-        &format!("v1/users/{}/follow", user_id),
+        &format!("follows/{}", user_id),
         Some(token),
         None,
     )
@@ -59,5 +59,5 @@ pub struct UpdateProfileRequest {
 }
 
 pub async fn update_me(token: &str, body: &UpdateProfileRequest) -> Result<User, ApiError> {
-    request("PATCH", "v1/users/me", Some(token), Some(body)).await
+    request("PATCH", "users/me", Some(token), Some(body)).await
 }

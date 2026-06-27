@@ -16,5 +16,9 @@
 # claude
 .claude
 
+# kilo
+.kilo
+.kilocode
+
 # node
 /frontend-web/node_modules

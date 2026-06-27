@@ -1,15 +1,20 @@
+pub mod activity;
 pub mod actors;
 pub mod drive;
 pub mod favorites;
 pub mod follows;
+pub mod hashtags;
 pub mod notes;
 pub mod notifications;
+pub mod polls;
 pub mod reactions;
+pub mod relay;
 pub mod timeline;
 
+pub use activity::{create_activity, get_activity_by_uri};
 pub use actors::{
     create_actor, get_actor_by_id, get_actor_by_username, get_actor_by_username_or_email,
-    update_actor_token,
+    update_actor_token, enable_totp,
 };
 pub use drive::{
     create_drive_file, delete_drive_file, get_drive_file, get_drive_file_by_hash,
@@ -17,15 +22,21 @@ pub use drive::{
 };
 pub use favorites::{add_favorite, is_favorited, remove_favorite};
 pub use follows::{
-    block_user, follow_user, get_followers, get_following, is_blocking, is_following, is_muting,
+    block_user, count_followers, follow_user, get_followers, get_following, is_blocking, is_following, is_muting,
     mute_user, unblock_user, unfollow_user, unmute_user,
 };
+pub use hashtags::{get_notes_by_tag, get_trending_tags};
 pub use notes::{create_note, delete_note, get_note_by_id, get_note_by_uri};
 pub use notifications::{
     create_notification, get_notifications, mark_all_notifications_as_read,
     mark_notification_as_read,
 };
+pub use polls::vote_poll;
 pub use reactions::{add_reaction, remove_reaction};
+pub use relay::{
+    create_relay, delete_relay, get_accepted_relays, get_relay_by_id, get_relay_by_inbox,
+    list_relays, update_relay_status,
+};
 pub use timeline::{
     NoteWithAuthor, get_global_timeline, get_home_timeline, get_local_timeline, get_note_quotes,
     get_note_replies, get_user_notes,
@@ -37,7 +48,7 @@ use surrealdb::types::Value;
 /// surrealdb 3.x の `take` は結果型に `SurrealValue` を要求するが、ドメインモデルは
 /// serde の `Deserialize` のみ実装している。生の `Value` 行を JSON 経由で serde
 /// デシリアライズしてモデルへ変換する。
-pub(crate) fn rows_to<T: DeserializeOwned>(rows: Vec<Value>) -> anyhow::Result<Vec<T>> {
+pub fn rows_to<T: DeserializeOwned>(rows: Vec<Value>) -> anyhow::Result<Vec<T>> {
     rows.into_iter()
         .map(|value| {
             let mut json = value.into_json_value();

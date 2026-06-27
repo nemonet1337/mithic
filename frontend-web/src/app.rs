@@ -4,9 +4,9 @@ use leptos_router::path;
 
 use crate::components::{ComposeModal, Protected};
 use crate::pages::{
-    AdminPage, DmConversationPage, DmPage, GlobalTimelinePage, HomePage, LocalTimelinePage,
-    LoginPage, NotFoundPage, NotificationsPage, ProfilePage, SearchPage, SettingsPage, SignupPage,
-    StatusDetailPage,
+    AdminPage, DmConversationPage, DmPage, DrivePage, GlobalTimelinePage, HomePage,
+    LocalTimelinePage, LoginPage, NotFoundPage, NotificationsPage, ProfilePage, SearchPage,
+    SettingsPage, SignupPage, StatusDetailPage,
 };
 use crate::store::{AuthStore, ComposeStore, NotificationStore};
 
@@ -36,6 +36,7 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("signup") view=SignupPage />
                     <Route path=path!("profile/:username") view=|| view! { <Protected><ProfilePage /></Protected> } />
                     <Route path=path!("admin") view=|| view! { <Protected><AdminPage /></Protected> } />
+                    <Route path=path!("drive") view=|| view! { <Protected><DrivePage /></Protected> } />
                 </Routes>
                 <ComposeModal />
             </div>

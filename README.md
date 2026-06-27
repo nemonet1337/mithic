@@ -1,6 +1,6 @@
 # mithic
 
-Rust製 Misskey互換 APub対応SNS
+Rust製 ActivityPub対応SNS
 
 - **バックエンド**: Axum + SurrealDB + Dragonfly (Redis互換)
 - **フロントエンド**: Leptos (CSR/WASM) + **DaisyUI v5** + Tailwind CSS v3
@@ -64,7 +64,6 @@ cargo check -p frontend-web --target wasm32-unknown-unknown
 
 - 開発ガイドライン: `CLAUDE.md`
 - ロードマップ / TODO: `TODO.md`
-- 機能ギャップ台帳: `docs/feature-gap-analysis.md`
 
 ## ライセンス
 

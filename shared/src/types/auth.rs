@@ -22,6 +22,12 @@ pub struct SigninRequest {
 pub struct SigninResponse {
     pub token: String,
     pub user: User,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub requires_2fa: Option<bool>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub temp_token: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -13,7 +13,7 @@
 - **ActivityPub**: HTTP Signatures (`sigh`)
 - **WebSocket**: Axum WebSocket
 - **国際化**: fluent + unic-langid
-- **MFMパーサ**: pest
+- **Markdownパーサ**: comrak
 - **Web Push**: web-push
 
 ### フロントエンド
@@ -22,15 +22,13 @@
 - **フレームワーク**: Leptos 0.7
 - **ビルドツール**: Trunk 0.21
 - **スタイリング**: Tailwind CSS 3.x
-- **状態管理**: Leptos Signals (組み込み) + leptos_query (サーバー状態キャッシュ)
+- **状態管理**: Leptos Signals (組み込み)
 - **ルーティング**: leptos_router (Leptos組み込み)
 - **HTTPクライアント**: gloo-net 0.6 (fetch / WebSocket)
 - **ローカルストレージ**: gloo-storage 0.3
-- **セキュアストレージ**: web-sys + IndexedDB
-- **WebSocket**: gloo-net 0.6
-- **国際化**: leptos-i18n 0.5
-- **アイコン**: icondata + leptos_icons (Lucide Icons含む)
-- **ユーティリティ**: leptos-use 0.15
+- **セキュアストレージ**: web-sys (LocalStorage)
+- **WebSocket**: gloo-net 0.6 (WebSocket) + gloo-timers 0.3 (再接続タイマー)
+- **アイコン**: icondata + leptos_icons (Feather / Lucide Icons)
 - **型シリアライズ**: serde + serde-wasm-bindgen
 
 ### インフラ
@@ -47,169 +45,283 @@ mithic/
 ├── Cargo.toml
 ├── Cargo.lock
 │
-├── crates/
+├── server/                  # Axum main binary
+│   ├── src/
+│   │   └── main.rs
+│   └── Cargo.toml
+│
+├── worker/                  # background worker
+│   ├── src/
+│   │   └── main.rs
+│   └── Cargo.toml
+│
+├── frontend-web/           # Leptos CSR/WASM
+│   ├── src/
+│   │   ├── api/
+│   │   │   ├── auth.rs
+│   │   │   ├── client.rs
+│   │   │   ├── dm.rs
+│   │   │   ├── mod.rs
+│   │   │   ├── notes.rs
+│   │   │   ├── notifications.rs
+│   │   │   └── users.rs
+│   │   ├── components/
+│   │   │   ├── avatar.rs
+│   │   │   ├── compose.rs
+│   │   │   ├── markdown.rs
+│   │   │   ├── mod.rs
+│   │   │   ├── post_card.rs
+│   │   │   ├── protected.rs
+│   │   │   └── shell.rs
+│   │   ├── models/
+│   │   │   └── mod.rs
+│   │   ├── pages/
+│   │   │   └── mod.rs
+│   │   ├── store/
+│   │   │   ├── auth.rs
+│   │   │   ├── compose.rs
+│   │   │   ├── mod.rs
+│   │   │   ├── notifications.rs
+│   │   │   └── stream.rs
+│   │   ├── app.rs
+│   │   └── main.rs
 │   │
-│   ├── server/                 # Axum main binary
-│   │   ├── src/
-│   │   │   └── main.rs
-│   │   └── Cargo.toml
-│   │
-│   ├── worker/                 # background worker
-│   │   ├── src/
-│   │   │   └── main.rs
-│   │   └── Cargo.toml
-│   │
-│   ├── frontend-web/           # Leptos CSR/WASM
-│   │   ├── src/
-│   │   │   ├── api/
-│   │   │   ├── components/
-│   │   │   ├── pages/
-│   │   │   ├── state/
-│   │   │   ├── ws/
-│   │   │   ├── i18n/
-│   │   │   ├── app.rs
-│   │   │   └── main.rs
-│   │   │
-│   │   ├── style/
-│   │   ├── public/
-│   │   ├── index.html
-│   │   ├── Trunk.toml
-│   │   ├── tailwind.config.js
-│   │   └── Cargo.toml
-│   │
-│   ├── shared/                 # DTO/shared types
-│   │   ├── src/
-│   │   │   ├── user.rs
+│   ├── style/
+│   │   └── main.css
+│   ├── public/
+│   │   ├── manifest.webmanifest
+│   │   ├── offline.html
+│   │   └── sw.js
+│   ├── index.html
+│   ├── Trunk.toml
+│   └── Cargo.toml
+│
+├── shared/                 # DTO/shared types
+│   ├── src/
+│   │   ├── markdown.rs
+│   │   ├── types/
+│   │   │   ├── auth.rs
+│   │   │   ├── hashtag.rs
+│   │   │   ├── mod.rs
 │   │   │   ├── note.rs
 │   │   │   ├── notification.rs
-│   │   │   └── lib.rs
-│   │   └── Cargo.toml
-│   │
-│   ├── core/
-│   │   ├── src/
-│   │   │   ├── models/
-│   │   │   ├── services/
-│   │   │   └── lib.rs
-│   │   └── Cargo.toml
-│   │
-│   ├── db/
-│   │   ├── src/
-│   │   │   ├── schema/
-│   │   │   ├── queries/
-│   │   │   └── lib.rs
-│   │   └── Cargo.toml
-│   │
-│   ├── api/
-│   │   ├── src/
-│   │   │   ├── routes/
-│   │   │   ├── middleware/
-│   │   │   ├── extractors/
-│   │   │   └── lib.rs
-│   │   └── Cargo.toml
-│   │
-│   ├── federation/
-│   │   ├── src/
-│   │   │   ├── actor/
-│   │   │   ├── inbox/
-│   │   │   ├── outbox/
-│   │   │   └── lib.rs
-│   │   └── Cargo.toml
-│   │
-│   ├── stream/
-│   │   ├── src/
-│   │   │   ├── ws/
-│   │   │   ├── timeline/
-│   │   │   └── lib.rs
-│   │   └── Cargo.toml
-│   │
-│   ├── mfm/
-│   │   ├── src/
-│   │   │   ├── parser/
-│   │   │   ├── renderer/
-│   │   │   ├── ast/
-│   │   │   └── lib.rs
-│   │   └── Cargo.toml
-│   │
-│   ├── i18n/
-│   │   ├── locales/
-│   │   ├── src/
-│   │   │   └── lib.rs
-│   │   └── Cargo.toml
-│   │
-│   └── config/
-│       ├── src/
-│       │   └── lib.rs
-│       └── Cargo.toml
+│   │   │   ├── stream.rs
+│   │   │   └── user.rs
+│   │   └── lib.rs
+│   └── Cargo.toml
+│
+├── core/
+│   ├── src/
+│   │   ├── models/
+│   │   │   ├── actor.rs
+│   │   │   ├── antenna.rs
+│   │   │   ├── block.rs
+│   │   │   ├── bookmark.rs
+│   │   │   ├── chart.rs
+│   │   │   ├── clip.rs
+│   │   │   ├── emoji.rs
+│   │   │   ├── export.rs
+│   │   │   ├── file.rs
+│   │   │   ├── filter.rs
+│   │   │   ├── follow.rs
+│   │   │   ├── hashtag.rs
+│   │   │   ├── instance.rs
+│   │   │   ├── mod.rs
+│   │   │   ├── mute.rs
+│   │   │   ├── note.rs
+│   │   │   ├── note_unread.rs
+│   │   │   ├── notification.rs
+│   │   │   ├── oauth.rs
+│   │   │   ├── poll.rs
+│   │   │   ├── push_subscription.rs
+│   │   │   ├── reaction.rs
+│   │   │   ├── relay.rs
+│   │   │   ├── renote.rs
+│   │   │   ├── used_username.rs
+│   │   │   ├── user_list.rs
+│   │   │   ├── user_note_pining.rs
+│   │   │   └── user_publickey.rs
+│   │   ├── misc/
+│   │   │   ├── extract_emojis.rs
+│   │   │   ├── extract_hashtags.rs
+│   │   │   ├── extract_mentions.rs
+│   │   │   └── mod.rs
+│   │   ├── services/
+│   │   │   ├── auth.rs
+│   │   │   └── mod.rs
+│   │   ├── auth.rs
+│   │   ├── error.rs
+│   │   └── lib.rs
+│   └── Cargo.toml
+│
+├── db/
+│   ├── src/
+│   │   ├── queries/
+│   │   │   ├── actors.rs
+│   │   │   ├── drive.rs
+│   │   │   ├── favorites.rs
+│   │   │   ├── follows.rs
+│   │   │   ├── hashtags.rs
+│   │   │   ├── mod.rs
+│   │   │   ├── notes.rs
+│   │   │   ├── notifications.rs
+│   │   │   └── polls.rs
+│   │   │   └── timeline.rs
+│   │   ├── cache.rs
+│   │   ├── dragonfly.rs
+│   │   ├── lib.rs
+│   │   ├── storage.rs
+│   │   └── surreal.rs
+│   └── Cargo.toml
+│
+├── api/
+│   ├── src/
+│   │   ├── middleware/
+│   │   │   ├── auth.rs
+│   │   │   ├── content_negotiation.rs
+│   │   │   ├── cors.rs
+│   │   │   ├── http_signature.rs
+│   │   │   ├── locale.rs
+│   │   │   ├── mod.rs
+│   │   │   └── rate_limit.rs
+│   │   ├── routes/
+│   │   │   ├── activitypub.rs
+│   │   │   ├── mastodon/
+│   │   │   │   ├── mod.rs
+│   │   │   │   └── v1.rs
+│   │   │   ├── misskey/
+│   │   │   │   ├── auth.rs
+│   │   │   │   ├── drive.rs
+│   │   │   │   ├── hashtags.rs
+│   │   │   │   ├── i.rs
+│   │   │   │   ├── mod.rs
+│   │   │   │   ├── notes.rs
+│   │   │   │   ├── notifications.rs
+│   │   │   │   ├── streaming.rs
+│   │   │   │   └── timeline.rs
+│   │   │   ├── users.rs
+│   │   │   ├── mod.rs
+│   │   │   └── ogp.rs
+│   │   ├── services/
+│   │   │   ├── mod.rs
+│   │   │   ├── note.rs
+│   │   │   └── user.rs
+│   │   ├── dto.rs
+│   │   ├── events.rs
+│   │   ├── lib.rs
+│   │   └── state.rs
+│   └── Cargo.toml
+│
+├── federation/
+│   ├── src/
+│   │   ├── lib.rs
+│   │   └── service.rs
+│   └── Cargo.toml
+│
+├── stream/
+│   ├── src/
+│   │   ├── channel.rs
+│   │   ├── channels.rs
+│   │   ├── connection.rs
+│   │   └── lib.rs
+│   └── Cargo.toml
+│
+├── i18n/
+│   ├── locales/
+│   │   ├── en.ftl
+│   │   └── ja.ftl
+│   ├── src/
+│   │   └── lib.rs
+│   └── Cargo.toml
+│
+├── config/
+│   ├── src/
+│   │   └── lib.rs
+│   └── Cargo.toml
 │
 ├── docs/
 ├── infra/
-├── scripts/
+└── scripts/
 ```
 
 ## 3. 各クレートの実装内容と現状
 
-### `crates/core/src/models/` — エンティティ定義 (実装済み)
+### `core/src/models/` — エンティティ定義 (実装済み)
 
 28エンティティ定義済み: actor, note, follow, notification, instance, file (DriveFile/DriveFolder), emoji, hashtag, poll, reaction, renote, bookmark, block, mute, filter, antenna, clip, user_list, relay, push_subscription, oauth, export, chart, used_username, user_note_pining, user_publickey, note_unread
 
-### `crates/core/src/services/` — サービス層 (未実装)
+### `core/src/services/` — サービス層 (一部実装)
 
-ディレクトリは存在するが実装なし。`TODO.md` B-3 参照。
+auth.rs のみ実装済み。その他のサービスは未実装。
 
-### `crates/api/src/routes/` — APIルート (未実装)
+### `core/src/misc/` — ユーティリティ (実装済み)
 
-`mod.rs` が空。全エンドポイントがこれから実装。`TODO.md` B-1 参照。
+extract_emojis, extract_hashtags, extract_mentions の3モジュール実装済み。
 
-### `crates/api/src/middleware/` — ミドルウェア (実装済み)
+### `api/src/routes/` — APIルート (一部実装)
 
-auth, cors, rate_limit, http_signature, content_negotiation, locale の7モジュール実装済み。
+Misskey API (notes, notifications, users, auth, drive, hashtags, i, streaming) と Mastodon API v1 が部分実装済み。ActivityPub ルートも存在。
 
-### `crates/db/src/` — データベース層 (スタブ)
+### `api/src/middleware/` — ミドルウェア (実装済み)
 
-SurrealDB / Dragonfly クライアントラッパーのみ。スキーマ定義・クエリ実装が未。`TODO.md` B-2 参照。
+auth, cors, rate_limit, http_signature, content_negotiation, locale の6モジュール実装済み。
 
-### `crates/federation/src/` — ActivityPub (スタブ)
+### `api/src/services/` — APIサービス層 (一部実装)
 
-`FederationService` 定義のみ。actor/inbox/outbox 実装が未。`TODO.md` B-6 参照。
+note.rs, user.rs, relationship.rs の3モジュール実装済み。
 
-### `crates/stream/src/` — WebSocket ストリーミング (設計済み)
+### `db/src/` — データベース層 (実装済み)
 
-チャンネルアーキテクチャ設計済み (HomeTimeline, GlobalTimeline, Hashtag, Admin, QueueStats, ServerStats, Drive, ApLog, UserList)。実装未。
+SurrealDB / Dragonfly クライアントラッパー実装済み。クエリモジュール (actors, drive, favorites, follows, hashtags, notes, notifications, polls, timeline) あり。
 
-### `crates/mfm/src/` — MFMパーサ (実装済み)
+### `federation/src/` — ActivityPub (スタブ)
 
-mention, hashtag, URL, code, bold, italic, strikethrough, quote, math を解析。カスタム絵文字・アニメーション等の高度機能は未実装。
+`FederationService` 定義のみ。actor/inbox/outbox 実装が未。
 
-### `crates/frontend-web/src/pages/` — フロントエンド画面 (UI実装済み)
+### `stream/src/` — WebSocket ストリーミング (実装済み)
 
-HomePage, LocalTimelinePage, GlobalTimelinePage, StatusDetailPage, NotificationsPage, SearchPage, DmPage, DmConversationPage, ProfilePage, SettingsPage, LoginPage, SignupPage, AdminPage の13画面。サンプルデータ表示のみ、実API未接続。
+channel.rs, channels.rs, connection.rs でチャンネルアーキテクチャ実装済み。
 
-### `crates/frontend-web/src/components/` — UIコンポーネント (実装済み)
+### `frontend-web/src/pages/` — フロントエンド画面 (UI実装済み)
 
-Shell, TopBar, Sidebar, BottomNav, RightRail, Avatar, PostCard, PostBody, PostActions, MfmText, ComposeModal の11コンポーネント。
+`pages/mod.rs` に全画面を実装: HomePage, LocalTimelinePage, GlobalTimelinePage, StatusDetailPage, NotificationsPage, SearchPage, DmPage, DmConversationPage, ProfilePage, SettingsPage, LoginPage, SignupPage, WelcomePage, AdminPage, NotFoundPage の15画面。実APIとWebSocketに一部接続済み。
 
-### `crates/frontend-web/src/api/` — APIクライアント (一部実装)
+### `frontend-web/src/components/` — UIコンポーネント (実装済み)
 
-`auth.rs`, `notes.rs`, `client.rs` のみ。timeline, users, notifications, drive, messages 等が未実装。
+Shell, TopBar, Sidebar, BottomNav, RightRail, Avatar, PostCard, PostBody, PostActions, MarkdownText, ComposeModal, Protected, LoadMore の13コンポーネント。レイアウトは3カラムレスポンシブ (drawer/sidebar + main + right-rail)。
 
-### `crates/shared/src/` — 共有DTO (最小限)
+### `frontend-web/src/api/` — APIクライアント (一部実装)
 
-Note, User, Notification, CreateNoteRequest, MediaAttachment, NoteVisibility のみ。API全体に必要な型の大半が未定義。
+auth.rs, client.rs, notes.rs, users.rs, notifications.rs, dm.rs の6モジュール実装済み。
 
-### `crates/server/src/main.rs` / `crates/worker/src/main.rs` — エントリポイント (スタブ)
+### `frontend-web/src/store/` — 状態管理 (実装済み)
 
-起動ロジック未実装。`TODO.md` B-4, B-5 参照。
+auth.rs, compose.rs, notifications.rs, stream.rs, mod.rs で状態管理実装済み。
 
-## 4. Misskey互換として製作していること
+### `frontend-web/src/models/` — フロントエンドモデル (実装済み)
 
-- **API互換性**: Mastodon API準拠で既存クライアントとの互換性確保
-- **MFM対応**: Misskey Markup Language のパーサ (pest) とレンダラ (`mfm_renderer.rs`) を実装
+Note, User, Notification 等のモデル定義済み。
+
+### `shared/src/types/` — 共有DTO (実装済み)
+
+auth.rs, hashtag.rs, note.rs, notification.rs, stream.rs, user.rs の型定義。
+
+### `shared/src/` — 共有コード (実装済み)
+
+shared/src/types/ に DTO 定義 (auth, hashtag, note, notification, relay, stream, user)。shared/src/markdown.rs で comrak Markdown レンダラ実装。
+
+### `server/src/main.rs` / `worker/src/main.rs` — エントリポイント (スタブ)
+
+起動ロジック未実装。
+
+## 4. Mastodon / ActivityPub 互換性
+
+- **API互換性**: Mastodon API v1 準拠で既存クライアントとの互換性確保
+- **Markdown対応**: comrak による Markdown レンダリング
 - **機能セット**:
   - ノート（投稿）のリアクション、リノート
   - アンケート機能
   - ファイル添付（画像、動画等）
-  - ユーザーリスト、アンテナ
-  - チャンネル機能（予定）
   - ドライブ機能（ファイル管理）
 
 ## 5. ActivityPubに必ず準拠したつくりにすること
@@ -231,7 +343,6 @@ Note, User, Notification, CreateNoteRequest, MediaAttachment, NoteVisibility の
 - **キャッシュ**: Dragonfly による積極的なキャッシュ
 - **非同期処理**: Tokio による完全非同期設計
 - **ストリーミング**: WebSocket によるリアルタイム更新 (gloo-net / tokio-tungstenite)
-- **サーバー状態**: leptos_query による stale-while-revalidate キャッシュ
 - **WASM最適化**: `opt-level = "z"` + LTO によるバイナリサイズ最小化
 - **画像最適化**: WebP、サムネイル生成
 - **CDN対応**: Trunk ビルド成果物の静的配信最適化
@@ -242,39 +353,13 @@ Note, User, Notification, CreateNoteRequest, MediaAttachment, NoteVisibility の
 - **負荷分散**: Nginx によるリバースプロキシ
 - **型安全性**: `shared` クレートによるバックエンド・フロントエンド間の型保証
 
-## 7. old-srcとの機能比較を行い、不足している機能がないかを常にチェックすること
+## 7. `TODO.md` の常時更新
 
-### old-src（元 Misskey/Dolphin 実装）の主要機能
-
-- Vue.js ベースのクライアント
-- TypeScript サーバー実装
-- 豊富なUIコンポーネント
-- 高度な MFM 実装
-
-### 比較チェックリスト
-
-- [ ] MFM の全機能実装（カスタム絵文字、位置指定等）
-- [ ] UI/UX のパリティ（ドラッグ＆ドロップ等）
-- [ ] 管理者機能
-- [ ] プラグインシステム
-- [ ] API の完全互換性
-- [ ] モデレーション機能
-
-### 定期的な確認
-
-- old-src の機能追加を監視
-- 差分分析と実装優先度付け
-- 互換性テストの実施
-
-### `docs/feature-gap-analysis.md` と `TODO.md` の常時更新
-
-**機能を実装したとき、または未実装の機能を発見したときは必ず `docs/feature-gap-analysis.md` と `TODO.md` を更新すること。**
+**機能を実装したとき、または未実装の機能を発見したときは必ず `TODO.md` を更新すること。**
 
 - 機能を実装・完了したら、`TODO.md` の対応チェックボックスをチェック済みにする
-- `docs/feature-gap-analysis.md` の対応項目を削除またはチェック済みに変更する
-- 新たに不足を発見した場合は両ファイルの該当セクションに追記する
+- 新たに不足を発見した場合は該当セクションに追記する
 - バックエンド・フロントエンドどちらの変更でも対象
-- `docs/feature-gap-analysis.md` 冒頭の「検証日」を更新日に書き換える
 
 ## 8. フロントエンドとバックエンドの機能分割を着実に行うこと
 
@@ -291,7 +376,6 @@ Note, User, Notification, CreateNoteRequest, MediaAttachment, NoteVisibility の
   - UI表示・コンポーネント
   - ユーザーインタラクション
   - クライアント側 Signals による状態管理
-  - leptos_query によるサーバーデータキャッシュ
   - WebSocket によるリアルタイム更新表示
 
 - **shared クレート**:
@@ -326,10 +410,9 @@ Note, User, Notification, CreateNoteRequest, MediaAttachment, NoteVisibility の
 
 ### 国際化
 
-- **対応言語**: 日本語、英語（優先）
-- **バックエンド**: fluent + unic-langid (`crates/i18n/`)
-- **フロントエンド**: leptos-i18n (`ja.ftl` / `en.ftl`)
-- **翻訳管理**: `crates/frontend-web/src/i18n/` で一元管理
+- **対応言語**: 日本語（優先）、英語
+- **バックエンド**: fluent + unic-langid (`i18n/`)
+- **フロントエンド**: 現状は未着手。将来的に leptos_i18n の導入を検討
 
 ### デプロイ
 
@@ -346,21 +429,3 @@ Note, User, Notification, CreateNoteRequest, MediaAttachment, NoteVisibility の
 - **コミット規約**: Conventional Commits
 - **ドキュメント**: コードコメント、APIドキュメント
 - **ライセンス**: AGPL-3.0 の遵守
-
-## 10. 実装作業は agy（Antigravity CLI / Gemini）に委譲すること
-
-このプロジェクトのコーディング作業（新規実装・修正・リファクタリング）は、原則として **`agy` コマンド（Antigravity CLI 経由の Gemini 3.5 Flash (High)）** に委譲して進めること。セットアップ手順は `Bridge.md` を参照。
-
-### 委譲フロー
-
-1. **作業前確認**: まず `mcp__agy__agy_status` を呼び、`agy CLI [ok]`（疎通成功）を確認する（quota 消費なし）。`not found` の場合は `Bridge.md` のトラブルシュートに従って復旧する。
-2. **実装依頼**: コーディングタスクは `mcp__agy__agy_ask`（新規セッション）/ `mcp__agy__agy_continue`（継続セッション）で agy に依頼する。依頼プロンプトには、対象ファイル・要件・既存コードの規約（rustfmt / Conventional Commits / 本ガイドラインの責務分離）を明示する。
-3. **画像が必要な場合**: UI モックや図を渡すときは `mcp__agy__agy_image` を使う。
-4. **レビュー**: agy はファイル書込み・コマンド実行を自律的に行うエージェント。**生成・変更された内容は必ず Claude がレビューする**こと。コミット前に `git diff` で差分を確認し、本ガイドライン（技術スタック・ActivityPub 準拠・責務分離・パフォーマンス方針）に適合しているか検証する。
-5. **ドキュメント同期**: 実装完了時は本ガイドライン §7 に従い `docs/feature-gap-analysis.md` と `TODO.md` を更新する。
-
-### 注意事項
-
-- `GEMINI_API_KEY` / `ANTIGRAVITY_API_KEY` / `GOOGLE_API_KEY` を環境変数に設定しないこと（OAuth サブスク枠をバイパスし従量課金になる）。
-- agy は承認ゲート無しで動作するため、未信頼テキストをそのまま流さない。
-- agy の応答が空・混在する場合は `mcp__agy__agy_status` で診断する（詳細は `Bridge.md`）。

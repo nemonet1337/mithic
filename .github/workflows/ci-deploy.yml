@@ -1,0 +1,52 @@
+name: CI (Deploy)
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  CARGO_TERM_COLOR: always
+  TARGET: x86_64-unknown-linux-musl
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ env.TARGET }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install musl tools
+        run: sudo apt-get update -qq; sudo apt-get install -y -qq musl-tools
+
+      - name: Build release binaries
+        run: |
+          cargo build --release --target $TARGET --package mithic-server
+          cargo build --release --target $TARGET --package mithic-worker
+
+      - name: Create archive
+        run: |
+          TAG_NAME="${GITHUB_REF#refs/tags/}"
+          PKG_BASE="mithic-${TAG_NAME}-${TARGET}"
+          PKG_DIR="${{ runner.temp }}/${PKG_BASE}"
+          ARCHIVE="${PKG_BASE}.tar.xz"
+          mkdir -p "${PKG_DIR}"
+          cp target/$TARGET/release/mithic-server "${PKG_DIR}/"
+          cp target/$TARGET/release/mithic-worker "${PKG_DIR}/"
+          tar -cJf "${ARCHIVE}" -C "${{ runner.temp }}" "${PKG_BASE}"
+          echo "ARCHIVE=${ARCHIVE}" >> $GITHUB_ENV
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ARCHIVE }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

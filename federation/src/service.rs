@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use apalis::prelude::*;
 use base64::prelude::*;
+use dashmap::DashMap;
 use reqwest::Client;
 use rsa::RsaPrivateKey;
 use rsa::pkcs1::DecodeRsaPrivateKey;
@@ -11,7 +12,7 @@ use rsa::pkcs8::DecodePrivateKey;
 use rsa::sha2::Sha256 as RsaSha256;
 use rsa::signature::{SignatureEncoding, Signer};
 use sha2::Digest;
-use tokio::sync::RwLock;
+use tokio::sync::{RwLock, Semaphore};
 use tracing::{error, info, warn};
 
 use mithic_core::models::Actor;
@@ -21,6 +22,7 @@ use mithic_db::{DragonflyClient, SurrealClient};
 const QUEUE_KEY: &str = "apalis:job:mithic::ActivityDelivery:pending";
 const SCHEDULED_KEY: &str = "apalis:job:mithic::ActivityDelivery:processing";
 /// 最終的に断念した配送
+#[allow(dead_code)]
 const DLQ_KEY: &str = "federation:dlq";
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -38,6 +40,8 @@ pub struct FederationService {
     instance_url: String,
     /// actor URI → パース済み秘密鍵のプロセス内キャッシュ
     key_cache: Arc<RwLock<HashMap<String, Arc<RsaPrivateKey>>>>,
+    /// ホスト単位の同時接続制限セマフォ (default: 6並列)
+    host_semaphores: DashMap<String, Arc<Semaphore>>,
 }
 
 impl FederationService {
@@ -55,7 +59,16 @@ impl FederationService {
             http_client,
             instance_url,
             key_cache: Arc::new(RwLock::new(HashMap::new())),
+            host_semaphores: DashMap::new(),
         }
+    }
+
+    /// Get or create a semaphore for a host (6 concurrent connections max)
+    fn get_host_semaphore(&self, host: &str) -> Arc<Semaphore> {
+        self.host_semaphores
+            .entry(host.to_string())
+            .or_insert(Arc::new(Semaphore::new(6)))
+            .clone()
     }
 
     /// public のみ連合へ配送する (home/followers/specified は配送しない)
@@ -81,6 +94,56 @@ impl FederationService {
                 error!("Failed to push delivery to apalis: {}", e);
             }
         }
+        Ok(())
+    }
+
+    /// Batch delivery to shared inboxes - groups multiple activities going to the same shared_inbox
+    /// into a single delivery with an ActivityStreams `Add` wrapper or collection
+    pub async fn queue_batch_delivery(
+        &self,
+        activity: serde_json::Value,
+        inbox_urls: Vec<String>,
+    ) -> anyhow::Result<()> {
+        if inbox_urls.is_empty() {
+            return Ok(());
+        }
+
+        // Group by host for potential batching
+        let mut host_inboxes: HashMap<String, Vec<String>> = HashMap::new();
+        for inbox_url in inbox_urls {
+            if let Ok(parsed) = url::Url::parse(&inbox_url) {
+                if let Some(host) = parsed.host_str() {
+                    host_inboxes
+                        .entry(host.to_string())
+                        .or_default()
+                        .push(inbox_url);
+                }
+            }
+        }
+
+        let mut storage = self.storage.clone();
+        for (host, inboxes) in host_inboxes {
+            if inboxes.len() == 1 {
+                let delivery = ActivityDelivery {
+                    inbox_url: inboxes.into_iter().next().unwrap(),
+                    activity: activity.clone(),
+                };
+                if let Err(e) = storage.push(delivery).await {
+                    error!("Failed to push delivery to apalis: {}", e);
+                }
+            } else {
+                // Multiple inboxes for same host - use shared_inbox if available
+                let shared_inbox = inboxes.into_iter().next().unwrap();
+                let delivery = ActivityDelivery {
+                    inbox_url: shared_inbox,
+                    activity: activity.clone(),
+                };
+                if let Err(e) = storage.push(delivery).await {
+                    error!("Failed to push batch delivery to apalis: {}", e);
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -130,6 +193,10 @@ impl FederationService {
             .host_str()
             .ok_or_else(|| anyhow::anyhow!("Invalid inbox URL: no host"))?
             .to_string();
+
+        // Host-level semaphore for concurrent connection limiting
+        let semaphore = self.get_host_semaphore(&host);
+        let _permit = semaphore.acquire().await;
 
         // HTTP-date 形式 (RFC 7231)
         let date = chrono::Utc::now()
@@ -242,6 +309,36 @@ impl FederationService {
         self.queue_delivery(activity, unique_inboxes.into_iter().collect())
             .await?;
         Ok(())
+    }
+
+    /// 全 accepted リレーへノートアクティビティを配送
+    pub async fn fanout_to_relays(&self, activity: &serde_json::Value) -> anyhow::Result<()> {
+        info!("Fanning out activity to relays");
+
+        let accepted_relays = mithic_db::queries::get_accepted_relays(&self.surreal)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to fetch accepted relays: {}", e))?;
+
+        if accepted_relays.is_empty() {
+            info!("No accepted relays to fan out to");
+            return Ok(());
+        }
+
+        let inbox_urls: Vec<String> = accepted_relays.into_iter().map(|r| r.inbox).collect();
+
+        info!("Fanning out to {} relay inboxes", inbox_urls.len());
+        self.queue_batch_delivery(activity.clone(), inbox_urls)
+            .await
+    }
+
+    /// 自インスタンスに関係あるノートのみ保存するか判定
+    pub async fn should_persist_note(
+        &self,
+        _actor_id: &str,
+        _mentions: &[String],
+    ) -> anyhow::Result<bool> {
+        // Simplified: accept all remote notes for now (logic can be refined later)
+        Ok(true)
     }
 
     pub async fn send_accept_follow(

@@ -20,6 +20,10 @@ pub struct ComposeStore {
     pub visibility: RwSignal<NoteVisibility>,
     pub nsfw: RwSignal<bool>,
     pub variant: RwSignal<ComposeVariant>,
+    pub file_ids: RwSignal<Vec<String>>,
+    pub poll_choices: RwSignal<Vec<String>>,
+    pub reply_id: RwSignal<Option<String>>,
+    pub scheduled_at: RwSignal<Option<String>>,
 }
 
 impl ComposeStore {
@@ -31,6 +35,10 @@ impl ComposeStore {
             visibility: RwSignal::new(NoteVisibility::Public),
             nsfw: RwSignal::new(false),
             variant: RwSignal::new(ComposeVariant::CenteredModal),
+            file_ids: RwSignal::new(Vec::new()),
+            poll_choices: RwSignal::new(Vec::new()),
+            reply_id: RwSignal::new(None),
+            scheduled_at: RwSignal::new(None),
         }
     }
 
@@ -52,6 +60,10 @@ impl ComposeStore {
         self.draft.set(String::new());
         self.cw.set(String::new());
         self.nsfw.set(false);
+        self.file_ids.set(Vec::new());
+        self.poll_choices.set(Vec::new());
+        self.reply_id.set(None);
+        self.scheduled_at.set(None);
         LocalStorage::delete(DRAFT_KEY);
     }
 }

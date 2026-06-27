@@ -31,10 +31,10 @@ pub fn ComposeModal() -> impl IntoView {
             visibility: compose.visibility.get_untracked(),
             cw: if cw.trim().is_empty() { None } else { Some(cw) },
             is_nsfw: compose.nsfw.get_untracked(),
-            file_ids: Vec::new(),
-            reply_id: None,
-            poll_choices: Vec::new(),
-            scheduled_at: None,
+            file_ids: compose.file_ids.get_untracked(),
+            reply_id: compose.reply_id.get_untracked(),
+            poll_choices: compose.poll_choices.get_untracked(),
+            scheduled_at: compose.scheduled_at.get_untracked(),
         };
         busy.set(true);
         error.set(None);
@@ -135,12 +135,128 @@ pub fn ComposeModal() -> impl IntoView {
                         />
                     </div>
 
-                    // ドロップゾーン
-                    <div class="px-5 py-2">
-                        <div class="drop-zone">
-                            "📎 画像・動画をここへドロップ (最大4ファイル・100MB)"
+                    // 返信先表示
+                    <Show when=move || compose.reply_id.get().is_some()>
+                        <div class="px-5 py-2 flex items-center gap-2 text-sm opacity-60 border-b border-base-200">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>
+                            <span>"返信中"</span>
+                            <button
+                                class="btn btn-ghost btn-xs ml-auto"
+                                on:click=move |_| compose.reply_id.set(None)
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                            </button>
                         </div>
+                    </Show>
+
+                    // ファイル添付ドロップゾーン
+                    <div class="px-5 py-2">
+                        <label
+                            class="drop-zone flex items-center justify-center gap-2 cursor-pointer"
+                            on:dragover=|e| {
+                                e.prevent_default();
+                            }
+                            on:drop=move |e| {
+                                e.prevent_default();
+                                if let Some(dt) = e.data_transfer() {
+                                    if let Some(files) = dt.files() {
+                                        // TODO: Phase 5 でアップロード実装。現状は placeholder
+                                        let _count = files.length();
+                                    }
+                                }
+                            }
+                        >
+                            <input
+                                type="file"
+                                class="hidden"
+                                multiple
+                                accept="image/*,video/*"
+                            />
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                            <span class="text-sm">"画像・動画をここへドロップ (最大4ファイル・100MB)"</span>
+                        </label>
+                        // 選択済みファイル一覧
+                        <Show when=move || !compose.file_ids.get().is_empty()>
+                            <div class="flex flex-wrap gap-2 mt-2">
+                                {move || compose.file_ids.get().iter().enumerate().map(|(i, id)| {
+                                    view! {
+                                        <div class="badge badge-ghost gap-1">
+                                            <span>{id.chars().take(8).collect::<String>()}</span>
+                                            <button
+                                                class="opacity-50 hover:opacity-100"
+                                                on:click=move |_| {
+                                                    compose.file_ids.update(|ids| { ids.remove(i); });
+                                                }
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                                            </button>
+                                        </div>
+                                    }
+                                }).collect::<Vec<_>>()}
+                            </div>
+                        </Show>
                     </div>
+
+                    // 投票選択肢
+                    <div class="px-5 py-2 border-t border-base-200">
+                        <button
+                            class="btn btn-ghost btn-xs"
+                            on:click=move |_| {
+                                compose.poll_choices.update(|choices| choices.push(String::new()));
+                            }
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                            "投票を追加"
+                        </button>
+                        <Show when=move || !compose.poll_choices.get().is_empty()>
+                            <div class="mt-2 space-y-1">
+                                {move || compose.poll_choices.get().iter().enumerate().map(|(i, _)| {
+                                    view! {
+                                        <div class="flex items-center gap-2">
+                                            <input
+                                                class="input input-bordered input-xs flex-1"
+                                                placeholder=format!("選択肢 {}", i+1)
+                                                prop:value=move || compose.poll_choices.get().get(i).cloned().unwrap_or_default()
+                                                on:input=move |event| {
+                                                    let value = event_target_value(&event);
+                                                    compose.poll_choices.update(|choices| {
+                                                        if let Some(c) = choices.get_mut(i) { *c = value; }
+                                                    });
+                                                }
+                                            />
+                                            <button
+                                                class="btn btn-ghost btn-xs btn-square"
+                                                on:click=move |_| {
+                                                    compose.poll_choices.update(|choices| { choices.remove(i); });
+                                                }
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                                            </button>
+                                        </div>
+                                    }
+                                }).collect::<Vec<_>>()}
+                            </div>
+                        </Show>
+                    </div>
+
+                    // 予約投稿
+                    <Show when=move || compose.scheduled_at.get().is_some()>
+                        <div class="px-5 py-2 flex items-center gap-2 text-sm border-t border-base-200">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                            <input
+                                type="datetime-local"
+                                class="input input-bordered input-xs"
+                                prop:value=move || compose.scheduled_at.get().unwrap_or_default()
+                                on:input=move |event| compose.scheduled_at.set(Some(event_target_value(&event)))
+                            />
+                            <button
+                                class="btn btn-ghost btn-xs ml-auto"
+                                on:click=move |_| compose.scheduled_at.set(None)
+                            >
+                                "キャンセル"
+                            </button>
+                        </div>
+                    </Show>
 
                     // エラー
                     <Show when=move || error.get().is_some()>
@@ -161,7 +277,12 @@ pub fn ComposeModal() -> impl IntoView {
                                 />
                                 <span class="label-text font-mono text-xs">"NSFW"</span>
                             </label>
-                            <button class="btn btn-ghost btn-xs">
+                            <button
+                                class="btn btn-ghost btn-xs"
+                                on:click=move |_| {
+                                    compose.scheduled_at.set(Some(String::new()));
+                                }
+                            >
                                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                                 "予約"
                             </button>

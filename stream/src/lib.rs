@@ -148,3 +148,12 @@ impl Default for ChannelRegistry {
         Self::new()
     }
 }
+
+// ---------------------------------------------------------------------------
+// MessagePack serialization support (P-G15)
+// ---------------------------------------------------------------------------
+
+/// Serialize a stream message using MessagePack if accepted by the client
+pub fn serialize_msgpack<T: Serialize>(msg: &T) -> anyhow::Result<Vec<u8>> {
+    rmp_serde::to_vec(msg).map_err(|e| anyhow::anyhow!("MessagePack encode error: {}", e))
+}

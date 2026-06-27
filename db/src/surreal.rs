@@ -2,10 +2,10 @@ use surrealdb::Surreal;
 use surrealdb::engine::any::{Any, connect};
 use surrealdb::opt::auth::Root;
 
-/// SurrealDBクライアント型
+/// SurrealDB client type
 pub type DbClient = Surreal<Any>;
 
-/// SurrealDB設定
+/// SurrealDB config
 #[derive(Debug, Clone)]
 pub struct SurrealConfig {
     pub endpoint: String,
@@ -27,12 +27,10 @@ impl Default for SurrealConfig {
     }
 }
 
-/// SurrealDBクライアントを作成・接続
+/// Create and connect SurrealDB client
 pub async fn create_client(config: &SurrealConfig) -> anyhow::Result<DbClient> {
-    // WebSocket接続 (mem:// 等の組み込みエンジンも endpoint 指定で利用可能)
     let client = connect(&config.endpoint).await?;
 
-    // 認証 (組み込みメモリエンジンは認証不要)
     if !config.endpoint.starts_with("mem") {
         client
             .signin(Root {
@@ -42,7 +40,6 @@ pub async fn create_client(config: &SurrealConfig) -> anyhow::Result<DbClient> {
             .await?;
     }
 
-    // 名前空間とデータベース選択
     client
         .use_ns(&config.namespace)
         .use_db(&config.database)
@@ -51,7 +48,7 @@ pub async fn create_client(config: &SurrealConfig) -> anyhow::Result<DbClient> {
     Ok(client)
 }
 
-/// 指定サイズの接続プールを作成する (TODO Phase 0: DbPool)
+/// Create connection pool of specified size
 pub async fn create_pool(
     config: &SurrealConfig,
     size: usize,
@@ -64,9 +61,8 @@ pub async fn create_pool(
     Ok(crate::SurrealClient::new(connections))
 }
 
-/// テーブル初期化（スキーマ定義）
+/// Table initialization (schema definition)
 pub async fn init_schema(client: &DbClient) -> anyhow::Result<()> {
-    // ユーザー定義
     client
         .query(
             "
@@ -80,6 +76,8 @@ pub async fn init_schema(client: &DbClient) -> anyhow::Result<()> {
         DEFINE FIELD IF NOT EXISTS featured ON user TYPE option<string>;
         DEFINE FIELD IF NOT EXISTS password_hash ON user TYPE option<string>;
         DEFINE FIELD IF NOT EXISTS email ON user TYPE option<string>;
+        DEFINE FIELD IF NOT EXISTS totp_secret ON user TYPE option<string>;
+        DEFINE FIELD IF NOT EXISTS totp_verified ON user TYPE bool DEFAULT false;
         DEFINE FIELD IF NOT EXISTS created_at ON user TYPE datetime;
         DEFINE FIELD IF NOT EXISTS updated_at ON user TYPE option<datetime>;
         DEFINE FIELD IF NOT EXISTS followers_count ON user TYPE int DEFAULT 0;
@@ -103,7 +101,6 @@ pub async fn init_schema(client: &DbClient) -> anyhow::Result<()> {
         )
         .await?;
 
-    // ノート定義
     client
         .query(
             "
@@ -130,13 +127,14 @@ pub async fn init_schema(client: &DbClient) -> anyhow::Result<()> {
         DEFINE INDEX IF NOT EXISTS idx_note_actor_id ON note COLUMNS actor_id;
         DEFINE INDEX IF NOT EXISTS idx_note_created_at ON note COLUMNS created_at;
         DEFINE INDEX IF NOT EXISTS idx_note_visibility_created ON note COLUMNS visibility, created_at;
+        DEFINE INDEX IF NOT EXISTS idx_note_host ON note COLUMNS host;
+        DEFINE INDEX IF NOT EXISTS idx_note_visibility_host_id ON note COLUMNS visibility, host, id;
         DEFINE INDEX IF NOT EXISTS idx_note_renote_id ON note COLUMNS renote_id;
         DEFINE INDEX IF NOT EXISTS idx_note_reply_id ON note COLUMNS reply_id;
     ",
         )
         .await?;
 
-    // フォロー関係（グラフ）
     client
         .query(
             "
@@ -146,11 +144,12 @@ pub async fn init_schema(client: &DbClient) -> anyhow::Result<()> {
         DEFINE FIELD IF NOT EXISTS shared_inbox ON follow TYPE option<string>;
         DEFINE INDEX IF NOT EXISTS idx_follow_in ON follow COLUMNS in;
         DEFINE INDEX IF NOT EXISTS idx_follow_out ON follow COLUMNS out;
+        DEFINE INDEX IF NOT EXISTS idx_follow_out_in ON follow COLUMNS out, in;
+        DEFINE INDEX IF NOT EXISTS idx_follow_in_out ON follow COLUMNS in, out;
     ",
         )
         .await?;
 
-    // ブロック関係（グラフ）
     client
         .query(
             "
@@ -160,7 +159,6 @@ pub async fn init_schema(client: &DbClient) -> anyhow::Result<()> {
         )
         .await?;
 
-    // ミュート関係（グラフ）
     client
         .query(
             "
@@ -171,7 +169,6 @@ pub async fn init_schema(client: &DbClient) -> anyhow::Result<()> {
         )
         .await?;
 
-    // ドライブファイル定義
     client
         .query(
             "
@@ -190,7 +187,6 @@ pub async fn init_schema(client: &DbClient) -> anyhow::Result<()> {
         )
         .await?;
 
-    // 通知定義
     client
         .query(
             "
@@ -205,11 +201,11 @@ pub async fn init_schema(client: &DbClient) -> anyhow::Result<()> {
         DEFINE FIELD IF NOT EXISTS is_read ON notification TYPE bool DEFAULT false;
         DEFINE INDEX IF NOT EXISTS idx_notification_user ON notification COLUMNS user_id;
         DEFINE INDEX IF NOT EXISTS idx_notification_read ON notification COLUMNS user_id, is_read;
+        DEFINE INDEX IF NOT EXISTS idx_notification_user_created ON notification COLUMNS user_id, created_at;
     ",
         )
         .await?;
 
-    // Poll定義
     client
         .query(
             "
@@ -227,7 +223,6 @@ pub async fn init_schema(client: &DbClient) -> anyhow::Result<()> {
         )
         .await?;
 
-    // PollVote定義
     client
         .query(
             "
@@ -244,7 +239,6 @@ pub async fn init_schema(client: &DbClient) -> anyhow::Result<()> {
         )
         .await?;
 
-    // Block relationship
     client
         .query(
             "
@@ -256,7 +250,6 @@ pub async fn init_schema(client: &DbClient) -> anyhow::Result<()> {
         )
         .await?;
 
-    // Mute relationship
     client
         .query(
             "
@@ -269,7 +262,6 @@ pub async fn init_schema(client: &DbClient) -> anyhow::Result<()> {
         )
         .await?;
 
-    // Hashtag table
     client
         .query(
             "
@@ -284,7 +276,6 @@ pub async fn init_schema(client: &DbClient) -> anyhow::Result<()> {
         )
         .await?;
 
-    // Meta定義
     client
         .query(
             "
@@ -294,11 +285,25 @@ pub async fn init_schema(client: &DbClient) -> anyhow::Result<()> {
         DEFINE FIELD IF NOT EXISTS blocked_hosts ON meta TYPE array<string> DEFAULT [];
         DEFINE FIELD IF NOT EXISTS cache_remote_files ON meta TYPE bool DEFAULT true;
         DEFINE FIELD IF NOT EXISTS remote_drive_capacity_mb ON meta TYPE int DEFAULT 32;
+
+        DEFINE TABLE IF NOT EXISTS word_mute SCHEMAFULL;
+        DEFINE FIELD IF NOT EXISTS id ON word_mute TYPE string;
+        DEFINE FIELD IF NOT EXISTS user_id ON word_mute TYPE record<user>;
+        DEFINE FIELD IF NOT EXISTS pattern ON word_mute TYPE string;
+        DEFINE FIELD IF NOT EXISTS created_at ON word_mute TYPE datetime;
+        DEFINE INDEX IF NOT EXISTS idx_word_mute_user ON word_mute COLUMNS user_id;
+        DEFINE INDEX IF NOT EXISTS idx_word_mute_user_pattern ON word_mute COLUMNS user_id, pattern UNIQUE;
+
+        DEFINE TABLE IF NOT EXISTS chart SCHEMAFULL;
+        DEFINE FIELD IF NOT EXISTS id ON chart TYPE string;
+        DEFINE FIELD IF NOT EXISTS kind ON chart TYPE string;
+        DEFINE FIELD IF NOT EXISTS timestamp ON chart TYPE datetime;
+        DEFINE FIELD IF NOT EXISTS value ON chart TYPE int;
+        DEFINE INDEX IF NOT EXISTS idx_chart_kind_time ON chart COLUMNS kind, timestamp;
     ",
         )
         .await?;
 
-    // リアクション定義
     client
         .query(
             "
@@ -317,7 +322,17 @@ pub async fn init_schema(client: &DbClient) -> anyhow::Result<()> {
         )
         .await?;
 
-    // ブックマーク定義
+    client
+        .query(
+            "
+        DEFINE TABLE IF NOT EXISTS user_note_pining TYPE RELATION;
+        DEFINE FIELD IF NOT EXISTS created_at ON user_note_pining TYPE datetime;
+        DEFINE INDEX IF NOT EXISTS idx_user_note_pining_user ON user_note_pining COLUMNS in;
+        DEFINE INDEX IF NOT EXISTS idx_user_note_pining_note ON user_note_pining COLUMNS out;
+    ",
+        )
+        .await?;
+
     client
         .query(
             "
@@ -329,6 +344,36 @@ pub async fn init_schema(client: &DbClient) -> anyhow::Result<()> {
         DEFINE INDEX IF NOT EXISTS idx_bookmark_user ON bookmark COLUMNS user_id;
         DEFINE INDEX IF NOT EXISTS idx_bookmark_note ON bookmark COLUMNS note_id;
         DEFINE INDEX IF NOT EXISTS idx_bookmark_unique ON bookmark COLUMNS user_id, note_id UNIQUE;
+    ",
+        )
+        .await?;
+
+    client
+        .query(
+            "
+        DEFINE TABLE IF NOT EXISTS relay SCHEMAFULL;
+        DEFINE FIELD IF NOT EXISTS id ON relay TYPE string;
+        DEFINE FIELD IF NOT EXISTS inbox ON relay TYPE string;
+        DEFINE FIELD IF NOT EXISTS status ON relay TYPE string DEFAULT 'requesting';
+        DEFINE FIELD IF NOT EXISTS created_at ON relay TYPE datetime;
+        DEFINE FIELD IF NOT EXISTS updated_at ON relay TYPE option<datetime>;
+        DEFINE INDEX IF NOT EXISTS idx_relay_inbox ON relay COLUMNS inbox UNIQUE;
+    ",
+        )
+        .await?;
+
+    client
+        .query(
+            "
+        DEFINE TABLE IF NOT EXISTS activity SCHEMAFULL;
+        DEFINE FIELD IF NOT EXISTS id ON activity TYPE string;
+        DEFINE FIELD IF NOT EXISTS uri ON activity TYPE string;
+        DEFINE FIELD IF NOT EXISTS activity_type ON activity TYPE string;
+        DEFINE FIELD IF NOT EXISTS actor_id ON activity TYPE option<record<user>>;
+        DEFINE FIELD IF NOT EXISTS note_id ON activity TYPE option<record<note>>;
+        DEFINE FIELD IF NOT EXISTS created_at ON activity TYPE datetime;
+        DEFINE INDEX IF NOT EXISTS idx_activity_uri ON activity COLUMNS uri UNIQUE;
+        DEFINE INDEX IF NOT EXISTS idx_activity_type ON activity COLUMNS activity_type;
     ",
         )
         .await?;
