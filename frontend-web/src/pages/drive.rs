@@ -49,23 +49,23 @@ pub fn DrivePage() -> impl IntoView {
     view! {
         <Shell active="drive" right_rail=false>
             <section class="p-4">
-                <h1 class="text-2xl font-bold mb-4">"ファイルマネージャー"</h1>
+                <h1 class="wf-title mb-4">"ファイルマネージャー"</h1>
 
                 <Show when=move || loading.get()>
                     <div class="flex items-center justify-center py-16">
-                        <span class="loading loading-spinner loading-lg" />
+                        <span class="wf-spinner" style="width:32px;height:32px;" />
                     </div>
                 </Show>
 
                 <Show when=move || error.get().is_some()>
-                    <div class="alert alert-error">
+                    <div class="wf-alert error">
                         <span>{move || error.get().unwrap_or_default()}</span>
                     </div>
                 </Show>
 
                 <Show when=move || !loading.get() && files.get().is_empty()>
-                    <div class="text-center py-16 opacity-50">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="mx-auto mb-4"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
+                    <div class="wf-empty">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
                         <p class="text-sm">"ファイルがありません"</p>
                     </div>
                 </Show>
@@ -82,12 +82,11 @@ pub fn DrivePage() -> impl IntoView {
                             let preview_url = file.preview_url.clone();
                             let file_name = file.name.clone();
                             let file_size = file.size;
-                            let file_mime = file.mime_type.clone();
                             view! {
-                                <div class="card card-bordered bg-base-100 shadow-sm group">
+                                <div class="wf-thumb group" style="display:flex;flex-direction:column;">
                                     {if is_image {
                                         view! {
-                                            <figure class="aspect-square bg-base-200 overflow-hidden">
+                                            <div class="aspect-square overflow-hidden" style="background:var(--paper-3);">
                                                 <img
                                                     src=preview_url.clone().unwrap_or(file_url.clone())
                                                     alt=file_name.clone()
@@ -97,27 +96,27 @@ pub fn DrivePage() -> impl IntoView {
                                                         let _ = web_sys::window().unwrap().open_with_url_and_target(&file_url, "_blank");
                                                     }
                                                 />
-                                            </figure>
+                                            </div>
                                         }.into_any()
                                     } else if is_video {
                                         view! {
-                                            <figure class="aspect-square bg-base-200 flex items-center justify-center">
+                                            <div class="aspect-square flex items-center justify-center" style="background:var(--paper-3);">
                                                 <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                                            </figure>
+                                            </div>
                                         }.into_any()
                                     } else {
                                         view! {
-                                            <figure class="aspect-square bg-base-200 flex items-center justify-center">
+                                            <div class="aspect-square flex items-center justify-center" style="background:var(--paper-3);">
                                                 <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
-                                            </figure>
+                                            </div>
                                         }.into_any()
                                     }}
-                                    <div class="card-body p-2 text-xs">
+                                    <div class="p-2 text-xs">
                                         <p class="truncate font-mono opacity-70">{file_name}</p>
                                         <div class="flex justify-between items-center mt-1">
-                                            <span class="opacity-40">{format_size(file_size)}</span>
+                                            <span class="wf-entry-meta">{format_size(file_size)}</span>
                                             <button
-                                                class="btn btn-ghost btn-xs text-error opacity-0 group-hover:opacity-100"
+                                                class="wf-btn wf-btn-ghost wf-btn-sm opacity-0 group-hover:opacity-100"
                                                 on:click=move |_| delete_file(file_id.clone())
                                             >
                                                 <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>

@@ -8,7 +8,7 @@ pub fn EmptyState(
     icon: String,
 ) -> impl IntoView {
     view! {
-        <div class="flex flex-col items-center justify-center gap-2 py-16 text-base-content/40">
+        <div class="wf-empty">
             {if !icon.is_empty() {
                 view! { <span class="text-4xl">{icon}</span> }.into_any()
             } else {

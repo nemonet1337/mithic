@@ -7,15 +7,15 @@ pub fn LoadingSpinner(
     #[prop(default = "md")]
     size: &'static str,
 ) -> impl IntoView {
-    let size_class = match size {
-        "xs" => "loading-xs",
-        "sm" => "loading-sm",
-        "lg" => "loading-lg",
-        _ => "loading-md",
+    let px = match size {
+        "xs" => "14px",
+        "sm" => "18px",
+        "lg" => "32px",
+        _ => "22px",
     };
     view! {
-        <div class="flex flex-col items-center justify-center gap-2 py-8 text-base-content/50">
-            <span class=format!("loading loading-spinner {}", size_class) />
+        <div class="flex flex-col items-center justify-center gap-2 py-8 wf-entry-meta">
+            <span class="wf-spinner" style=format!("width:{px};height:{px};") />
             <span class="text-sm">{label}</span>
         </div>
     }

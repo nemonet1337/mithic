@@ -45,6 +45,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
 
 # =============================================================================
 # Stage 5: Build frontend WASM with Trunk
+# Tailwind CSS v4 is built by Trunk's standalone CLI (no Node.js / package.json)
 # =============================================================================
 FROM rust:1.94-bookworm AS frontend-builder
 RUN apt-get update && apt-get install -y \
@@ -105,7 +106,11 @@ ENTRYPOINT ["mithic-worker"]
 # =============================================================================
 FROM caddy:alpine AS frontend
 COPY --from=frontend-builder /app/frontend-web/dist /usr/share/caddy
-COPY infra/caddy/Caddyfile /etc/caddy/Caddyfile
+# Flatten public/ into dist root (Trunk nests public/ inside dist/)
+RUN find /usr/share/caddy -mindepth 2 -exec mv -t /usr/share/caddy {} + 2>/dev/null || true
+# Clean up empty public/ directory if it exists
+RUN rm -rf /usr/share/caddy/public
+COPY Caddyfile /etc/caddy/Caddyfile
 EXPOSE 80
 EXPOSE 443
 EXPOSE 3000

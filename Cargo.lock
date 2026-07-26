@@ -1861,6 +1861,7 @@ dependencies = [
  "gloo-storage",
  "gloo-timers",
  "icondata",
+ "js-sys",
  "leptos",
  "leptos_i18n",
  "leptos_icons",
@@ -6553,7 +6554,6 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "comrak",
- "mithic-core",
  "serde",
  "serde_json",
  "ulid",

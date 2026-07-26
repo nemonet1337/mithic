@@ -2,12 +2,12 @@ use leptos::prelude::*;
 
 use crate::components::MediaImage;
 use crate::components::MediaVideo;
-use crate::models::MediaAttachment;
+use shared::MediaAttachment;
 
 #[component]
 pub fn MediaList(attachments: Vec<MediaAttachment>) -> impl IntoView {
     if attachments.is_empty() {
-        return ().into_any();
+        return view! { <div></div> }.into_any();
     }
 
     let count = attachments.len();
@@ -44,5 +44,5 @@ pub fn MediaList(attachments: Vec<MediaAttachment>) -> impl IntoView {
                 }
             }).collect::<Vec<_>>()}
         </div>
-    }
+    }.into_any()
 }

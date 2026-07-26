@@ -5,7 +5,7 @@ use crate::state::AppState;
 
 pub fn router(state: AppState) -> axum::Router<AppState> {
     axum::Router::new()
-        .route("/:id/vote", post(vote))
+        .route("/{id}/vote", post(vote))
         .with_state(state)
 }
 

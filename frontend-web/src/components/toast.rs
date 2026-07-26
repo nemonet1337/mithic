@@ -57,21 +57,21 @@ pub fn ToastContainer() -> impl IntoView {
     let store = expect_context::<ToastStore>();
 
     view! {
-        <div class="toast toast-top toast-end z-[100]">
+        <div class="wf-toast-wrap">
             <For
                 each=move || store.messages.get()
                 key=|msg| msg.id
                 children=move |msg: ToastMessage| {
                     let kind = msg.kind;
                     let text = msg.text;
-                    let alert_class = match kind {
-                        ToastKind::Info => "alert-info",
-                        ToastKind::Success => "alert-success",
-                        ToastKind::Warning => "alert-warning",
-                        ToastKind::Error => "alert-error",
+                    let toast_class = match kind {
+                        ToastKind::Info => "info",
+                        ToastKind::Success => "success",
+                        ToastKind::Warning => "warn",
+                        ToastKind::Error => "error",
                     };
                     view! {
-                        <div class=format!("alert {} shadow-lg max-w-sm", alert_class)>
+                        <div class=format!("wf-toast {}", toast_class)>
                             <span class="text-sm">{text}</span>
                         </div>
                     }

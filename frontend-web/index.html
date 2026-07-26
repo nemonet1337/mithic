@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="ja" data-theme="night">
+<html lang="ja" class="dark">
     <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <meta name="theme-color" content="#7c3aed" />
+        <meta name="theme-color" content="#16151a" />
         <meta name="description" content="Mithic — 分散型 SNS。signal not noise。" />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -12,24 +12,22 @@
         <title>Mithic</title>
         <!-- PWA Manifest -->
         <link rel="manifest" href="/manifest.webmanifest" />
-        <!-- Apple Touch Icon (SVG fallback) -->
         <link rel="apple-touch-icon" href="/icon-192.png" />
         <!-- Fonts -->
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
         <link
-            href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap"
+            href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&family=Patrick+Hand&family=Zen+Kurenaido&display=swap"
             rel="stylesheet"
         />
-        <!-- Tailwind + DaisyUI (compiled by trunk) -->
+        <!-- Tailwind (built by Trunk via standalone CLI, no Node.js) -->
         <link data-trunk rel="tailwind-css" href="style/main.css" />
         <!-- Rust/WASM app -->
         <link data-trunk rel="rust" />
-        <!-- Static public files (manifest, sw.js, offline.html) -->
         <link data-trunk rel="copy-dir" href="public" />
     </head>
     <body>
-        <!-- Service Worker 登録 -->
+        <!-- Service Worker -->
         <script>
             if ('serviceWorker' in navigator) {
                 window.addEventListener('load', () => {
@@ -38,14 +36,15 @@
                         .catch(err => console.warn('[SW] registration failed', err));
                 });
             }
-            // テーマの初期化（LocalStorage から復元）
+            // テーマ復元: .dark クラス方式 (キーは mithic.theme を継続)
             (function () {
                 try {
                     const t = localStorage.getItem('mithic.theme');
+                    const root = document.documentElement;
                     if (t === 'light') {
-                        document.documentElement.setAttribute('data-theme', 'light');
+                        root.classList.remove('dark');
                     } else {
-                        document.documentElement.setAttribute('data-theme', 'night');
+                        root.classList.add('dark');
                     }
                 } catch (_) {}
             })();

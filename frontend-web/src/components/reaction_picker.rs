@@ -18,21 +18,20 @@ pub fn ReactionPicker(
 
     let select_emoji = move |emoji: &str| {
         if let Some(ref cb) = on_select {
-            cb.call(emoji.to_string());
+            cb.run(emoji.to_string());
         }
         if let Some(ref cb) = on_close {
-            cb.call(());
+            cb.run(());
         }
     };
 
     view! {
         <Show when=move || is_open>
-            <div class="absolute z-50 mt-1 p-3 bg-base-100 border border-base-300 rounded-2xl shadow-xl w-72">
-                <div class="grid grid-cols-10 gap-1 mb-2">
+            <div class="wf-pop" style="width:280px;">
+                <div class="wf-react-key">
                     {COMMON_EMOJIS.iter().map(|emoji| {
                         view! {
                             <button
-                                class="btn btn-ghost btn-xs p-1 text-lg hover:bg-base-200 rounded-lg"
                                 on:click=move |_| select_emoji(emoji)
                             >
                                 {emoji.to_string()}
@@ -40,9 +39,10 @@ pub fn ReactionPicker(
                         }
                     }).collect::<Vec<_>>()}
                 </div>
-                <div class="flex gap-2">
+                <div class="flex gap-2" style="padding:0 4px 4px;">
                     <input
-                        class="input input-bordered input-xs flex-1"
+                        class="wf-input"
+                        style="padding:6px 10px;font-size:12px;"
                         placeholder="カスタム絵文字 :emoji:"
                         prop:value=move || custom_input.get()
                         on:input=move |e| custom_input.set(event_target_value(&e))
@@ -56,7 +56,7 @@ pub fn ReactionPicker(
                         }
                     />
                     <button
-                        class="btn btn-xs btn-ghost"
+                        class="wf-btn wf-btn-ghost wf-btn-sm"
                         on:click=move |_| {
                             let val = custom_input.get_untracked();
                             if !val.is_empty() {

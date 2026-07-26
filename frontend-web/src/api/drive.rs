@@ -1,5 +1,6 @@
-use gloo_net::http::Request;
 use serde::{Deserialize, Serialize};
+
+use super::client::{ApiError, request};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -33,66 +34,27 @@ pub async fn find(
     name: Option<String>,
     mime_type: Option<String>,
     limit: Option<u64>,
-) -> Result<Vec<DriveFileResponse>, crate::api::client::ApiError> {
-    let client = crate::api::client::get_client();
+) -> Result<Vec<DriveFileResponse>, ApiError> {
     let body = DriveFindRequest { name, mime_type, limit };
-    let resp = Request::post(&format!("{}/api/drive/files/find", client.base_url))
-        .header("Authorization", &format!("Bearer {}", token))
-        .json(&body)
-        .map_err(|e| crate::api::client::ApiError {
-            status: 0,
-            message: e.to_string(),
-        })?
-        .send()
-        .await
-        .map_err(|e| crate::api::client::ApiError {
-            status: 0,
-            message: e.to_string(),
-        })?;
-    if resp.ok() {
-        resp.json()
-            .await
-            .map_err(|e| crate::api::client::ApiError {
-                status: 0,
-                message: e.to_string(),
-            })
-    } else {
-        let status = resp.status();
-        let text = resp.text().await.unwrap_or_default();
-        Err(crate::api::client::ApiError {
-            status,
-            message: text,
-        })
-    }
+    request::<Vec<DriveFileResponse>, _>(
+        "POST",
+        "drive/files/find",
+        Some(token),
+        Some(&body),
+    )
+    .await
 }
 
 pub async fn delete(
     token: &str,
     file_id: &str,
-) -> Result<(), crate::api::client::ApiError> {
-    let client = crate::api::client::get_client();
+) -> Result<(), ApiError> {
     let body = serde_json::json!({ "fileId": file_id });
-    let resp = Request::post(&format!("{}/api/drive/files/delete", client.base_url))
-        .header("Authorization", &format!("Bearer {}", token))
-        .json(&body)
-        .map_err(|e| crate::api::client::ApiError {
-            status: 0,
-            message: e.to_string(),
-        })?
-        .send()
-        .await
-        .map_err(|e| crate::api::client::ApiError {
-            status: 0,
-            message: e.to_string(),
-        })?;
-    if resp.ok() {
-        Ok(())
-    } else {
-        let status = resp.status();
-        let text = resp.text().await.unwrap_or_default();
-        Err(crate::api::client::ApiError {
-            status,
-            message: text,
-        })
-    }
+    request::<(), serde_json::Value>(
+        "POST",
+        "drive/files/delete",
+        Some(token),
+        Some(&body),
+    )
+    .await
 }

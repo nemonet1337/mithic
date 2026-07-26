@@ -11,7 +11,7 @@ mod drive;
 pub use drive::DrivePage;
 
 const TIMELINE_TABS: [(&str, &str); 3] = [
-    ("フォロー中", "/"),
+    ("ホーム", "/"),
     ("ローカル", "/local"),
     ("グローバル", "/global"),
 ];
@@ -51,18 +51,24 @@ fn TimelinePage(kind: TimelineKind) -> impl IntoView {
         TimelineKind::Local => "local",
         TimelineKind::Global => "global",
     };
-    let active = match kind {
+    let active_path = match kind {
         TimelineKind::Home => "/",
         TimelineKind::Local => "/local",
         TimelineKind::Global => "/global",
     };
+
+    let tabs: Vec<(&'static str, &'static str, bool)> = TIMELINE_TABS
+        .iter()
+        .map(|(label, href)| (*label, *href, *href == active_path))
+        .collect();
+
     let title = match kind {
-        TimelineKind::Home => "�z�[��",
-        TimelineKind::Local => "���[�J��",
-        TimelineKind::Global => "�O���[�o��",
+        TimelineKind::Home => "ホーム",
+        TimelineKind::Local => "ローカル",
+        TimelineKind::Global => "グローバル",
     };
 
-    // �^�C�����C���ǂݍ���
+    // タイムライン読み込み
     Effect::new(move |_| {
         let token = auth.token.get();
         if let Some(tok) = token {
@@ -82,7 +88,7 @@ fn TimelinePage(kind: TimelineKind) -> impl IntoView {
         }
     });
 
-    // WebSocket でリアルタイ�?先�?�挿入
+    // WebSocket でリアルタイム先頭へ挿入
     Effect::new(move |_| {
         if let Some(token) = auth.token.get() {
             connect_stream(token, notes, notifications);
@@ -114,21 +120,21 @@ fn TimelinePage(kind: TimelineKind) -> impl IntoView {
 
     view! {
         <Shell active="home">
-            <TopBar title=title folio="01" tabs=TIMELINE_TABS.to_vec() active_tab=active />
-            <section class="timeline-scroll">
+            <TopBar title=title folio="01" tabs=tabs />
+            <section class="wf-scroll">
                 <For
                     each=move || notes.get()
                     key=|note| note.id.clone()
                     children=|note| view! { <PostCard note=note /> }
                 />
                 <Show when=move || is_loading.get()>
-                    <div class="timeline-loading text-center py-4 flex justify-center">
-                        <span class="loading loading-spinner loading-md"></span>
-                        <span class="ml-2">"読み込み中…"</span>
+                    <div class="flex items-center justify-center gap-2 py-4">
+                        <span class="wf-spinner" style="width:18px;height:18px;" />
+                        <span class="wf-entry-meta">"読み込み中…"</span>
                     </div>
                 </Show>
                 <Show when=move || !is_loading.get() && has_more.get() && !notes.get().is_empty()>
-                    <LoadMore on_visible=move || load_more() />
+                    <LoadMore on_visible=std::sync::Arc::new(move || load_more()) />
                 </Show>
             </section>
         </Shell>
@@ -142,37 +148,38 @@ pub fn StatusDetailPage() -> impl IntoView {
         .first()
         .cloned()
         .unwrap_or_else(|| sample_notes().remove(0));
+    let reply_placeholder = format!("{} への返信", current.author.handle());
     view! {
         <Shell active="home">
             <TopBar title="投稿詳細" folio="02" />
-            <div class="flex flex-col lg:flex-row gap-4 p-4 timeline-scroll">
+            <div class="flex flex-col lg:flex-row gap-4 p-4 wf-scroll">
                 <section class="flex-1 flex flex-col gap-4">
                     <PostCard note=current.clone() flat=true />
-                    <div class="card card-bordered bg-base-100 shadow p-4 flex flex-col gap-3">
-                        <span class="text-xs font-mono opacity-50">"返信�? " {current.author.handle()}</span>
-                        <textarea class="textarea textarea-bordered w-full resize-none" placeholder=format!("{} への返信", current.author.handle()) />
+                    <div class="wf-card flex flex-col gap-3">
+                        <span class="wf-entry-meta">"返信先: " {current.author.handle()}</span>
+                        <textarea class="wf-compose-area" style="min-height:64px;" placeholder=reply_placeholder />
                         <div class="flex items-center justify-between">
                             <div class="flex items-center gap-2">
-                                <button class="btn btn-ghost btn-sm">"添�?"</button>
-                                <button class="btn btn-ghost btn-sm">"絵�?�?"</button>
+                                <button class="wf-btn wf-btn-ghost wf-btn-sm">"添付"</button>
+                                <button class="wf-btn wf-btn-ghost wf-btn-sm">"絵文字"</button>
                             </div>
-                            <button class="btn btn-primary btn-sm">"返信"</button>
+                            <button class="wf-btn wf-btn-primary wf-btn-sm">"返信"</button>
                         </div>
                     </div>
                     {notes.into_iter().skip(1).map(|note| view! { <PostCard note=note /> }).collect_view()}
                 </section>
                 <aside class="w-full lg:w-80 flex flex-col gap-4">
-                    <section class="card card-bordered bg-base-100 shadow p-4">
-                        <span class="text-xs font-mono opacity-50 mb-2">"[ REACTIONS ]"</span>
+                    <section class="wf-card">
+                        <span class="wf-entry-meta">"[ REACTIONS ]"</span>
                         <div class="flex flex-wrap gap-2 mt-2">
                             {current.reactions.iter().map(|reaction| view! {
-                                <span class="badge badge-secondary p-3 gap-1">{reaction.emoji.clone()} " " {reaction.count.to_string()}</span>
+                                <span class="wf-pill">{reaction.emoji.clone()} " " {reaction.count.to_string()}</span>
                             }).collect_view()}
                         </div>
                     </section>
-                    <section class="card card-bordered bg-base-100 shadow p-4">
-                        <span class="text-xs font-mono opacity-50 mb-2">"[ QUOTES ]"</span>
-                        <p class="text-sm">"引用は�?投稿を埋め込み表示します�?"</p>
+                    <section class="wf-card">
+                        <span class="wf-entry-meta">"[ QUOTES ]"</span>
+                        <p class="text-sm mt-2">"この投稿を引用した投稿がここに表示されます。"</p>
                     </section>
                 </aside>
             </div>
@@ -188,7 +195,7 @@ pub fn NotificationsPage() -> impl IntoView {
     let notifications = RwSignal::<Vec<crate::models::Notification>>::new(vec![]);
     let filter = RwSignal::new("all");
 
-    // �? API から通知一覧を取�?
+    // 実 API から通知一覧を取得
     Effect::new(move |_| {
         if let Some(tok) = token.get() {
             wasm_bindgen_futures::spawn_local(async move {
@@ -227,65 +234,59 @@ pub fn NotificationsPage() -> impl IntoView {
     };
     view! {
         <Shell active="notif">
-            <div class="flex items-center justify-between p-4 border-b border-base-300">
-                <span class="font-bold text-xl">"アク�?ィビティ"</span>
-                <div class="flex items-center gap-2">
-                    <Show when=move || (notification_store.unread_notifications.get() > 0)>
-                        <span class="badge badge-error">
-                            "未読 " {move || notification_store.unread_notifications.get().to_string()}
-                        </span>
-                    </Show>
-                    <button class="btn btn-ghost btn-sm"
-                        on:click=mark_all_read>
-                        "既読に"
-                    </button>
-                </div>
+            <TopBar title="通知" folio="03" />
+            <div class="flex items-center justify-between px-4 py-2">
+                <Show when=move || (notification_store.unread_notifications.get() > 0)>
+                    <span class="wf-pill on">
+                        "未読 " {move || notification_store.unread_notifications.get().to_string()}
+                    </span>
+                </Show>
+                <button class="wf-btn wf-btn-ghost wf-btn-sm ml-auto"
+                    on:click=mark_all_read>
+                    "すべて既読に"
+                </button>
             </div>
-            <div class="tabs tabs-bordered px-4 mt-2">
+            <div class="wf-seg px-4">
                 <span
-                    class=move || if filter.get() == "all" { "tab tab-active" } else { "tab" }
-                    on:click=move |_| filter.set("all")
-                    style="cursor:pointer">
+                    class=move || if filter.get() == "all" { "wf-seg-item active" } else { "wf-seg-item" }
+                    on:click=move |_| filter.set("all")>
                     "すべて"
                 </span>
                 <span
-                    class=move || if filter.get() == "mention" { "tab tab-active" } else { "tab" }
-                    on:click=move |_| filter.set("mention")
-                    style="cursor:pointer">
-                    "@メンション"
+                    class=move || if filter.get() == "mention" { "wf-seg-item active" } else { "wf-seg-item" }
+                    on:click=move |_| filter.set("mention")>
+                    "返信"
                 </span>
                 <span
-                    class=move || if filter.get() == "reaction" { "tab tab-active" } else { "tab" }
-                    on:click=move |_| filter.set("reaction")
-                    style="cursor:pointer">
-                    "�?�?ね"
+                    class=move || if filter.get() == "reaction" { "wf-seg-item active" } else { "wf-seg-item" }
+                    on:click=move |_| filter.set("reaction")>
+                    "リアクション"
                 </span>
                 <span
-                    class=move || if filter.get() == "follow" { "tab tab-active" } else { "tab" }
-                    on:click=move |_| filter.set("follow")
-                    style="cursor:pointer">
+                    class=move || if filter.get() == "follow" { "wf-seg-item active" } else { "wf-seg-item" }
+                    on:click=move |_| filter.set("follow")>
                     "フォロー"
                 </span>
             </div>
-            <section class="timeline-scroll">
+            <section class="wf-scroll">
                 <For
                     each=filtered_notifications
                     key=|notification| notification.id.clone()
                     children=|notification| {
                     let sender = notification.sender.clone();
                     let note   = notification.note.clone();
-                    let unread_class = if notification.is_read { "notification-card" } else { "notification-card unread" };
+                    let unread_class = if notification.is_read { "wf-notif" } else { "wf-notif unread" };
                     let (kind_label, action_view) = match notification.notification_type {
                         NotificationType::Reaction => (
-                            format!("{} があなた�?�投稿に", notification.reaction.as_deref().unwrap_or("リアクション")),
+                            format!("{} があなたの投稿にリアクションしました", notification.reaction.as_deref().unwrap_or("誰か")),
                             view! {}.into_any(),
                         ),
                         NotificationType::Reply => (
-                            "が返信しました".into(),
+                            "があなたの投稿に返信しました".into(),
                             view! {
                                 <div class="flex items-center gap-2 mt-3">
-                                    <button class="btn btn-ghost btn-sm">"返信"</button>
-                                    <button class="btn btn-sm">"開く"</button>
+                                    <button class="wf-btn wf-btn-ghost wf-btn-sm">"返信"</button>
+                                    <button class="wf-btn wf-btn-sm">"開く"</button>
                                 </div>
                             }.into_any(),
                         ),
@@ -293,12 +294,12 @@ pub fn NotificationsPage() -> impl IntoView {
                             "があなたをフォローしました".into(),
                             view! {
                                 <div class="mt-3">
-                                    <button class="btn btn-primary btn-sm">"フォローバック"</button>
+                                    <button class="wf-btn wf-btn-primary wf-btn-sm">"フォローバック"</button>
                                 </div>
                             }.into_any(),
                         ),
                         NotificationType::Renote => (
-                            "がリノ�?�トしました".into(),
+                            "があなたの投稿をリノートしました".into(),
                             view! {}.into_any(),
                         ),
                         NotificationType::Mention => (
@@ -306,24 +307,24 @@ pub fn NotificationsPage() -> impl IntoView {
                             view! {}.into_any(),
                         ),
                         NotificationType::Quote => (
-                            "があなたを引用しました".into(),
+                            "があなたの投稿を引用しました".into(),
                             view! {}.into_any(),
                         ),
                         NotificationType::FollowRequest => (
-                            "がフォローリクエストを送りました".into(),
+                            "がフォローリクエストを送信しました".into(),
                             view! {
                                 <div class="flex items-center gap-2 mt-3">
-                                    <button class="btn btn-primary btn-sm">"承�?"</button>
-                                    <button class="btn btn-ghost btn-sm">"拒否"</button>
+                                    <button class="wf-btn wf-btn-primary wf-btn-sm">"承認"</button>
+                                    <button class="wf-btn wf-btn-ghost wf-btn-sm">"拒否"</button>
                                 </div>
                             }.into_any(),
                         ),
                         NotificationType::FollowRequestAccepted => (
-                            "があなた�?�フォローリクエストを承認しました".into(),
+                            "があなたのフォローリクエストを承認しました".into(),
                             view! {}.into_any(),
                         ),
                         NotificationType::PollEnded => (
-                            "のアンケートが終�?しました".into(),
+                            "のアンケートが終了しました".into(),
                             view! {}.into_any(),
                         ),
                         NotificationType::UserSignup => (
@@ -333,18 +334,15 @@ pub fn NotificationsPage() -> impl IntoView {
                     };
                     view! {
                         <article class=unread_class>
-                            <Show when=move || !notification.is_read>
-                                <div class="unread-indicator" />
-                            </Show>
                             {sender.map(|user| view! { <Avatar user=user size=AvatarSize::Sm /> }).into_view()}
-                            <div class="flex-1">
+                            <div class="wf-notif-text">
                                 <div class="flex items-center justify-between">
-                                    <strong class="text-sm">{kind_label}</strong>
-                                    <span class="font-mono text-xs opacity-60">{notification.created_at}</span>
+                                    <span class="who">{kind_label}</span>
+                                    <span class="wf-notif-time">{notification.created_at}</span>
                                 </div>
-{note.map(|n| view! {
-                                     <blockquote class="blockquote bg-base-200 p-3 rounded-lg text-sm mt-2"><MarkdownText text=n.content /></blockquote>
-                                 }).into_view()}
+                                {note.map(|n| view! {
+                                    <blockquote class="wf-dashed mt-2 p-3 text-sm"><MarkdownText text=n.content /></blockquote>
+                                }).into_view()}
                                 {action_view}
                             </div>
                         </article>
@@ -360,10 +358,10 @@ pub fn SearchPage() -> impl IntoView {
     let query = use_query_map();
     let navigate = use_navigate();
 
-    // queryの"q"の値で初期�?
+    // query の "q" 値で初期化
     let search_input = RwSignal::new(query.read().get("q").unwrap_or_default());
 
-    // クエリパラメータの変更を監視して入力�?に反映
+    // URL クエリパラメータの変更を監視して入力欄に反映
     Effect::new(move |_| {
         let q = query.read().get("q").unwrap_or_default();
         search_input.set(q);
@@ -418,13 +416,13 @@ pub fn SearchPage() -> impl IntoView {
 
     view! {
         <Shell active="search">
-            <TopBar title="検索 / 発�?" folio="04" />
-            <section class="timeline-scroll p-4 flex flex-col gap-4">
-                <div class="card card-bordered bg-base-100 shadow p-4 flex flex-col gap-3">
-                    <span class="text-xs font-mono opacity-50">"検索"</span>
-                    <div class="join w-full">
+            <TopBar title="検索 / 発見" folio="04" />
+            <section class="wf-scroll p-4 flex flex-col gap-4">
+                <div class="wf-card flex flex-col gap-3">
+                    <span class="wf-entry-meta">"検索"</span>
+                    <div class="flex gap-2 w-full">
                         <input
-                            class="input input-bordered join-item flex-1"
+                            class="wf-input flex-1"
                             placeholder="投稿・ユーザー・タグを検索"
                             prop:value=move || search_input.get()
                             on:input=move |ev| search_input.set(event_target_value(&ev))
@@ -434,11 +432,11 @@ pub fn SearchPage() -> impl IntoView {
                                 }
                             }
                         />
-                        <button class="btn btn-primary join-item" on:click=move |_| do_search_click()>"検索"</button>
+                        <button class="wf-btn wf-btn-primary" on:click=move |_| do_search_click()>"検索"</button>
                     </div>
                     <div class="flex flex-wrap gap-2 mt-2">
                         {vec!["#art", "#tech", "#books", "#music", "#food", "#photo"].into_iter().map(|tag| view! {
-                            <A href=format!("/search?tag={}", tag.trim_start_matches('#')) attr:class="badge badge-outline hover:badge-primary p-3">{tag}</A>
+                            <A href=format!("/search?tag={}", tag.trim_start_matches('#')) attr:class="wf-pill">{tag}</A>
                         }).collect_view()}
                     </div>
                 </div>
@@ -447,8 +445,8 @@ pub fn SearchPage() -> impl IntoView {
                         let notes = filtered_notes();
                         if notes.is_empty() {
                             view! {
-                                <div class="card card-bordered border-dashed bg-base-100 p-8 text-center">
-                                    <span class="font-mono text-sm opacity-55">"検索結果が見つかりませんでした�?"</span>
+                                <div class="wf-dashed p-8 text-center">
+                                    <span class="wf-entry-meta">"検索結果が見つかりませんでした。"</span>
                                 </div>
                             }.into_any()
                         } else {
@@ -480,76 +478,68 @@ fn DmScaffold(conversation_id: Option<String>) -> impl IntoView {
     let selected = conversation_id.unwrap_or_else(|| "hana".into());
     view! {
         <Shell active="dm" right_rail=false>
-            <div class="dm-layout">
-                <aside class="dm-list-pane flex flex-col">
-                    <div class="flex items-center justify-between p-4 border-b border-base-300">
-                        <span class="font-bold text-xl">"DM"</span>
-                        <button class="btn btn-circle btn-sm btn-ghost">"+"</button>
+            <div class="wf-dm">
+                <aside class="wf-dm-list flex flex-col">
+                    <div class="flex items-center justify-between p-4 wf-spine-rule" style="margin:0;border-bottom:1px solid var(--line-soft);border-top:none;">
+                        <span class="wf-title">"DM"</span>
+                        <button class="wf-btn wf-btn-ghost wf-btn-sm wf-btn-circle">"+"</button>
                     </div>
-                    <div class="p-3 border-b border-base-300">
-                        <input class="input input-bordered input-sm w-full" placeholder="検索" />
+                    <div class="p-3">
+                        <input class="wf-input" style="padding:6px 10px;font-size:13px;" placeholder="検索" />
                     </div>
                     <div class="flex-1 overflow-y-auto">
                         {vec![
-                            ("hana", "Hana K.", "@hana", "余白につ�?て話そう", "2m", true),
-                            ("riku", "Riku M.", "@riku", "OK 送りました", "14m", false),
-                            ("aya", "Aya T.", "@aya", "?��", "1h", false),
-                            ("design", "Group · design", "3 人", "Ken: たしかに", "3h", false),
+                            ("hana", "Hana K.", "@hana", "了解しました！", "2m", true),
+                            ("riku", "Riku M.", "@riku", "OK 送信しました", "14m", false),
+                            ("aya", "Aya T.", "@aya", "ありがとうございます", "1h", false),
+                            ("design", "Group design", "3人", "Ken: 確かに", "3h", false),
                         ].into_iter().map(|(id, name, handle, last, time, unread)| {
                             let active = selected == id;
-                            let row_class = if active {
-                                "flex items-center gap-3 p-3 bg-base-200 hover:bg-base-200 cursor-pointer border-b border-base-300/40"
-                            } else {
-                                "flex items-center gap-3 p-3 hover:bg-base-200/50 cursor-pointer border-b border-base-300/40"
-                            };
+                            let row_style = if active { "background:var(--paper-2);" } else { "" };
                             view! {
-                                <A href=format!("/dm/{id}") attr:class=row_class>
-                                    <div class="avatar placeholder">
-                                        <div class="bg-primary text-primary-content rounded-full w-10 h-10 flex items-center justify-center">
-                                            <span class="text-sm font-bold">{name.chars().next().unwrap_or('?').to_string()}</span>
-                                        </div>
+                                <A href=format!("/dm/{id}") attr:class="flex items-center gap-3 p-3 cursor-pointer wf-spine-rule" attr:style=format!("margin:0;border-radius:0;border-top:none;border-bottom:1px dashed var(--line-soft);{row_style}")>
+                                    <div class="avatar" style="width:40px;height:40px;flex-shrink:0;">
+                                        <span class="font-bold" style="font-family:var(--font-hand);font-size:16px;">{name.chars().next().unwrap_or('?').to_string()}</span>
                                     </div>
                                     <div class="flex-1 min-w-0">
                                         <div class="flex items-center justify-between">
                                             <span class="font-bold text-sm truncate">{name}</span>
-                                            <span class="font-mono text-xs opacity-50">{time}</span>
+                                            <span class="wf-notif-time">{time}</span>
                                         </div>
-                                        <div class="text-xs truncate opacity-60">{handle} " · " {last}</div>
+                                        <div class="text-xs truncate wf-entry-meta">{handle} "  " {last}</div>
                                     </div>
                                     <Show when=move || unread>
-                                        <div class="unread-indicator" />
+                                        <span class="wf-badge" style="margin-left:0;" />
                                     </Show>
                                 </A>
                             }
                         }).collect_view()}
                     </div>
                 </aside>
-                <main class="dm-conversation">
-                    <div class="flex items-center justify-between p-4 border-b border-base-300 bg-base-100">
-                        <div class="flex items-center gap-3">
-                            <div class="avatar placeholder">
-                                <div class="bg-primary text-primary-content rounded-full w-10 h-10 flex items-center justify-center">
-                                    <span class="text-sm font-bold">"H"</span>
-                                </div>
-                            </div>
-                            <div class="flex flex-col">
-                                <span class="font-bold text-sm">"Hana K."</span>
-                                <span class="font-mono text-xs opacity-50">"@hana · オンライン"</span>
-                            </div>
+                <main class="wf-dm-conv">
+                    <div class="wf-dm-win-head">
+                        <div class="avatar" style="width:36px;height:36px;">
+                            <span class="font-bold" style="font-family:var(--font-hand);font-size:14px;">"H"</span>
                         </div>
-                        <button class="btn btn-ghost btn-circle">"···"</button>
+                        <div class="flex flex-col">
+                            <span class="font-bold text-sm">"Hana K."</span>
+                            <span class="wf-notif-time">"@hana  オンライン"</span>
+                        </div>
+                        <button class="wf-btn wf-btn-ghost wf-btn-sm wf-btn-circle ml-auto">"···"</button>
                     </div>
-                    <div class="dm-messages">
-                        <span class="font-mono text-xs text-center opacity-40 my-2">"�? 今日 �?"</span>
-                        <MessageBubble mine=false text="ワイヤーの粒度ってど�?決めてる�?" />
-                        <MessageBubble mine=true text="決めすぎな�?ように。会話が生まれる粒度�?" />
-                        <MessageBubble mine=false text="なるほど。じ�?あ余白につ�?て話そう" />
+                    <div class="wf-dm-msgs">
+                        <span class="wf-entry-meta" style="text-align:center;">"── 今日 ──"</span>
+                        <MessageBubble mine=false text="ブロックを解除してもいいですか？" />
+                        <MessageBubble mine=true text="ブロックを解除すると、フォローも解除されます。" />
+                        <MessageBubble mine=false text="了解しました、そのままでお願いします" />
                     </div>
-                    <div class="p-4 bg-base-100 border-t border-base-300">
-                        <div class="join w-full">
-                            <button class="btn join-item btn-outline border-base-300 bg-base-100">"?��"</button>
-                            <input class="input input-bordered join-item flex-1" placeholder="メ�?セージを�?�力…" />
-                            <button class="btn join-item btn-outline border-base-300 bg-base-100">"???"</button>
+                    <div class="p-3" style="border-top:1px solid var(--line-soft);">
+                        <div class="flex gap-2 items-center">
+                            <button class="wf-btn wf-btn-ghost wf-btn-sm wf-btn-circle">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                            </button>
+                            <input class="wf-input flex-1" style="padding:8px 12px;" placeholder="メッセージを送信" />
+                            <button class="wf-btn wf-btn-primary wf-btn-sm">"送信"</button>
                         </div>
                     </div>
                 </main>
@@ -560,11 +550,7 @@ fn DmScaffold(conversation_id: Option<String>) -> impl IntoView {
 
 #[component]
 fn MessageBubble(#[prop(default = false)] mine: bool, #[prop(into)] text: String) -> impl IntoView {
-    let class = if mine {
-        "message-bubble mine"
-    } else {
-        "message-bubble"
-    };
+    let class = if mine { "wf-bubble mine" } else { "wf-bubble" };
     view! { <div class=class>{text}</div> }
 }
 
@@ -585,7 +571,7 @@ pub fn ProfilePage() -> impl IntoView {
     let follow_busy = RwSignal::new(false);
     let profile_tab = RwSignal::new("notes");
 
-    // プロフィールと投稿一覧を�? API から取�?
+    // プロフィールと投稿一覧を実 API から取得
     Effect::new(move |_| {
         let username = handle();
         if let Some(tok) = token.get() {
@@ -627,77 +613,77 @@ pub fn ProfilePage() -> impl IntoView {
 
     view! {
         <Shell active="profile">
-            <section class="timeline-scroll">
+            <section class="wf-scroll">
                 <div class="relative">
-                    <div class="profile-banner" />
-                    <div class="profile-header flex flex-col p-4 relative border-b border-base-300">
-                        <div class="profile-avatar-wrap absolute -top-11 left-4 z-10">
+                    <div class="wf-profile-banner" />
+                    <div class="wf-profile-head">
+                        <div class="wf-profile-av">
                             {move || user.get().map(|u| view! { <Avatar user=u size=AvatarSize::Xl /> })}
                         </div>
-                        <div class="profile-meta pt-14 flex flex-col gap-2">
+                        <div class="wf-profile-meta">
                             <div class="flex items-center justify-between">
                                 <div>
-                                    <span class="text-xs font-mono opacity-50">"ACTIVITYPUB · " {move || if handle().contains('@') { "REMOTE" } else { "LOCAL" }}</span>
-                                    <h1 class="text-2xl font-bold mt-1">{move || user.get().map(|u| u.name()).unwrap_or_default()}</h1>
-                                    <span class="font-mono text-sm opacity-60">{move || format!("@{}", handle())}</span>
+                                    <span class="wf-entry-meta">"ACTIVITYPUB  " {move || if handle().contains('@') { "REMOTE" } else { "LOCAL" }}</span>
+                                    <h1 class="wf-profile-name mt-1">{move || user.get().map(|u| u.name()).unwrap_or_default()}</h1>
+                                    <span class="wf-profile-handle">{move || format!("@{}", handle())}</span>
                                 </div>
                                 <div class="flex items-center gap-2">
                                     <Show when=move || auth.me.get().zip(user.get()).map(|(me, u)| me.id != u.id).unwrap_or(false)>
-                                        <button class="btn btn-primary btn-sm" disabled=move || follow_busy.get() on:click=toggle_follow>
+                                        <button class="wf-btn wf-btn-primary wf-btn-sm" disabled=move || follow_busy.get() on:click=toggle_follow>
                                             {move || if is_following.get() { "フォロー中" } else { "フォロー" }}
                                         </button>
                                     </Show>
-                                    <button class="btn btn-ghost btn-circle btn-sm">"···"</button>
+                                    <button class="wf-btn wf-btn-ghost wf-btn-sm wf-btn-circle">"···"</button>
                                 </div>
                             </div>
                             <p class="text-sm mt-2">{move || user.get().and_then(|u| u.bio).unwrap_or_default()}</p>
 
-                            <div class="profile-stats flex gap-6 mt-4">
-                                <div class="stat-item flex flex-col">
-                                    <span class="stat-value text-lg font-bold">{move || user.get().map(|u| u.notes_count).unwrap_or(0).to_string()}</span>
-                                    <span class="stat-label text-xs opacity-50 font-mono">"投稿"</span>
+                            <div class="wf-profile-stats">
+                                <div class="wf-stat">
+                                    <span class="v">{move || user.get().map(|u| u.notes_count).unwrap_or(0).to_string()}</span>
+                                    <span class="l">"投稿"</span>
                                 </div>
-                                <div class="stat-item flex flex-col">
-                                    <span class="stat-value text-lg font-bold">{move || user.get().map(|u| u.followers_count).unwrap_or(0).to_string()}</span>
-                                    <span class="stat-label text-xs opacity-50 font-mono">"フォロワー"</span>
+                                <div class="wf-stat">
+                                    <span class="v">{move || user.get().map(|u| u.followers_count).unwrap_or(0).to_string()}</span>
+                                    <span class="l">"フォロワー"</span>
                                 </div>
-                                <div class="stat-item flex flex-col">
-                                    <span class="stat-value text-lg font-bold">{move || user.get().map(|u| u.following_count).unwrap_or(0).to_string()}</span>
-                                    <span class="stat-label text-xs opacity-50 font-mono">"フォロー"</span>
+                                <div class="wf-stat">
+                                    <span class="v">{move || user.get().map(|u| u.following_count).unwrap_or(0).to_string()}</span>
+                                    <span class="l">"フォロー"</span>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <div class="tabs tabs-boxed mx-4 my-3">
-                    <span
-                        class=move || if profile_tab.get() == "notes" { "tab tab-active" } else { "tab" }
+                <div class="wf-profile-tabs">
+                    <a
+                        class=move || if profile_tab.get() == "notes" { "active" } else { "" }
                         on:click=move |_| profile_tab.set("notes")
                         style="cursor:pointer">
                         "投稿"
-                    </span>
-                    <span
-                        class=move || if profile_tab.get() == "replies" { "tab tab-active" } else { "tab" }
+                    </a>
+                    <a
+                        class=move || if profile_tab.get() == "replies" { "active" } else { "" }
                         on:click=move |_| profile_tab.set("replies")
                         style="cursor:pointer">
                         "返信"
-                    </span>
-                    <span
-                        class=move || if profile_tab.get() == "media" { "tab tab-active" } else { "tab" }
+                    </a>
+                    <a
+                        class=move || if profile_tab.get() == "media" { "active" } else { "" }
                         on:click=move |_| profile_tab.set("media")
                         style="cursor:pointer">
-                        "メ�?ィア"
-                    </span>
-                    <span
-                        class=move || if profile_tab.get() == "likes" { "tab tab-active" } else { "tab" }
+                        "メディア"
+                    </a>
+                    <a
+                        class=move || if profile_tab.get() == "likes" { "active" } else { "" }
                         on:click=move |_| profile_tab.set("likes")
                         style="cursor:pointer">
-                        "�?�?ね"
-                    </span>
+                        "いいね"
+                    </a>
                 </div>
 
-                <div class="flex flex-col gap-3 px-4">
+                <div class="flex flex-col gap-3 px-4 mt-3">
                     {move || match profile_tab.get() {
                         "notes" => view! {
                             <For
@@ -706,7 +692,7 @@ pub fn ProfilePage() -> impl IntoView {
                                 children=|note| view! { <PostCard note=note /> }
                             />
                         }.into_any(),
-                        _ => view! { <div class="text-center py-8 opacity-50 font-mono text-sm">"[ COMING SOON ]"</div> }.into_any(),
+                        _ => view! { <div class="wf-empty">"[ COMING SOON ]"</div> }.into_any(),
                     }}
                 </div>
             </section>
@@ -732,7 +718,7 @@ pub fn SettingsPage() -> impl IntoView {
     let bio_signal = RwSignal::new(String::new());
     let handle_signal = RwSignal::new(String::new());
 
-    // ユーザー�?報がロードされたら�?�期�?
+    // ユーザー情報がロードされたら初期化
     Effect::new(move |_| {
         if let Some(user) = me.get() {
             display_name_signal.set(user.display_name.clone().unwrap_or_default());
@@ -763,23 +749,23 @@ pub fn SettingsPage() -> impl IntoView {
 
     let groups = vec![
         (
-            "アカウン�?",
+            "アカウント",
             vec![
                 "プロフィール",
-                "メール",
-                "パスワー�?",
-                "連携アカウン�?",
+                "セキュリティ",
+                "パスワード",
+                "連携アカウント",
                 "2段階認証",
             ],
         ),
-        ("プライバシー", vec!["公開�?囲", "ブロ�?ク", "ミュー�?"]),
-        ("通知", vec!["プッシュ", "メール", "メンション"]),
-        ("表示", vec!["�?ー�?", "言�?", "�?度", "タイ�?ゾーン"]),
-        ("連携", vec!["外部サービス", "APIト�?�クン"]),
+        ("プライバシー", vec!["公開範囲", "ブロック", "ミュート"]),
+        ("通知", vec!["プッシュ", "メール", "デスクトップ"]),
+        ("表示", vec!["テーマ", "フォント", "言語"]),
+        ("連携", vec!["外部サービス", "API連携"]),
     ];
 
     let show_delete_confirm = RwSignal::new(false);
-    let danger_open = RwSignal::new(false); // 危険な設定�?�アコー�?ィオン
+    let danger_open = RwSignal::new(false); // 危険な設定の折りたたみ
 
     let theme = RwSignal::new(
         LocalStorage::get::<String>("mithic.theme").unwrap_or_else(|_| "night".into()),
@@ -809,113 +795,104 @@ pub fn SettingsPage() -> impl IntoView {
 
     view! {
         <Shell active="settings" right_rail=false>
-            <div class="settings-layout">
-                <aside class="settings-nav">
-                    <span class="font-bold text-lg px-2 block mb-4">"設�?"</span>
-                    <ul class="menu w-full p-0 gap-2">
-                        {groups.into_iter().map(|(group, items)| view! {
-                            <li class="menu-title text-xs font-mono opacity-50 px-2 mt-2">{group}</li>
+            <div class="flex" style="height:100%;overflow:hidden;">
+                <aside class="wf-rail" style="width:220px;flex-shrink:0;">
+                    <span class="wf-title" style="font-size:18px;">"設定"</span>
+                    {groups.into_iter().map(|(group, items)| view! {
+                        <div>
+                            <span class="wf-rail-tag" style="display:block;margin:8px 0 4px;">{group}</span>
                             {items.into_iter().map(|item| {
                                 let is_active = move || section() == item;
                                 view! {
-                                    <li>
-                                        <A href=format!("/settings/{}", item)
-                                            attr:class=move || if is_active() { "active" } else { "" }>
-                                            {item}
-                                        </A>
-                                    </li>
+                                    <A href=format!("/settings/{}", item)
+                                        attr:class=move || if is_active() { "wf-pop-item active" } else { "wf-pop-item" }>
+                                        {item}
+                                    </A>
                                 }
                             }).collect_view()}
-                        }).collect_view()}
-                    </ul>
+                        </div>
+                    }).collect_view()}
                 </aside>
-                <main class="settings-content">
+                <main class="wf-scroll p-6" style="flex:1;">
                     {move || match section().as_str() {
                         "プロフィール" => view! {
-                            <span class="text-xs font-mono opacity-50">"アカウン�? / プロフィール"</span>
-                            <h1 class="text-2xl font-bold mt-1 mb-6">"プロフィール設�?"</h1>
+                            <span class="wf-entry-meta">"アカウント / プロフィール"</span>
+                            <h1 class="wf-title mt-1 mb-6">"プロフィール設定"</h1>
                             <div class="flex flex-col gap-4 max-w-md">
                                 <div class="flex items-center gap-4">
-                                    <div class="avatar placeholder">
-                                        <div class="bg-primary text-primary-content rounded-full w-20 h-20 flex items-center justify-center">
-                                            <span class="text-2xl font-bold">"M"</span>
-                                        </div>
+                                    <div class="avatar" style="width:80px;height:80px;">
+                                        <span class="font-bold" style="font-size:24px;">"M"</span>
                                     </div>
                                     <div class="flex flex-col gap-2">
-                                        <button class="btn btn-sm btn-outline">"画像を変更"</button>
-                                        <button class="btn btn-sm btn-ghost text-error">"削除"</button>
+                                        <button class="wf-btn wf-btn-ghost wf-btn-sm">"画像を変更"</button>
+                                        <button class="wf-btn wf-btn-ghost wf-btn-sm">"削除"</button>
                                     </div>
                                 </div>
-                                <label class="form-control w-full">
-                                    <div class="label">
-                                        <span class="label-text text-xs font-mono opacity-50">"表示�?"</span>
-                                    </div>
+                                <label class="flex flex-col gap-1 w-full">
+                                    <span class="wf-entry-meta">"表示名"</span>
                                     <input
-                                        class="input input-bordered w-full"
+                                        class="wf-input"
                                         prop:value=move || display_name_signal.get()
                                         on:input=move |ev| display_name_signal.set(event_target_value(&ev))
                                     />
                                 </label>
-                                <label class="form-control w-full">
-                                    <div class="label">
-                                        <span class="label-text text-xs font-mono opacity-50">"ハンドル"</span>
-                                    </div>
+                                <label class="flex flex-col gap-1 w-full">
+                                    <span class="wf-entry-meta">"ハンドル"</span>
                                     <input
-                                        class="input input-bordered w-full"
+                                        class="wf-input"
                                         prop:value=move || handle_signal.get()
                                         disabled=true
                                     />
                                 </label>
-                                <label class="form-control w-full">
-                                    <div class="label">
-                                        <span class="label-text text-xs font-mono opacity-50">"自己紹�?"</span>
-                                    </div>
+                                <label class="flex flex-col gap-1 w-full">
+                                    <span class="wf-entry-meta">"自己紹介"</span>
                                     <textarea
-                                        class="textarea textarea-bordered h-24 w-full resize-none"
+                                        class="wf-input"
+                                        style="height:96px;resize:none;"
                                         prop:value=move || bio_signal.get()
                                         on:input=move |ev| bio_signal.set(event_target_value(&ev))
                                     />
                                 </label>
                                 <div class="flex items-center justify-end gap-2 mt-4">
-                                    <button class="btn btn-ghost">"キャンセル"</button>
-                                    <button class="btn btn-primary" on:click=on_save>"保�?"</button>
+                                    <button class="wf-btn wf-btn-ghost">"キャンセル"</button>
+                                    <button class="wf-btn wf-btn-primary" on:click=on_save>"保存"</button>
                                 </div>
                             </div>
                         }.into_any(),
-                        "�?ー�?" => view! {
-                            <span class="text-xs font-mono opacity-50">"表示 / �?ー�?"</span>
-                            <h1 class="text-2xl font-bold mt-1 mb-6">"�?ーマ設�?"</h1>
-                            <div class="card card-bordered bg-base-100 p-4 max-w-md flex flex-row items-center justify-between shadow">
-                                <span class="text-sm font-semibold">"�?ー�?"</span>
-                                <div class="join">
+                        "テーマ" => view! {
+                            <span class="wf-entry-meta">"表示 / テーマ"</span>
+                            <h1 class="wf-title mt-1 mb-6">"テーマ設定"</h1>
+                            <div class="wf-card max-w-md flex flex-row items-center justify-between">
+                                <span class="text-sm font-semibold">"テーマ"</span>
+                                <div class="flex gap-1">
                                     <button
-                                        class=move || if theme.get() == "light" { "btn btn-sm btn-primary join-item" } else { "btn btn-sm btn-ghost join-item" }
+                                        class=move || if theme.get() == "light" { "wf-btn wf-btn-primary wf-btn-sm" } else { "wf-btn wf-btn-ghost wf-btn-sm" }
                                         on:click=move |_| set_theme("light")>
-                                        "ライ�?"
+                                        "ライト"
                                     </button>
                                     <button
-                                        class=move || if theme.get() == "dark" || theme.get() == "night" { "btn btn-sm btn-primary join-item" } else { "btn btn-sm btn-ghost join-item" }
+                                        class=move || if theme.get() == "dark" || theme.get() == "night" { "wf-btn wf-btn-primary wf-btn-sm" } else { "wf-btn wf-btn-ghost wf-btn-sm" }
                                         on:click=move |_| set_theme("night")>
                                         "ダーク"
                                     </button>
                                     <button
-                                        class=move || if theme.get() == "auto" { "btn btn-sm btn-primary join-item" } else { "btn btn-sm btn-ghost join-item" }
+                                        class=move || if theme.get() == "auto" { "wf-btn wf-btn-primary wf-btn-sm" } else { "wf-btn wf-btn-ghost wf-btn-sm" }
                                         on:click=move |_| set_theme("auto")>
-                                        "自�?"
+                                        "自動"
                                     </button>
                                 </div>
                             </div>
                         }.into_any(),
-                        "2�i�K�F��" => view! {
-                            <span class="text-xs font-mono opacity-50">"�A�J�E���g / 2�i�K�F��"</span>
-                            <h1 class="text-2xl font-bold mt-1 mb-6">"2�i�K�F�ؐݒ�"</h1>
-                            <div class="card card-bordered bg-base-100 p-6 max-w-md shadow">
+                        "2段階認証" => view! {
+                            <span class="wf-entry-meta">"アカウント / 2段階認証"</span>
+                            <h1 class="wf-title mt-1 mb-6">"2段階認証設定"</h1>
+                            <div class="wf-card max-w-md">
                                 <p class="text-sm opacity-70 mb-4">
-                                    "2�i�K�F�؂�L���ɂ���ƁA���O�C�����Ƀp�X���[�h�ɉ����ĔF�؃R�[�h�̓��͂��K�v�ɂȂ�܂��B"
+                                    "2段階認証を有効にすると、ログイン時にパスワードに加えて認証コードの入力が必要になります。"
                                 </p>
                                 <div class="flex items-center gap-3">
                                     <button
-                                        class="btn btn-primary btn-sm"
+                                        class="wf-btn wf-btn-primary wf-btn-sm"
                                         on:click=move |_| {
                                             let tok = token.get_untracked();
                                             let Some(tok) = tok else { return; };
@@ -923,87 +900,81 @@ pub fn SettingsPage() -> impl IntoView {
                                                 use crate::api::auth;
                                                 match auth::setup_2fa(&tok).await {
                                                     Ok(resp) => {
-                                                        web_sys::window()
-                                                            .and_then(|w| w.alert_with_message(
-                                                                &format!("�V�[�N���b�g: {}\n���̃R�[�h��F�؃A�v���ɓ��͂��Ă��������B", resp.secret)
-                                                            ));
+                                                        if let Some(w) = web_sys::window() {
+                                                            _ = w.alert_with_message(
+                                                                &format!("シークレット: {}\nこのコードを認証アプリに入力してください。", resp.secret)
+                                                            );
+                                                        }
                                                     }
                                                     Err(e) => {
-                                                        web_sys::window()
-                                                            .and_then(|w| w.alert_with_message(&e.to_string()));
+                                                        if let Some(w) = web_sys::window() {
+                                                            _ = w.alert_with_message(&e.to_string());
+                                                        }
                                                     }
                                                 }
                                             });
                                         }
                                     >
-                                        "2�i�K�F�؂�L���ɂ���"
+                                        "2段階認証を有効にする"
                                     </button>
                                 </div>
                             </div>
                         }.into_any(),
                         other => view! {
-                            <span class="text-xs font-mono opacity-50">{format!("設�? / {other}")}</span>
-                            <h1 class="text-2xl font-bold mt-1 mb-6">{format!("{other}設�?")}</h1>
-                            <div class="card card-bordered border-dashed bg-base-100 p-8 text-center max-w-md shadow">
-                                <span class="font-mono text-sm opacity-55">{format!("{other}に関する設定�?�現在準備中か、デフォルトで最適化されて�?ます�?")}</span>
+                            <span class="wf-entry-meta">{format!("設定 / {other}")}</span>
+                            <h1 class="wf-title mt-1 mb-6">{format!("{other}設定")}</h1>
+                            <div class="wf-dashed p-8 text-center max-w-md">
+                                <span class="wf-entry-meta">{format!("{other}に関する設定は現在準備中です。デフォルトで最適化されています。")}</span>
                             </div>
                         }.into_any()
                     }}
 
-                    // 危険な操�? (DaisyUI collapse)
-                    <div class="collapse collapse-arrow border border-error/20 bg-error/5 max-w-md mt-6 rounded-lg">
-                        <input type="checkbox"
-                            prop:checked=move || danger_open.get()
-                            on:change=move |_| danger_open.update(|v| *v = !*v)
-                        />
-                        <div class="collapse-title text-sm font-bold text-error">
-                            "危険な設�?"
-                        </div>
-                        <div class="collapse-content flex flex-col gap-3">
-                            <p class="text-xs opacity-70">
-                                "これら�?�操作�?�取り消せません。�?�重に行ってください�?"
-                            </p>
-                            <div class="flex gap-2">
-                                <button class="btn btn-xs btn-outline">"アカウントを一時停止"</button>
-                                <button class="btn btn-xs btn-error btn-outline"
-                                    on:click=move |_| show_delete_confirm.set(true)>
-                                    "アカウントを削除する"
-                                </button>
+                    // 危険な設定の折りたたみ
+                    <div class="wf-card max-w-md mt-6" style="border-color:var(--err);">
+                        <button
+                            class="flex items-center justify-between w-full text-sm font-bold"
+                            style="color:var(--err);"
+                            on:click=move |_| danger_open.update(|v| *v = !*v)
+                        >
+                            "危険な設定"
+                            <span>{move || if danger_open.get() { "▲" } else { "▼" }}</span>
+                        </button>
+                        <Show when=move || danger_open.get()>
+                            <div class="flex flex-col gap-3 mt-3">
+                                <p class="text-xs opacity-70">
+                                    "これらの操作は取り消せません。慎重に行ってください。"
+                                </p>
+                                <div class="flex gap-2">
+                                    <button class="wf-btn wf-btn-ghost wf-btn-sm">"アカウントを一時停止"</button>
+                                    <button class="wf-btn wf-btn-danger wf-btn-sm"
+                                        on:click=move |_| show_delete_confirm.set(true)>
+                                        "アカウントを削除する"
+                                    </button>
+                                </div>
                             </div>
-                        </div>
+                        </Show>
                     </div>
 
                     // 削除確認ダイアログ
-                    <dialog class="modal" class:modal-open=move || show_delete_confirm.get()>
-                        <div class="modal-box max-w-sm border border-error/20">
-                            <h3 class="font-bold text-lg text-error">"アカウントを削除しますか?�?"</h3>
-                            <p class="py-4 text-sm opacity-70">
-                                "こ�?�操作�?�取り消せません。投稿・フォロー関係�?�すべての�?ータが完�?�に削除されます�?"
-                            </p>
-                            <div class="modal-action">
-                                <button class="btn btn-ghost" on:click=move |_| show_delete_confirm.set(false)>"キャンセル"</button>
-                                <button class="btn btn-error">"削除する"</button>
+                    <Show when=move || show_delete_confirm.get()>
+                        <div class="wf-overlay" on:click=move |_| show_delete_confirm.set(false)>
+                            <div class="wf-modal" style="max-width:380px;" on:click=move |e| e.stop_propagation()>
+                                <div class="wf-modal-body">
+                                    <h3 class="wf-modal-title" style="color:var(--err);font-size:18px;">"アカウントを削除しますか？"</h3>
+                                    <p class="py-4 text-sm opacity-70">
+                                        "この操作は取り消せません。投稿・フォロー関係・すべてのデータが完全に削除されます。"
+                                    </p>
+                                </div>
+                                <div class="wf-modal-foot">
+                                    <button class="wf-btn wf-btn-ghost" on:click=move |_| show_delete_confirm.set(false)>"キャンセル"</button>
+                                    <button class="wf-btn wf-btn-danger">"削除する"</button>
+                                </div>
                             </div>
                         </div>
-                        <form method="dialog" class="modal-backdrop" on:submit=move |e| { e.prevent_default(); show_delete_confirm.set(false); }>
-                            <button>"close"</button>
-                        </form>
-                    </dialog>
+                    </Show>
                 </main>
             </div>
         </Shell>
-    }
-}
-
-#[component]
-fn Field(#[prop(into)] label: String, #[prop(into)] value: String) -> impl IntoView {
-    view! {
-        <label class="form-control w-full">
-            <div class="label">
-                <span class="label-text text-xs font-mono opacity-50">{label}</span>
-            </div>
-            <input class="input input-bordered w-full" value=value />
-        </label>
     }
 }
 
@@ -1033,7 +1004,7 @@ pub fn LoginPage() -> impl IntoView {
 
         if h.trim().is_empty() {
             error.set(Some(
-                "���[�U�[���܂��̓��[���A�h���X����͂��Ă�������".into(),
+                "ユーザー名またはメールアドレスを入力してください".into(),
             ));
             return;
         }
@@ -1041,7 +1012,7 @@ pub fn LoginPage() -> impl IntoView {
         if requires_2fa.get_untracked() {
             let code = twofa_code.get_untracked();
             if code.is_empty() {
-                error.set(Some("�F�؃R�[�h����͂��Ă�������".into()));
+                error.set(Some("認証コードを入力してください".into()));
                 return;
             }
             let temp_tok = temp_token.get_untracked();
@@ -1066,7 +1037,7 @@ pub fn LoginPage() -> impl IntoView {
         }
 
         if p.len() < 8 {
-            error.set(Some("�p�X���[�h��8�����ȏ��".into()));
+            error.set(Some("パスワードは8文字以上で".into()));
             return;
         }
         error.set(None);
@@ -1089,7 +1060,7 @@ pub fn LoginPage() -> impl IntoView {
                         temp_token.set(pair.temp_token.unwrap_or_default());
                         return;
                     }
-                    auth2.login(pair.access_token, pair.user);
+                    auth2.login(pair.token, pair.user);
                     nav2("/", Default::default());
                 }
                 Err(e) => {
@@ -1101,34 +1072,29 @@ pub fn LoginPage() -> impl IntoView {
     };
 
     view! {
-        <div class="auth-split">
-            <aside class="auth-aside">
-                <div class="auth-aside-content">
-                    <div class="auth-aside-logo">"mithic"</div>
-                    <span class="text-xs font-mono opacity-60 uppercase tracking-widest">"[ LOG IN · 01 ]"</span>
-                    <h1 class="auth-aside-title mt-4">
-                        "ようこそ�?"<br />
-                        <span class="underline underline-offset-4 decoration-primary">"mithic"</span>" へ�?"
-                    </h1>
-                    <p class="auth-aside-sub mt-2">"決めな�?自由を残したまま、�?�開しましょ�?�?"</p>
-                    <div class="font-mono text-xs opacity-40 mt-12">
-                        "�? mithic · signal not noise �?"
-                    </div>
+        <div class="wf-auth">
+            <aside class="wf-auth-aside">
+                <span class="wf-mark wf-mark-lg">"[m]"<span class="br">"mithic"</span></span>
+                <span class="wf-entry-meta mt-4" style="text-transform:uppercase;letter-spacing:0.1em;">"[ LOG IN  01 ]"</span>
+                <h1 class="wf-auth-title mt-4">
+                    "ようこそ、"<br />
+                    <span class="br">"mithic"</span>"。"
+                </h1>
+                <p class="wf-auth-sub">"あなたの物語を、ここから続けましょう。"</p>
+                <div class="wf-entry-meta mt-12">
+                    "── mithic · signal not noise ──"
                 </div>
             </aside>
 
-            <div class="auth-form-area">
-                <div class="auth-form-inner">
-                    <div class="flex items-center gap-2 mb-4">
-                        <span class="text-2xl font-bold text-primary">"[m]"</span>
-                        <span class="font-bold text-2xl">"mithic"</span>
-                    </div>
+            <div class="wf-auth-form">
+                <div class="wf-auth-inner">
+                    <span class="wf-mark wf-mark-md">"[m]"<span class="br">"mithic"</span></span>
 
-                    <span class="text-xs font-mono opacity-50">[ 既存アカウン�? / SIGN IN ]</span>
-                    <h2 class="text-3xl font-extrabold mt-1">"ログイン"</h2>
+                    <span class="wf-entry-meta">"[ 既存アカウント / SIGN IN ]"</span>
+                    <h2 class="wf-auth-title" style="font-size:28px;">"ログイン"</h2>
 
                     <Show when=move || error.get().is_some()>
-                        <div class="alert alert-error text-sm py-3 mt-2">
+                        <div class="wf-alert error">
                             <span>{move || error.get().unwrap_or_default()}</span>
                         </div>
                     </Show>
@@ -1136,23 +1102,21 @@ pub fn LoginPage() -> impl IntoView {
                     <div class="flex flex-col gap-4 mt-4">
                         <div>
                             <div class="flex justify-between items-center mb-1">
-                                <span class="text-xs font-mono opacity-50">"サー�?"</span>
-                                <span class="text-xs opacity-60 cursor-pointer hover:underline">"変更 ▾"</span>
+                                <span class="wf-entry-meta">"サーバー"</span>
+                                <span class="text-xs opacity-60 cursor-pointer hover:underline">"変更 ▸"</span>
                             </div>
-                            <div class="input input-bordered w-full flex items-center justify-between">
+                            <div class="wf-input flex items-center justify-between">
                                 <div class="flex items-center gap-1">
-                                    <span class="text-base-content/40 font-mono">"@"</span>
+                                    <span class="wf-entry-meta">"@"</span>
                                     <span>{host()}</span>
                                 </div>
-                                <span class="badge badge-success badge-sm">"�? 接続中"</span>
+                                <span class="wf-pill on">"✓ 接続中"</span>
                             </div>
                         </div>
 
-                        <label class="form-control w-full">
-                            <div class="label">
-                                <span class="label-text text-xs font-mono opacity-50">"ハンドル / メール"</span>
-                            </div>
-                            <input class="input input-bordered w-full"
+                        <label class="flex flex-col gap-1 w-full">
+                            <span class="wf-entry-meta">"ハンドル / メール"</span>
+                            <input class="wf-input"
                                 placeholder="@hana"
                                 prop:value=move || handle.get()
                                 on:input=move |e| handle.set(event_target_value(&e))
@@ -1161,39 +1125,40 @@ pub fn LoginPage() -> impl IntoView {
 
                         <div>
                             <div class="flex justify-between items-center mb-1">
-                                <span class="text-xs font-mono opacity-50">"パスワー�?"</span>
-                                <span class="text-xs text-primary cursor-pointer hover:underline">"忘れた�?��?"</span>
+                                <span class="wf-entry-meta">"パスワード"</span>
+                                <span class="text-xs cursor-pointer hover:underline" style="color:var(--accent);">"忘れた場合"</span>
                             </div>
-                            <div class="input input-bordered w-full flex items-center justify-between">
+                            <div class="wf-input flex items-center justify-between">
                                 <input
-                                    class="flex-1 bg-transparent border-none outline-none text-base-content"
+                                    class="flex-1"
+                                    style="background:transparent;border:none;outline:none;color:inherit;"
                                     prop:type=move || if show_pw.get() { "text" } else { "password" }
                                     placeholder="••••••••"
                                     prop:value=move || password.get()
                                     on:input=move |e| password.set(event_target_value(&e))
                                 />
-                                <button class="btn btn-ghost btn-xs btn-circle" on:click=move |_| show_pw.update(|v| *v = !*v)>
-                                    {move || if show_pw.get() { "?��" } else { "?��" }}
+                                <button class="wf-btn wf-btn-ghost wf-btn-sm wf-btn-circle" on:click=move |_| show_pw.update(|v| *v = !*v)>
+                                    {move || if show_pw.get() { "隠す" } else { "表示" }}
                                 </button>
                             </div>
                         </div>
 
                         <div class="flex items-center justify-between text-xs mt-2">
                             <label class="flex items-center gap-2 cursor-pointer">
-                                <input type="checkbox" class="checkbox checkbox-sm checkbox-primary"
+                                <input type="checkbox" class="wf-check"
                                     prop:checked=move || remember.get()
                                     on:change=move |e| remember.set(event_target_checked(&e))
                                 />
-                                <span>"���̃u���E�U���L��"</span>
+                                <span>"このブラウザを記憶"</span>
                             </label>
                         </div>
 
-                        // 2FA�R�[�h���� (2FA�L���ȃA�J�E���g�p)
+                        // 2FAコード入力 (2FA有効なアカウント用)
                         <Show when=move || requires_2fa.get()>
                             <div class="flex flex-col gap-2 mt-2">
-                                <span class="text-xs text-warning font-bold">"2�i�K�F�؃R�[�h����͂��Ă�������"</span>
+                                <span class="text-xs font-bold" style="color:var(--warn);">"2段階認証コードを入力してください"</span>
                                 <input
-                                    class="input input-bordered input-sm w-full"
+                                    class="wf-input"
                                     placeholder="000000"
                                     prop:value=move || twofa_code.get()
                                     on:input=move |e| twofa_code.set(event_target_value(&e))
@@ -1201,15 +1166,15 @@ pub fn LoginPage() -> impl IntoView {
                             </div>
                         </Show>
 
-                        <button class="btn btn-primary btn-block mt-4"
+                        <button class="wf-btn wf-btn-primary mt-4" style="width:100%;"
                             disabled=move || loading.get()
                             on:click=on_submit>
-                            {move || if loading.get() { "�F�ؒ��c" } else { "���O�C�� ��" }}
+                            {move || if loading.get() { "認証中…" } else { "ログイン →" }}
                         </button>
 
                         <p class="text-xs text-center opacity-60 mt-4">
                             "はじめての方は "
-                            <A href="/signup" attr:class="link link-primary font-bold">"新規登録 �?"</A>
+                            <A href="/signup" attr:class="font-bold" attr:style="color:var(--accent);">"新規登録 →"</A>
                         </p>
                     </div>
                 </div>
@@ -1233,7 +1198,7 @@ pub fn SignupPage() -> impl IntoView {
     let error = RwSignal::<Option<String>>::new(None);
     let busy = RwSignal::new(false);
 
-    // 新規登録の�? API 呼び出�?
+    // 新規登録の実 API 呼び出し
     let do_register = move |_| {
         if busy.get_untracked() {
             return;
@@ -1245,7 +1210,7 @@ pub fn SignupPage() -> impl IntoView {
         wasm_bindgen_futures::spawn_local(async move {
             use crate::api::auth::{RegisterRequest, register};
             let request = RegisterRequest {
-                handle: signup_handle.get_untracked(),
+                username: signup_handle.get_untracked(),
                 display_name: Some(display_name.get_untracked()).filter(|s| !s.is_empty()),
                 email: Some(email.get_untracked()).filter(|s| !s.is_empty()),
                 password: password.get_untracked(),
@@ -1264,7 +1229,7 @@ pub fn SignupPage() -> impl IntoView {
         });
     };
 
-    // ハンドル可用性チェ�?ク (簡易デバウンス)
+    // ハンドル可用性チェック (簡易デバウンス)
     Effect::new(move |_| {
         let h = signup_handle.get();
         if h.len() < 3 {
@@ -1312,32 +1277,30 @@ pub fn SignupPage() -> impl IntoView {
     });
 
     view! {
-        <div class="auth-split">
-            <aside class="auth-aside">
-                <div class="auth-aside-content">
-                    <div class="auth-aside-logo">"mithic"</div>
-                    <span class="text-xs font-mono opacity-60 uppercase tracking-widest">"[ SIGN UP · 01 ]"</span>
-                    <h1 class="auth-aside-title mt-4">"アカウントを作�?�しましょ�?�?"</h1>
-                    <p class="auth-aside-sub mt-2">"mithic はオープンな�?散�? SNS です�?ActivityPub でつながります�?"</p>
-                    <div class="font-mono text-xs opacity-40 mt-12">
-                        "�? mithic · signal not noise �?"
-                    </div>
+        <div class="wf-auth">
+            <aside class="wf-auth-aside">
+                <span class="wf-mark wf-mark-lg">"[m]"<span class="br">"mithic"</span></span>
+                <span class="wf-entry-meta mt-4" style="text-transform:uppercase;letter-spacing:0.1em;">"[ SIGN UP  01 ]"</span>
+                <h1 class="wf-auth-title mt-4">"アカウントを作成しましょう。"</h1>
+                <p class="wf-auth-sub">"mithic はオープンな分散型 SNS です。ActivityPub でつながります。"</p>
+                <div class="wf-entry-meta mt-12">
+                    "── mithic · signal not noise ──"
                 </div>
             </aside>
 
-            <div class="auth-form-area">
-                <div class="auth-form-inner">
-                    <div class="signup-progress flex gap-1 h-1 bg-base-300 w-full rounded-full overflow-hidden">
-                        <div class="signup-progress-seg bg-primary flex-1 h-full" />
-                        <div class="signup-progress-seg bg-base-300 flex-1 h-full" />
-                        <div class="signup-progress-seg bg-base-300 flex-1 h-full" />
+            <div class="wf-auth-form">
+                <div class="wf-auth-inner">
+                    <div class="flex gap-1" style="height:4px;width:100%;border-radius:999px;overflow:hidden;background:var(--line-soft);">
+                        <div style="background:var(--accent);flex:1;" />
+                        <div style="background:var(--line-soft);flex:1;" />
+                        <div style="background:var(--line-soft);flex:1;" />
                     </div>
 
-                    <span class="text-xs font-mono opacity-50 mt-4">"[ STEP 1/3 · 登録�?報 ]"</span>
-                    <h2 class="text-3xl font-extrabold mt-1">"新規登録"</h2>
+                    <span class="wf-entry-meta mt-4">"[ STEP 1/3  登録情報 ]"</span>
+                    <h2 class="wf-auth-title" style="font-size:28px;">"新規登録"</h2>
 
                     <Show when=move || error.get().is_some()>
-                        <div class="alert alert-error text-sm py-3 mt-2">
+                        <div class="wf-alert error">
                             <span>{move || error.get().unwrap_or_default()}</span>
                         </div>
                     </Show>
@@ -1345,36 +1308,32 @@ pub fn SignupPage() -> impl IntoView {
                     <div class="flex flex-col gap-4 mt-4">
                         <div>
                             <div class="flex justify-between items-center mb-1">
-                                <span class="text-xs font-mono opacity-50">"ハンドル"</span>
+                                <span class="wf-entry-meta">"ハンドル"</span>
                                 {move || match handle_available.get() {
-                                    Some(true)  => view! { <span class="badge badge-success badge-sm">"�? 利用可"</span> }.into_any(),
-                                    Some(false) => view! { <span class="badge badge-error badge-sm">"�? 使用中"</span> }.into_any(),
+                                    Some(true)  => view! { <span class="wf-pill on">"✓ 利用可能"</span> }.into_any(),
+                                    Some(false) => view! { <span class="wf-pill" style="border-color:var(--err);color:var(--err);">"✕ 使用不可"</span> }.into_any(),
                                     None        => view! { <span></span> }.into_any(),
                                 }}
                             </div>
-                            <input class="input input-bordered w-full"
+                            <input class="wf-input"
                                 placeholder="@hana"
                                 prop:value=move || signup_handle.get()
                                 on:input=move |e| signup_handle.set(event_target_value(&e))
                             />
                         </div>
 
-                        <label class="form-control w-full">
-                            <div class="label">
-                                <span class="label-text text-xs font-mono opacity-50">"表示�?"</span>
-                            </div>
-                            <input class="input input-bordered w-full"
+                        <label class="flex flex-col gap-1 w-full">
+                            <span class="wf-entry-meta">"表示名"</span>
+                            <input class="wf-input"
                                 placeholder="Hana K."
                                 prop:value=move || display_name.get()
                                 on:input=move |e| display_name.set(event_target_value(&e))
                             />
                         </label>
 
-                        <label class="form-control w-full">
-                            <div class="label">
-                                <span class="label-text text-xs font-mono opacity-50">"メールアドレス"</span>
-                            </div>
-                            <input class="input input-bordered w-full"
+                        <label class="flex flex-col gap-1 w-full">
+                            <span class="wf-entry-meta">"メールアドレス"</span>
+                            <input class="wf-input"
                                 type="email"
                                 placeholder="hana@example.com"
                                 prop:value=move || email.get()
@@ -1383,35 +1342,31 @@ pub fn SignupPage() -> impl IntoView {
                         </label>
 
                         <div>
-                            <label class="form-control w-full">
-                                <div class="label">
-                                    <span class="label-text text-xs font-mono opacity-50">"パスワー�?"</span>
-                                </div>
-                                <input class="input input-bordered w-full"
+                            <label class="flex flex-col gap-1 w-full">
+                                <span class="wf-entry-meta">"パスワード"</span>
+                                <input class="wf-input"
                                     type="password"
                                     placeholder="••••••••"
                                     prop:value=move || password.get()
                                     on:input=move |e| password.set(event_target_value(&e))
                                 />
                             </label>
-                            <div class="pw-strength-bar flex gap-1 mt-2">
+                            <div class="wf-pw-bar">
                                 {move || (1..=4u8).map(|i| {
                                     let strength = pw_strength.get();
                                     let cls = if strength >= i {
-                                        format!("pw-strength-seg active-{i} flex-1 h-1 rounded-full")
+                                        format!("wf-pw-seg s{i}")
                                     } else {
-                                        "pw-strength-seg flex-1 h-1 rounded-full bg-base-300".into()
+                                        "wf-pw-seg".into()
                                     };
                                     view! { <div class=cls /> }
                                 }).collect_view()}
                             </div>
                         </div>
 
-                        <label class="form-control w-full">
-                            <div class="label">
-                                <span class="label-text text-xs font-mono opacity-50">"パスワード確�?"</span>
-                            </div>
-                            <input class="input input-bordered w-full"
+                        <label class="flex flex-col gap-1 w-full">
+                            <span class="wf-entry-meta">"パスワード確認"</span>
+                            <input class="wf-input"
                                 type="password"
                                 placeholder="••••••••"
                                 prop:value=move || password_confirm.get()
@@ -1421,31 +1376,31 @@ pub fn SignupPage() -> impl IntoView {
 
                         <div class="flex flex-col gap-2 mt-2">
                             <label class="flex items-center gap-2 cursor-pointer text-xs">
-                                <input type="checkbox" class="checkbox checkbox-sm checkbox-primary"
+                                <input type="checkbox" class="wf-check"
                                     prop:checked=move || agreed_age.get()
                                     on:change=move |e| agreed_age.set(event_target_checked(&e))
                                 />
-                                <span>"私�?�13歳以上で�?"</span>
+                                <span>"私は13歳以上です"</span>
                             </label>
 
                             <label class="flex items-center gap-2 cursor-pointer text-xs">
-                                <input type="checkbox" class="checkbox checkbox-sm checkbox-primary"
+                                <input type="checkbox" class="wf-check"
                                     prop:checked=move || agreed_tos.get()
                                     on:change=move |e| agreed_tos.set(event_target_checked(&e))
                                 />
-                                <span>"利用規�?に同意しま�?"</span>
+                                <span>"利用規約に同意します"</span>
                             </label>
                         </div>
 
-                        <button class="btn btn-primary btn-block mt-4"
+                        <button class="wf-btn wf-btn-primary mt-4" style="width:100%;"
                             disabled=move || !can_proceed.get() || busy.get()
                             on:click=do_register>
-                            {move || if busy.get() { "登録中…" } else { "アカウント作�?? �?" }}
+                            {move || if busy.get() { "登録中…" } else { "アカウント作成 →" }}
                         </button>
 
                         <p class="text-xs text-center opacity-60 mt-4">
                             "既にアカウントをお持ちの方は "
-                            <A href="/login" attr:class="link link-primary font-bold">"ログイン �?"</A>
+                            <A href="/login" attr:class="font-bold" attr:style="color:var(--accent);">"ログイン →"</A>
                         </p>
                     </div>
                 </div>
@@ -1456,14 +1411,34 @@ pub fn SignupPage() -> impl IntoView {
 
 #[component]
 pub fn AdminPage() -> impl IntoView {
+    let kpis = vec![
+        ("USERS", "1,204"),
+        ("NOTES / DAY", "342"),
+        ("FEDERATED", "58"),
+        ("REPORTS", "3"),
+    ];
+    let bars = vec![30, 55, 40, 70, 65, 90, 50];
     view! {
         <Shell active="settings">
-            <TopBar title="管�?コンソール" folio="99" />
-            <section class="p-4 timeline-scroll">
-                <div class="card card-bordered bg-base-100 shadow p-6">
-                    <h2 class="text-2xl font-bold mb-2">"Admin"</h2>
-                    <p class="text-sm opacity-70">"P2で実�?予定�?�管�?画面です�?"</p>
+            <TopBar title="管理コンソール" folio="99" />
+            <section class="wf-scroll">
+                <div class="wf-admin-grid">
+                    {kpis.into_iter().map(|(label, value)| view! {
+                        <div class="wf-kpi">
+                            <div class="v">{value}</div>
+                            <div class="l">{label}</div>
+                        </div>
+                    }).collect_view()}
                 </div>
+                <div class="wf-card mx-4 mb-4">
+                    <span class="wf-entry-meta">"[ NOTES / WEEK ]"</span>
+                    <div class="wf-bars">
+                        {bars.into_iter().map(|h| view! {
+                            <div class="wf-bar" style=format!("height:{}%;", h) />
+                        }).collect_view()}
+                    </div>
+                </div>
+                <p class="wf-entry-meta px-4 pb-4">"管理機能は Phase 2 で実装予定です。"</p>
             </section>
         </Shell>
     }
@@ -1474,10 +1449,10 @@ pub fn NotFoundPage() -> impl IntoView {
     view! {
         <Shell active="home" right_rail=false>
             <section class="p-4 flex flex-col items-center justify-center min-h-[50dvh]">
-                <div class="card card-bordered bg-base-100 shadow p-8 max-w-sm text-center flex flex-col items-center gap-4">
-                    <span class="text-xs font-mono opacity-50">[ 404 ]</span>
-                    <h1 class="text-2xl font-bold">"ペ�?�ジが見つかりません"</h1>
-                    <A href="/" attr:class="btn btn-primary btn-block">"ホ�?��?へ戻�?"</A>
+                <div class="wf-card max-w-sm text-center flex flex-col items-center gap-4">
+                    <span class="wf-entry-meta">"[ 404 ]"</span>
+                    <h1 class="wf-title">"アカウントが見つかりません"</h1>
+                    <A href="/" attr:class="wf-btn wf-btn-primary" attr:style="width:100%;">"ホームに戻る"</A>
                 </div>
             </section>
         </Shell>
@@ -1489,21 +1464,21 @@ pub fn WelcomePage() -> impl IntoView {
     view! {
         <Shell active="home" right_rail=false>
             <section class="p-4 flex flex-col items-center justify-center min-h-[60dvh]">
-                <div class="card card-bordered bg-base-100 shadow p-8 max-w-lg text-center flex flex-col items-center gap-6">
-                    <div class="auth-aside-logo text-3xl font-bold text-primary">"mithic"</div>
-                    <span class="text-xs font-mono opacity-50">[ WELCOME ]</span>
-                    <h1 class="text-3xl font-extrabold">"���o�^���肪�Ƃ��������܂�"</h1>
+                <div class="wf-card max-w-lg text-center flex flex-col items-center gap-6">
+                    <span class="wf-mark wf-mark-lg">"[m]"<span class="br">"mithic"</span></span>
+                    <span class="wf-entry-meta">"[ WELCOME ]"</span>
+                    <h1 class="wf-title" style="font-size:30px;">"ご登録ありがとうございます"</h1>
                     <p class="text-sm opacity-70">
-                        "mithic �̓I�[�v���ȕ��U�^ SNS �ł��B"
+                        "mithic はオープンな分散型 SNS です。"
                         <br />
-                        "ActivityPub �ő��̃T�[�o�[�̃��[�U�[�ƂȂ���܂��傤�B"
+                        "ActivityPub で他のサーバーのユーザーとつながりましょう。"
                     </p>
                     <div class="flex flex-col gap-3 w-full max-w-sm">
-                        <A href="/" attr:class="btn btn-primary btn-block">
-                            "�z�[��������"
+                        <A href="/" attr:class="wf-btn wf-btn-primary" attr:style="width:100%;">
+                            "ホームを見る"
                         </A>
-                        <A href="/settings/�v���t�B�[��" attr:class="btn btn-ghost btn-block">
-                            "�v���t�B�[����ݒ�"
+                        <A href="/settings/プロフィール" attr:class="wf-btn wf-btn-ghost" attr:style="width:100%;">
+                            "プロフィールを設定"
                         </A>
                     </div>
                 </div>

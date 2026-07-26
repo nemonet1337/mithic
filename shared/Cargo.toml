@@ -11,5 +11,4 @@ chrono.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 ulid.workspace = true
-mithic-core = { workspace = true }
 comrak = "0.31"

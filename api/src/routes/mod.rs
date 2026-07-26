@@ -2,7 +2,6 @@ pub mod activitypub;
 pub mod mastodon;
 pub mod misskey;
 pub mod ogp;
-pub mod v1;
 
 use axum::{Router, routing::get};
 use tower_http::{compression::CompressionLayer, trace::TraceLayer};
@@ -17,7 +16,6 @@ pub fn create_router(state: AppState) -> Router {
         .merge(misskey::router(state.clone()))
         .merge(mastodon::router(state.clone()))
         .merge(activitypub::router())
-        .merge(v1::router(state.clone()))
         .route("/notes/{id}", get(ogp::note_ogp))
         .route("/profile/{username}", get(ogp::profile_ogp))
         .route("/metrics", get(metrics_handler))

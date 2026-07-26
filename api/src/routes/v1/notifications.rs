@@ -7,7 +7,7 @@ pub fn router(state: AppState) -> axum::Router<AppState> {
     axum::Router::new()
         .route("/", get(list))
         .route("/read-all", post(read_all))
-        .route("/:id/read", post(read))
+        .route("/{id}/read", post(read))
         .with_state(state)
 }
 

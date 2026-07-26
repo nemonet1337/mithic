@@ -10,49 +10,47 @@ pub fn RenotePicker(
 ) -> impl IntoView {
     view! {
         <Show when=move || is_open>
-            <div class="absolute z-50 mt-1 p-3 bg-base-100 border border-base-300 rounded-2xl shadow-xl w-56">
-                <div class="flex flex-col gap-1">
-                    <button
-                        class="btn btn-ghost btn-sm justify-start"
-                        on:click=move |_| {
-                            on_select.call(None);
-                            on_close.call(());
-                        }
-                    >
-                        <span class="text-lg mr-2">🌏</span>
-                        "リノート"
-                    </button>
-                    <button
-                        class="btn btn-ghost btn-sm justify-start"
-                        on:click=move |_| {
-                            on_select.call(Some(NoteVisibility::Home));
-                            on_close.call(());
-                        }
-                    >
-                        <span class="text-lg mr-2">🏠</span>
-                        "ホームに引用"
-                    </button>
-                    <button
-                        class="btn btn-ghost btn-sm justify-start"
-                        on:click=move |_| {
-                            on_select.call(Some(NoteVisibility::Followers));
-                            on_close.call(());
-                        }
-                    >
-                        <span class="text-lg mr-2">🔒</span>
-                        "フォロワー限定引用"
-                    </button>
-                    <button
-                        class="btn btn-ghost btn-sm justify-start"
-                        on:click=move |_| {
-                            on_select.call(Some(NoteVisibility::Specified));
-                            on_close.call(());
-                        }
-                    >
-                        <span class="text-lg mr-2">✉️</span>
-                        "DMに引用"
-                    </button>
-                </div>
+            <div class="wf-pop" style="width:220px;">
+                <button
+                    class="wf-pop-item"
+                    on:click=move |_| {
+                        on_select.run(None);
+                        on_close.run(());
+                    }
+                >
+                    <span class="text-lg mr-2">{":globe:"}</span>
+                    "リノート"
+                </button>
+                <button
+                    class="wf-pop-item"
+                    on:click=move |_| {
+                        on_select.run(Some(NoteVisibility::Home));
+                        on_close.run(());
+                    }
+                >
+                    <span class="text-lg mr-2">{":house:"}</span>
+                    "ホームに引用"
+                </button>
+                <button
+                    class="wf-pop-item"
+                    on:click=move |_| {
+                        on_select.run(Some(NoteVisibility::Followers));
+                        on_close.run(());
+                    }
+                >
+                    <span class="text-lg mr-2">{":lock:"}</span>
+                    "フォロワー限定引用"
+                </button>
+                <button
+                    class="wf-pop-item"
+                    on:click=move |_| {
+                        on_select.run(Some(NoteVisibility::Specified));
+                        on_close.run(());
+                    }
+                >
+                    <span class="text-lg mr-2">{":envelope:"}</span>
+                    "DMに引用"
+                </button>
             </div>
         </Show>
     }
@@ -66,15 +64,15 @@ pub fn VisibilityChooser(
     let is_open = RwSignal::new(false);
 
     let select = move |v: NoteVisibility| {
-        on_change.call(v);
+        on_change.run(v);
         is_open.set(false);
     };
 
     let icon = move || match current {
-        NoteVisibility::Public => "🌏",
-        NoteVisibility::Home => "🏠",
-        NoteVisibility::Followers => "🔒",
-        NoteVisibility::Specified => "✉️",
+        NoteVisibility::Public => ":globe:",
+        NoteVisibility::Home => ":house:",
+        NoteVisibility::Followers => ":lock:",
+        NoteVisibility::Specified => ":envelope:",
     };
     let label = move || match current {
         NoteVisibility::Public => "公開",
@@ -86,28 +84,25 @@ pub fn VisibilityChooser(
     view! {
         <div class="relative">
             <button
-                class="btn btn-ghost btn-xs gap-1"
+                class="wf-btn wf-btn-ghost wf-btn-sm"
                 on:click=move |_| is_open.update(|v| *v = !*v)
             >
                 <span>{move || icon()}</span>
                 <span class="text-xs">{move || label()}</span>
             </button>
             <Show when=move || is_open.get()>
-                <div class="absolute z-50 mt-1 p-2 bg-base-100 border border-base-300 rounded-xl shadow-lg w-40">
+                <div class="wf-pop" style="width:160px;">
                     {[
-                        (NoteVisibility::Public, "🌏", "公開"),
-                        (NoteVisibility::Home, "🏠", "ホーム"),
-                        (NoteVisibility::Followers, "🔒", "フォロワー"),
-                        (NoteVisibility::Specified, "✉️", "指定ユーザー"),
+                        (NoteVisibility::Public, ":globe:", "公開"),
+                        (NoteVisibility::Home, ":house:", "ホーム"),
+                        (NoteVisibility::Followers, ":lock:", "フォロワー"),
+                        (NoteVisibility::Specified, ":envelope:", "指定ユーザー"),
                     ].iter().map(|(v, icon, label)| {
                         let v = *v;
                         let is_active = move || current == v;
                         view! {
                             <button
-                                class=move || format!(
-                                    "btn btn-ghost btn-sm justify-start w-full {}",
-                                    if is_active() { "btn-active" } else { "" }
-                                )
+                                class=move || if is_active() { "wf-pop-item active" } else { "wf-pop-item" }
                                 on:click=move |_| select(v)
                             >
                                 <span class="mr-2">{icon.to_string()}</span>

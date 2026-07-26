@@ -20,7 +20,7 @@ pub fn router(state: AppState) -> axum::Router<AppState> {
     axum::Router::new()
         .route("/", get(list))
         .route("/", post(create))
-        .route("/:id/messages", get(messages))
+        .route("/{id}/messages", get(messages))
         .with_state(state)
 }
 

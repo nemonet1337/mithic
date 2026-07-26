@@ -14,18 +14,10 @@ pub enum AvatarSize {
 impl AvatarSize {
     pub fn class_name(self) -> &'static str {
         match self {
-            Self::Sm => "w-8 h-8",
-            Self::Md => "w-10 h-10",
-            Self::Lg => "w-14 h-14",
-            Self::Xl => "w-20 h-20",
-        }
-    }
-    pub fn text_size(self) -> &'static str {
-        match self {
-            Self::Sm => "text-xs",
-            Self::Md => "text-sm",
-            Self::Lg => "text-base",
-            Self::Xl => "text-xl",
+            Self::Sm => "w-8 h-8 text-xs",
+            Self::Md => "w-10 h-10 text-sm",
+            Self::Lg => "w-14 h-14 text-base",
+            Self::Xl => "w-20 h-20 text-xl",
         }
     }
 }
@@ -35,17 +27,15 @@ pub enum AvatarAccent {
     #[default]
     None,
     Accent,
-    Accent2,
     Ink,
 }
 
 impl AvatarAccent {
-    fn bg_class(self) -> &'static str {
+    fn extra_class(self) -> &'static str {
         match self {
-            Self::None => "bg-primary/20 text-primary",
-            Self::Accent => "bg-primary text-primary-content",
-            Self::Accent2 => "bg-secondary text-secondary-content",
-            Self::Ink => "bg-base-content text-base-100",
+            Self::None => "",
+            Self::Accent => "avatar-accent",
+            Self::Ink => "",
         }
     }
 }
@@ -61,27 +51,18 @@ pub fn Avatar(
     let name = user.name();
     let avatar_url = user.avatar_url.clone();
     let size_class = size.class_name();
-    let text_class = size.text_size();
-    let accent_class = accent.bg_class();
+    let accent_class = accent.extra_class();
 
     view! {
-        <div class="avatar" aria-label=label>
-            <div class=format!(
-                "{} rounded-full ring-2 ring-base-300 ring-offset-base-100 ring-offset-1",
-                size_class
-            )>
+        <div class=format!("avatar {}", accent_class) aria-label=label>
+            <div class=size_class>
                 {if let Some(url) = avatar_url {
                     view! {
-                        <img src=url alt=name loading="lazy" class="object-cover" />
+                        <img src=url alt=name loading="lazy" />
                     }.into_any()
                 } else {
                     view! {
-                        <div class=format!(
-                            "placeholder flex items-center justify-center w-full h-full rounded-full {} {}",
-                            accent_class, text_class
-                        )>
-                            <span class="font-bold uppercase">{initials}</span>
-                        </div>
+                        <span class="font-bold uppercase">{initials}</span>
                     }.into_any()
                 }}
             </div>

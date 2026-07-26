@@ -9,28 +9,18 @@ pub fn FollowButton(
     #[prop(default = "sm")]
     size: &'static str,
 ) -> impl IntoView {
-    let btn_class = match size {
-        "xs" => "btn-xs",
-        "lg" => "btn-lg",
-        _ => "btn-sm",
-    };
+    let _ = size;
 
     view! {
         <button
             class=move || {
-                if is_pending {
-                    format!("btn {} btn-disabled", btn_class)
-                } else if is_following {
-                    format!("btn {} btn-outline", btn_class)
-                } else {
-                    format!("btn {} btn-primary", btn_class)
-                }
+                if is_following { "wf-follow-pill following" } else { "wf-follow-pill" }
             }
             disabled=move || is_pending
-            on:click=move |_| on_toggle.call(())
+            on:click=move |_| on_toggle.run(())
         >
             {if is_pending {
-                view! { <span class="loading loading-spinner loading-xs" /> }.into_any()
+                view! { <span class="wf-spinner" style="width:12px;height:12px;border-width:2px;" /> }.into_any()
             } else if is_following {
                 view! { "フォロー中" }.into_any()
             } else {

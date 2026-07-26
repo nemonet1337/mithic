@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 
 #[component]
-pub fn Autocomplete<T: Clone + PartialEq + 'static>(
+pub fn Autocomplete<T: Clone + PartialEq + Send + Sync + 'static>(
     items: Vec<T>,
     query: Signal<String>,
     on_select: Callback<T>,
@@ -24,14 +24,14 @@ pub fn Autocomplete<T: Clone + PartialEq + 'static>(
 
     view! {
         <Show when=move || !filtered.get().is_empty()>
-            <ul class="menu menu-sm bg-base-200 rounded-box absolute z-50 mt-1 w-full shadow-lg border border-base-300">
+            <ul class="wf-pop" style="position:absolute;z-index:50;margin-top:4px;width:100%;list-style:none;padding:6px;">
                 {move || filtered.get().into_iter().map(|item| {
                     let label = display(&item);
                     let cb = on_select;
                     let item = item.clone();
                     view! {
                         <li>
-                            <button on:click=move |_| cb.call(item.clone())>
+                            <button class="wf-pop-item" on:click=move |_| cb.run(item.clone())>
                                 {label}
                             </button>
                         </li>

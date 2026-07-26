@@ -8,7 +8,7 @@ pub fn router(state: AppState) -> axum::Router<AppState> {
         .route("/home", get(home_timeline))
         .route("/local", get(local_timeline))
         .route("/global", get(global_timeline))
-        .route("/hashtag/:tag", get(hashtag_timeline))
+        .route("/hashtag/{tag}", get(hashtag_timeline))
         .with_state(state)
 }
 

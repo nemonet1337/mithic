@@ -23,21 +23,23 @@ pub async fn fetch_user_notes(token: &str, username: &str) -> Result<Vec<Note>, 
 }
 
 pub async fn check_handle(username: &str) -> Result<HandleAvailability, ApiError> {
-    request::<HandleAvailability, ()>(
+    let body = serde_json::json!({ "username": username });
+    request::<HandleAvailability, serde_json::Value>(
         "POST",
         "users/check-handle",
         None,
-        Some(&serde_json::json!({ "username": username })),
+        Some(&body),
     )
     .await
 }
 
 pub async fn follow(token: &str, user_id: &str) -> Result<(), ApiError> {
-    request::<(), ()>(
+    let body = serde_json::json!({ "user_id": user_id });
+    request::<(), serde_json::Value>(
         "POST",
         "follows",
         Some(token),
-        Some(&serde_json::json!({ "user_id": user_id })),
+        Some(&body),
     )
     .await
 }

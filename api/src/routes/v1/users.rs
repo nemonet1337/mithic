@@ -27,7 +27,7 @@ pub struct UpdateProfileRequest {
 
 pub fn router(state: AppState) -> axum::Router<AppState> {
     axum::Router::new()
-        .route("/:id", get(show))
+        .route("/{id}", get(show))
         .route("/me", patch(update_me))
         .route("/search", post(search))
         .route("/check-handle", post(check_handle))

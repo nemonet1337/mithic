@@ -64,6 +64,7 @@ async fn main() -> anyhow::Result<()> {
 
     info!("Worker started. Running monitor...");
 
+    #[allow(deprecated)]
     Monitor::new()
         .register_with_count(DELIVERY_CONCURRENCY, {
             WorkerBuilder::new("federation-delivery-worker")

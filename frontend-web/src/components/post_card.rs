@@ -1,9 +1,12 @@
 use leptos::prelude::*;
+use leptos_icons::Icon;
 use leptos_router::components::A;
+use icondata as id;
 
 use super::avatar::{Avatar, AvatarSize};
-use super::mfm::MfmText;
+use super::markdown::MarkdownText;
 use crate::models::{Note, NoteVisibility};
+use shared::MediaAttachment;
 
 #[component]
 pub fn PostCard(note: Note, #[prop(default = false)] flat: bool) -> impl IntoView {
@@ -15,32 +18,65 @@ pub fn PostCard(note: Note, #[prop(default = false)] flat: bool) -> impl IntoVie
     let note_href = format!("/notes/{}", note.id);
     let has_attachments = !note.attachments.is_empty();
     let created_at = note.created_at.clone();
-    let extra_class = if flat { " border-0 bg-transparent" } else { "" };
+    let visibility_mark = match note.visibility {
+        NoteVisibility::Public => "",
+        NoteVisibility::Home => "🏠",
+        NoteVisibility::Followers => "🔒",
+        NoteVisibility::Specified => "✉️",
+    };
+    let extra_class = if flat { " is-quote" } else { "" };
+    let note_for_actions = note.clone();
+
     view! {
-        <article class=format!("post-card{}", extra_class)>
-            <A href=route.clone() attr:class="flex-shrink-0">
+        <article class=format!("wf-entry{}", extra_class)>
+            <A href=route.clone() attr:class="wf-entry-avatar">
                 <Avatar user=author_avatar size=AvatarSize::Md />
             </A>
-            <div class="post-main">
-                <div class="post-header">
+            <div class="wf-entry-body">
+                <div class="wf-entry-head">
                     <A href=route attr:class="flex items-center gap-2 hover:underline">
-                        <span class="post-author-name">{author_name}</span>
-                        <span class="post-author-handle">{author_handle}</span>
-                        <span class="post-time">"· " {created_at}</span>
+                        <span class="wf-entry-name">{author_name}</span>
+                        <span class="wf-entry-handle">{format!("\"@{}\"", author_handle)}</span>
+                        <span class="wf-entry-dot">"·"</span>
+                        <span class="wf-entry-meta">{visibility_mark} " " {created_at}</span>
                     </A>
-                    <A href=note_href attr:class="btn btn-ghost btn-xs btn-circle opacity-40 hover:opacity-100">
-                        "···"
-                    </A>
+                    <span class="wf-entry-menu">
+                        <A href=note_href attr:class="wf-btn wf-btn-ghost wf-btn-sm wf-btn-circle opacity-40 hover:opacity-100">
+                            "···"
+                        </A>
+                    </span>
                 </div>
                 <PostBody content=note.content.clone() cw=note.cw.clone() />
                 <Show when=move || has_attachments>
-                    <div class="rounded-xl overflow-hidden bg-base-200 h-48 flex items-center justify-center text-xs font-mono opacity-40 mt-2">
-                        "メディア"
-                    </div>
+                    <MediaThumbs attachments=note.attachments.clone() />
                 </Show>
-                <PostActions note=note />
+                <PostActions note=note_for_actions />
             </div>
         </article>
+    }
+}
+
+#[component]
+fn MediaThumbs(attachments: Vec<MediaAttachment>) -> impl IntoView {
+    let n = attachments.len().min(4);
+    let grid = match n {
+        1 => "wf-grid-1",
+        2 => "wf-grid-2",
+        3 => "wf-grid-3",
+        _ => "wf-grid-4",
+    };
+    view! {
+        <div class=format!("wf-media {}", grid)>
+            {attachments.into_iter().take(4).map(|att| {
+                let url = att.preview_url.clone().unwrap_or_else(|| att.url.clone());
+                let alt = att.alt.clone().unwrap_or_default();
+                view! {
+                    <div class="wf-thumb aspect-video">
+                        <img src=url alt=alt loading="lazy" />
+                    </div>
+                }
+            }).collect_view()}
+        </div>
     }
 }
 
@@ -50,14 +86,14 @@ pub fn PostBody(content: String, cw: Option<String>) -> impl IntoView {
     let cw_text = cw.unwrap_or_default();
     let expanded = RwSignal::new(!has_cw);
     view! {
-        <div class="post-body">
+        <div class="wf-entry-text">
             {if has_cw {
                 view! {
-                    <div class="cw-box">
-                        <span class="badge badge-warning badge-sm font-mono">"CW"</span>
-                        <strong class="flex-1 text-sm">{cw_text}</strong>
+                    <div class="wf-cw">
+                        <span class="font-mono text-xs">"CW"</span>
+                        <strong>{cw_text}</strong>
                         <button
-                            class="btn btn-ghost btn-xs rounded-full"
+                            class="wf-btn wf-btn-ghost wf-btn-sm ml-auto"
                             on:click=move |_| expanded.update(|v| *v = !*v)
                         >
                             {move || if expanded.get() { "隠す ▲" } else { "開く ▼" }}
@@ -68,7 +104,7 @@ pub fn PostBody(content: String, cw: Option<String>) -> impl IntoView {
                 view! {}.into_any()
             }}
             <Show when=move || expanded.get()>
-                <MfmText text=content.clone() />
+                <MarkdownText text=content.clone() />
             </Show>
         </div>
     }
@@ -76,38 +112,33 @@ pub fn PostBody(content: String, cw: Option<String>) -> impl IntoView {
 
 #[component]
 pub fn PostActions(note: Note) -> impl IntoView {
+    let react_on = note
+        .reactions
+        .iter()
+        .any(|r| r.reacted_by_me);
     view! {
-        <div class="post-actions">
-            <button class="btn btn-ghost btn-xs gap-1 hover:text-info">
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-                </svg>
-                "返信"
+        <div class="wf-actions">
+            <button class="wf-react-btn">
+                <Icon icon=id::FiMessageSquare width="15" height="15" />
+                {note.reply_count.to_string()}
             </button>
-            <button class="btn btn-ghost btn-xs gap-1 hover:text-success">
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
-                </svg>
+            <button class="wf-react-btn">
+                <Icon icon=id::FiRepeat width="15" height="15" />
                 {note.renote_count.to_string()}
             </button>
-            <button class="btn btn-ghost btn-xs gap-1 hover:text-error">
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
-                </svg>
-                "REACT"
+            <button class=move || if react_on { "wf-react-btn on" } else { "wf-react-btn" }>
+                <Icon icon=id::FiSmile width="15" height="15" />
+                "＋REACT"
             </button>
-            {note.reactions.into_iter().map(|r| view! {
-                <button class=move || {
-                    if r.reacted_by_me {
-                        "btn btn-xs badge badge-primary gap-1"
-                    } else {
-                        "btn btn-xs badge badge-outline gap-1"
-                    }
-                }>
-                    {r.emoji} " " {r.count.to_string()}
-                </button>
+            {note.reactions.into_iter().map(|r| {
+                let on = r.reacted_by_me;
+                view! {
+                    <button class=move || if on { "wf-pill on" } else { "wf-pill" }>
+                        {format!("{} {}", r.emoji, r.count)}
+                    </button>
+                }
             }).collect_view()}
-            <span class="ml-auto font-mono text-xs opacity-30">{format!("↪ {}", note.quote_count)}</span>
+            <span class="wf-entry-meta ml-auto">{format!("↪ {}", note.quote_count)}</span>
         </div>
     }
 }

@@ -3,6 +3,9 @@ target = "index.html"
 dist = "dist"
 public_url = "/"
 
+[tools]
+tailwindcss = "4.1.14"
+
 [watch]
 watch = ["src", "style", "index.html", "Cargo.toml", "../shared/src"]
 

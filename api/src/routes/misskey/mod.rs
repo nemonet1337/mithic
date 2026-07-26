@@ -102,7 +102,6 @@ pub fn router(state: AppState) -> Router<AppState> {
         .route("/api/notes/show", post(notes::show))
         .route("/api/notes/local-timeline", post(timeline::local))
         .route("/api/notes/global-timeline", post(timeline::global))
-        .route("/api/notes/search", post(notes::search_notes))
         .route("/api/hashtags/timeline", post(hashtags::hashtag_timeline))
         .route("/api/hashtags/trending", post(hashtags::trending))
         .route("/api/streaming", get(streaming::streaming_handler))

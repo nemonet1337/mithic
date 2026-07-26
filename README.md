@@ -3,7 +3,7 @@
 Rust製 ActivityPub対応SNS
 
 - **バックエンド**: Axum + SurrealDB + Dragonfly (Redis互換)
-- **フロントエンド**: Leptos (CSR/WASM) + **DaisyUI v5** + Tailwind CSS v3
+- **フロントエンド**: Leptos (CSR/WASM) + **DaisyUI v5** + Tailwind CSS v4
 - **PWA (Progressive Web App)**: Workbox 7 による Service Worker + Web App Manifest（オフラインサポート、ホーム画面追加対応）
 - **連合**: ActivityPub (WebFinger / NodeInfo / HTTP Signatures)
 
@@ -23,7 +23,7 @@ curl http://localhost/api/v1/health      # => {"status":"ok"}
 
 | サービス | ポート | 役割 |
 |---|---|---|
-| frontend (nginx) | 80 | WASM 配信 + `/api` リバースプロキシ + WebSocket + PWA静的ファイル |
+| frontend (caddy) | 80 | WASM 配信 + `/api` リバースプロキシ + WebSocket + PWA静的ファイル |
 | server | 3000 | REST API + `/api/streaming` WebSocket + ActivityPub |
 | worker | - | 連合配送キュー (並列4ワーカー + リトライスケジューラ) |
 | surrealdb | 8000 | データベース |
@@ -40,8 +40,8 @@ cargo run -p mithic-server
 cargo run -p mithic-worker
 
 # フロントエンド (http://localhost:1420, /api は :3000 へプロキシ)
+# Tailwind CSS は Trunk の standalone CLI がビルド時に処理する (Node.js 不要)
 cd frontend-web
-npm install       # DaisyUI v5 / Tailwind CSS 用の依存パッケージをインストール
 trunk serve
 ```
 

@@ -9,12 +9,12 @@ pub fn MediaVideo(
     let playing = RwSignal::new(false);
 
     view! {
-        <div class="relative overflow-hidden rounded-xl border border-base-300">
+        <div class="wf-thumb relative overflow-hidden">
             <Show
                 when=move || playing.get()
                 fallback=move || {
                     view! {
-                        <div class="relative aspect-video bg-base-200 cursor-pointer"
+                        <div class="relative aspect-video cursor-pointer" style="background:var(--paper-3);"
                              on:click=move |_| playing.set(true)>
                             {if let Some(ref thumb) = preview_url {
                                 view! {

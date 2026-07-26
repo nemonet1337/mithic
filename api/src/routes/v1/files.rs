@@ -7,7 +7,7 @@ use crate::state::AppState;
 pub fn router(state: AppState) -> axum::Router<AppState> {
     axum::Router::new()
         .route("/", get(list))
-        .route("/:id", delete(delete_file))
+        .route("/{id}", delete(delete_file))
         .route("/upload-from-url", post(upload_from_url))
         .with_state(state)
 }
