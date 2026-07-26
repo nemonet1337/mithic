@@ -65,7 +65,7 @@ RUN curl -sSLf \
 
 WORKDIR /app
 COPY . .
-WORKDIR /app/frontend-web
+WORKDIR /app/frontend
 
 # trunk build downloads wasm-bindgen, wasm-opt, and Tailwind CLI at build time
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
@@ -105,7 +105,7 @@ ENTRYPOINT ["mithic-worker"]
 # Stage 8: Frontend — caddy serving WASM dist
 # =============================================================================
 FROM caddy:alpine AS frontend
-COPY --from=frontend-builder /app/frontend-web/dist /usr/share/caddy
+COPY --from=frontend-builder /app/frontend/dist /usr/share/caddy
 # Flatten public/ into dist root (Trunk nests public/ inside dist/)
 RUN find /usr/share/caddy -mindepth 2 -exec mv -t /usr/share/caddy {} + 2>/dev/null || true
 # Clean up empty public/ directory if it exists

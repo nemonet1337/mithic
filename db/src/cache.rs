@@ -15,6 +15,33 @@ pub const TIMELINE_MAX_ENTRIES: isize = 300;
 /// タイムラインキャッシュの TTL (24h)
 pub const TIMELINE_TTL_SECS: i64 = 24 * 60 * 60;
 
+/// 公開タイムライン JSON レスポンスの短命 TTL (秒)
+pub const TIMELINE_JSON_TTL_SECS: u64 = 15;
+/// トレンドタグ JSON TTL
+pub const TRENDING_JSON_TTL_SECS: u64 = 60;
+
+/// local / global 先頭ページのキャッシュキー
+pub fn timeline_json_key(kind: &str, limit: usize) -> String {
+    format!("tl:json:{kind}:limit={limit}")
+}
+
+pub fn trending_json_key(limit: usize) -> String {
+    format!("tl:json:trending:limit={limit}")
+}
+
+/// 公開タイムライン JSON キャッシュを無効化 (投稿時)
+pub async fn invalidate_public_timelines(client: &DragonflyClient) {
+    // よく使う limit だけ消す (全スキャンはしない)
+    for kind in ["local", "global"] {
+        for limit in [10usize, 20, 40, 50, 100] {
+            let _ = delete(client, &timeline_json_key(kind, limit)).await;
+        }
+    }
+    for limit in [5usize, 10, 20, 50] {
+        let _ = delete(client, &trending_json_key(limit)).await;
+    }
+}
+
 /// JSON 値を TTL 付きでキャッシュする
 pub async fn set_json<T: Serialize>(
     client: &DragonflyClient,

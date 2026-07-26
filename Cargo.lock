@@ -1851,7 +1851,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "frontend-web"
+name = "frontend"
 version = "0.1.0"
 dependencies = [
  "comrak",
@@ -4203,7 +4203,9 @@ dependencies = [
  "apalis-redis",
  "axum",
  "base64",
+ "bytes",
  "chrono",
+ "futures-util",
  "hex",
  "jsonwebtoken",
  "metrics",
@@ -4373,6 +4375,7 @@ dependencies = [
  "apalis",
  "apalis-redis",
  "dotenvy",
+ "futures",
  "mimalloc",
  "mithic-config",
  "mithic-core",
@@ -4382,6 +4385,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "tower",
  "tracing",
  "tracing-subscriber",
 ]

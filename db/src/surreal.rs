@@ -27,6 +27,18 @@ impl Default for SurrealConfig {
     }
 }
 
+impl From<&mithic_config::AppConfig> for SurrealConfig {
+    fn from(c: &mithic_config::AppConfig) -> Self {
+        Self {
+            endpoint: c.surrealdb_endpoint.clone(),
+            namespace: c.surrealdb_namespace.clone(),
+            database: c.surrealdb_database.clone(),
+            username: c.surrealdb_username.clone(),
+            password: c.surrealdb_password.clone(),
+        }
+    }
+}
+
 /// Create and connect SurrealDB client
 pub async fn create_client(config: &SurrealConfig) -> anyhow::Result<DbClient> {
     let client = connect(&config.endpoint).await?;
@@ -150,24 +162,7 @@ pub async fn init_schema(client: &DbClient) -> anyhow::Result<()> {
         )
         .await?;
 
-    client
-        .query(
-            "
-        DEFINE TABLE IF NOT EXISTS block TYPE RELATION;
-        DEFINE FIELD IF NOT EXISTS created_at ON block TYPE datetime;
-    ",
-        )
-        .await?;
-
-    client
-        .query(
-            "
-        DEFINE TABLE IF NOT EXISTS mute TYPE RELATION;
-        DEFINE FIELD IF NOT EXISTS created_at ON mute TYPE datetime;
-        DEFINE FIELD IF NOT EXISTS expires_at ON mute TYPE option<datetime>;
-    ",
-        )
-        .await?;
+    // block / mute は後段の IN user OUT user + インデックス定義のみ使う (二重定義を避ける)
 
     client
         .query(
@@ -374,6 +369,38 @@ pub async fn init_schema(client: &DbClient) -> anyhow::Result<()> {
         DEFINE FIELD IF NOT EXISTS created_at ON activity TYPE datetime;
         DEFINE INDEX IF NOT EXISTS idx_activity_uri ON activity COLUMNS uri UNIQUE;
         DEFINE INDEX IF NOT EXISTS idx_activity_type ON activity COLUMNS activity_type;
+    ",
+        )
+        .await?;
+
+    // リモートカスタム絵文字キャッシュ (連合受信)
+    client
+        .query(
+            "
+        DEFINE TABLE IF NOT EXISTS remote_emoji SCHEMAFULL;
+        DEFINE FIELD IF NOT EXISTS id ON remote_emoji TYPE string;
+        DEFINE FIELD IF NOT EXISTS name ON remote_emoji TYPE string;
+        DEFINE FIELD IF NOT EXISTS url ON remote_emoji TYPE string;
+        DEFINE FIELD IF NOT EXISTS host ON remote_emoji TYPE option<string>;
+        DEFINE FIELD IF NOT EXISTS created_at ON remote_emoji TYPE datetime;
+        DEFINE INDEX IF NOT EXISTS idx_remote_emoji_name_host ON remote_emoji COLUMNS name, host UNIQUE;
+    ",
+        )
+        .await?;
+
+    // ローカル / 公開カスタム絵文字
+    client
+        .query(
+            "
+        DEFINE TABLE IF NOT EXISTS emoji SCHEMAFULL;
+        DEFINE FIELD IF NOT EXISTS id ON emoji TYPE string;
+        DEFINE FIELD IF NOT EXISTS name ON emoji TYPE string;
+        DEFINE FIELD IF NOT EXISTS url ON emoji TYPE string;
+        DEFINE FIELD IF NOT EXISTS category ON emoji TYPE option<string>;
+        DEFINE FIELD IF NOT EXISTS aliases ON emoji TYPE array<string> DEFAULT [];
+        DEFINE FIELD IF NOT EXISTS is_public ON emoji TYPE bool DEFAULT true;
+        DEFINE FIELD IF NOT EXISTS created_at ON emoji TYPE datetime;
+        DEFINE INDEX IF NOT EXISTS idx_emoji_name ON emoji COLUMNS name UNIQUE;
     ",
         )
         .await?;

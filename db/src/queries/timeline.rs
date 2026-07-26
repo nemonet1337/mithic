@@ -149,7 +149,8 @@ pub async fn get_home_timeline(
     .await
 }
 
-/// 指定ユーザーのノート一覧 (著者同梱)
+/// 指定ユーザーのノート一覧 (著者同梱)。
+/// 公開タイムライン向け: public / home のみ (followers/specified は除外)。
 pub async fn get_user_notes(
     client: &SurrealClient,
     user_id: &mithic_core::models::actor::ActorId,
@@ -158,7 +159,7 @@ pub async fn get_user_notes(
 ) -> anyhow::Result<Vec<NoteWithAuthor>> {
     fetch_notes(
         client,
-        "actor_id = type::record('user', $user_id)",
+        "actor_id = type::record('user', $user_id) AND (visibility = 'public' OR visibility = 'home')",
         Some(user_id.to_string()),
         limit,
         None,

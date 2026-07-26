@@ -56,3 +56,41 @@ pub async fn remove_reaction(
 
     Ok(())
 }
+
+/// アクターの当該ノートへのリアクションをすべて削除 (Undo(Like) 用)
+pub async fn remove_all_reactions_by_actor(
+    client: &SurrealClient,
+    note_id: &str,
+    actor_id: &str,
+) -> anyhow::Result<Vec<String>> {
+    let mut del = client
+        .query(
+            "
+            DELETE note_reaction
+            WHERE note_id = type::record('note', $note_id)
+              AND actor_id = type::record('user', $actor_id)
+            RETURN BEFORE;
+            ",
+        )
+        .bind(("note_id", note_id.to_string()))
+        .bind(("actor_id", actor_id.to_string()))
+        .await?;
+
+    let rows: Vec<surrealdb::types::Value> = del.take(0).unwrap_or_default();
+    let mut removed = Vec::new();
+    for row in rows {
+        let json = row.into_json_value();
+        if let Some(r) = json.get("reaction").and_then(|v| v.as_str()) {
+            let reaction = r.to_string();
+            let _ = client
+                .query(
+                    "UPDATE note SET reactions[$reaction] = <int>(reactions[$reaction] OR 1) - 1 WHERE id = type::record('note', $note_id);",
+                )
+                .bind(("note_id", note_id.to_string()))
+                .bind(("reaction", reaction.clone()))
+                .await;
+            removed.push(reaction);
+        }
+    }
+    Ok(removed)
+}

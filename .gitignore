@@ -11,7 +11,7 @@
 /old-src
 
 # wireframe
-/frontend-web/wireframe-ui-sample
+/frontend/wireframe-ui-sample
 
 # claude
 .claude
@@ -21,8 +21,8 @@
 .kilocode
 
 # node
-/frontend-web/node_modules
-/frontend-web/dist
+/frontend/node_modules
+/frontend/dist
 
 # playwright
 .playwright-mcp

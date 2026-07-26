@@ -10,8 +10,9 @@ Rust製 ActivityPub対応SNS
 ## Docker で動かす
 
 ```bash
-# 1. 環境変数を用意 (そのままでも起動可。本番では JWT_SECRET 等を必ず変更)
+# 1. 環境変数を用意 — JWT_SECRET は必須 (未設定・placeholder ではサーバーが起動拒否)
 cp .env.example .env
+# .env の JWT_SECRET を十分な長さのランダム文字列に書き換える
 
 # 2. ビルドして起動 (server / worker / frontend / surrealdb / dragonfly)
 docker compose up -d --build
@@ -24,8 +25,8 @@ curl http://localhost/api/v1/health      # => {"status":"ok"}
 | サービス | ポート | 役割 |
 |---|---|---|
 | frontend (caddy) | 80 | WASM 配信 + `/api` リバースプロキシ + WebSocket + PWA静的ファイル |
-| server | 3000 | REST API + `/api/streaming` WebSocket + ActivityPub |
-| worker | - | 連合配送キュー (並列4ワーカー + リトライスケジューラ) |
+| server | 3000 | REST API (`/api/v1/*`) + WebSocket (`/api/v1/streaming`) + ActivityPub |
+| worker | - | 連合配送キュー (並列4 + 指数バックオフ + DLQ) |
 | surrealdb | 8000 | データベース |
 | dragonfly | 6379 | キャッシュ / 配送キュー |
 
@@ -41,7 +42,7 @@ cargo run -p mithic-worker
 
 # フロントエンド (http://localhost:1420, /api は :3000 へプロキシ)
 # Tailwind CSS は Trunk の standalone CLI がビルド時に処理する (Node.js 不要)
-cd frontend-web
+cd frontend
 trunk serve
 ```
 
@@ -55,9 +56,9 @@ SURREALDB_ENDPOINT=mem:// SURREALDB_POOL_SIZE=1 cargo run -p mithic-server
 
 ```bash
 cargo fmt --all --check
-cargo clippy --workspace --exclude frontend-web -- -D warnings
-cargo test --workspace --exclude frontend-web
-cargo check -p frontend-web --target wasm32-unknown-unknown
+cargo clippy --workspace --exclude frontend -- -D warnings
+cargo test --workspace --exclude frontend
+cargo check -p frontend --target wasm32-unknown-unknown
 ```
 
 ## ドキュメント

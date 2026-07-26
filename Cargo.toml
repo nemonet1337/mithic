@@ -1,16 +1,16 @@
 [workspace]
 members = [
-    "config",
-    "i18n",
+    "backend/config",
+    "backend/i18n",
+    "backend/core",
+    "backend/federation",
+    "backend/stream",
+    "backend/api",
+    "backend/server",
+    "backend/worker",
     "db",
-    "core",
-    "federation",
-    "stream",
-    "api",
-    "server",
-    "worker",
-    "frontend-web",
     "shared",
+    "frontend",
 ]
 resolver = "2"
 
@@ -98,7 +98,7 @@ validator = { version = "0.20", features = ["derive"] }
 web-push = "0.11"
 
 # Background Jobs
-apalis = { version = "0.6" }
+apalis = { version = "0.6", features = ["retry", "limit"] }
 apalis-redis = { version = "0.6" }
 
 # Memory allocator (server/worker)
@@ -108,20 +108,16 @@ mimalloc = "0.1"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif"] }
 
 # Internal crates
-mithic-config     = { path = "config" }
-mithic-mfm        = { path = "mfm" }
-mithic-i18n       = { path = "i18n" }
+mithic-config     = { path = "backend/config" }
+mithic-i18n       = { path = "backend/i18n" }
 mithic-db         = { path = "db" }
-mithic-core       = { path = "core" }
-mithic-federation = { path = "federation" }
-mithic-stream     = { path = "stream" }
-mithic-api        = { path = "api" }
+mithic-core       = { path = "backend/core" }
+mithic-federation = { path = "backend/federation" }
+mithic-stream     = { path = "backend/stream" }
+mithic-api        = { path = "backend/api" }
 shared            = { path = "shared" }
 
-# UI
-# leptos_i18n = "0.5"  # Use direct dep in frontend-web
-
-# リリースビルド最適化 (TODO Phase 0 / P-1)
+# リリースビルド最適化
 [profile.release]
 opt-level = 3
 lto = "thin"
@@ -129,5 +125,5 @@ codegen-units = 16
 strip = true
 
 # WASM フロントエンドはバイナリサイズ優先
-[profile.release.package.frontend-web]
+[profile.release.package.frontend]
 opt-level = "z"

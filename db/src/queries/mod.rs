@@ -32,14 +32,14 @@ pub use notifications::{
     mark_notification_as_read,
 };
 pub use polls::vote_poll;
-pub use reactions::{add_reaction, remove_reaction};
+pub use reactions::{add_reaction, remove_all_reactions_by_actor, remove_reaction};
 pub use relay::{
     create_relay, delete_relay, get_accepted_relays, get_relay_by_id, get_relay_by_inbox,
     list_relays, update_relay_status,
 };
 pub use timeline::{
-    NoteWithAuthor, get_global_timeline, get_home_timeline, get_local_timeline, get_note_quotes,
-    get_note_replies, get_user_notes,
+    NoteWithAuthor, get_global_timeline, get_home_timeline, get_home_timeline_cached,
+    get_local_timeline, get_note_quotes, get_note_replies, get_user_notes,
 };
 
 use serde::de::DeserializeOwned;

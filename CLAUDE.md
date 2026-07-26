@@ -21,12 +21,11 @@
 - **言語**: Rust (edition 2024)
 - **フレームワーク**: Leptos 0.7
 - **ビルドツール**: Trunk 0.21
-- **スタイリング**: Tailwind CSS 3.x
+- **スタイリング**: Tailwind CSS 4.x (Trunk standalone CLI, `Trunk.toml` で `tailwindcss = "4.x"`)
 - **状態管理**: Leptos Signals (組み込み)
 - **ルーティング**: leptos_router (Leptos組み込み)
 - **HTTPクライアント**: gloo-net 0.6 (fetch / WebSocket)
-- **ローカルストレージ**: gloo-storage 0.3
-- **セキュアストレージ**: web-sys (LocalStorage)
+- **トークン保管**: gloo-storage 経由の LocalStorage (`store/auth.rs`)
 - **WebSocket**: gloo-net 0.6 (WebSocket) + gloo-timers 0.3 (再接続タイマー)
 - **アイコン**: icondata + leptos_icons (Feather / Lucide Icons)
 - **型シリアライズ**: serde + serde-wasm-bindgen
@@ -45,199 +44,37 @@ mithic/
 ├── Cargo.toml
 ├── Cargo.lock
 │
-├── server/                  # Axum main binary
-│   ├── src/
-│   │   └── main.rs
-│   └── Cargo.toml
-│
-├── worker/                  # background worker
-│   ├── src/
-│   │   └── main.rs
-│   └── Cargo.toml
-│
-├── frontend-web/           # Leptos CSR/WASM
+├── frontend/                # Leptos CSR/WASM (crate: frontend)
 │   ├── src/
 │   │   ├── api/
-│   │   │   ├── auth.rs
-│   │   │   ├── client.rs
-│   │   │   ├── dm.rs
-│   │   │   ├── mod.rs
-│   │   │   ├── notes.rs
-│   │   │   ├── notifications.rs
-│   │   │   └── users.rs
 │   │   ├── components/
-│   │   │   ├── avatar.rs
-│   │   │   ├── compose.rs
-│   │   │   ├── markdown.rs
-│   │   │   ├── mod.rs
-│   │   │   ├── post_card.rs
-│   │   │   ├── protected.rs
-│   │   │   └── shell.rs
 │   │   ├── models/
-│   │   │   └── mod.rs
 │   │   ├── pages/
-│   │   │   └── mod.rs
 │   │   ├── store/
-│   │   │   ├── auth.rs
-│   │   │   ├── compose.rs
-│   │   │   ├── mod.rs
-│   │   │   ├── notifications.rs
-│   │   │   └── stream.rs
 │   │   ├── app.rs
 │   │   └── main.rs
-│   │
 │   ├── style/
-│   │   └── main.css
 │   ├── public/
-│   │   ├── manifest.webmanifest
-│   │   ├── offline.html
-│   │   └── sw.js
 │   ├── index.html
 │   ├── Trunk.toml
 │   └── Cargo.toml
 │
-├── shared/                 # DTO/shared types
-│   ├── src/
-│   │   ├── markdown.rs
-│   │   ├── types/
-│   │   │   ├── auth.rs
-│   │   │   ├── hashtag.rs
-│   │   │   ├── mod.rs
-│   │   │   ├── note.rs
-│   │   │   ├── notification.rs
-│   │   │   ├── stream.rs
-│   │   │   └── user.rs
-│   │   └── lib.rs
-│   └── Cargo.toml
+├── backend/                 # HTTP + ロジック + フェデレーション
+│   ├── config/              # 環境変数設定
+│   ├── i18n/                # fluent ロケール
+│   ├── core/                # モデル + エラー型
+│   ├── federation/          # ActivityPub 配送
+│   ├── stream/              # WebSocket チャンネル
+│   ├── api/                 # ルート / middleware / services
+│   │   └── src/routes/
+│   │       ├── activitypub.rs
+│   │       ├── ogp.rs
+│   │       └── v1/          # mithic ネイティブ REST (`/api/v1/*`)
+│   ├── server/              # bin: mithic-server
+│   └── worker/              # bin: mithic-worker
 │
-├── core/
-│   ├── src/
-│   │   ├── models/
-│   │   │   ├── actor.rs
-│   │   │   ├── antenna.rs
-│   │   │   ├── block.rs
-│   │   │   ├── bookmark.rs
-│   │   │   ├── chart.rs
-│   │   │   ├── clip.rs
-│   │   │   ├── emoji.rs
-│   │   │   ├── export.rs
-│   │   │   ├── file.rs
-│   │   │   ├── filter.rs
-│   │   │   ├── follow.rs
-│   │   │   ├── hashtag.rs
-│   │   │   ├── instance.rs
-│   │   │   ├── mod.rs
-│   │   │   ├── mute.rs
-│   │   │   ├── note.rs
-│   │   │   ├── note_unread.rs
-│   │   │   ├── notification.rs
-│   │   │   ├── oauth.rs
-│   │   │   ├── poll.rs
-│   │   │   ├── push_subscription.rs
-│   │   │   ├── reaction.rs
-│   │   │   ├── relay.rs
-│   │   │   ├── renote.rs
-│   │   │   ├── used_username.rs
-│   │   │   ├── user_list.rs
-│   │   │   ├── user_note_pining.rs
-│   │   │   └── user_publickey.rs
-│   │   ├── misc/
-│   │   │   ├── extract_emojis.rs
-│   │   │   ├── extract_hashtags.rs
-│   │   │   ├── extract_mentions.rs
-│   │   │   └── mod.rs
-│   │   ├── services/
-│   │   │   ├── auth.rs
-│   │   │   └── mod.rs
-│   │   ├── auth.rs
-│   │   ├── error.rs
-│   │   └── lib.rs
-│   └── Cargo.toml
-│
-├── db/
-│   ├── src/
-│   │   ├── queries/
-│   │   │   ├── actors.rs
-│   │   │   ├── drive.rs
-│   │   │   ├── favorites.rs
-│   │   │   ├── follows.rs
-│   │   │   ├── hashtags.rs
-│   │   │   ├── mod.rs
-│   │   │   ├── notes.rs
-│   │   │   ├── notifications.rs
-│   │   │   └── polls.rs
-│   │   │   └── timeline.rs
-│   │   ├── cache.rs
-│   │   ├── dragonfly.rs
-│   │   ├── lib.rs
-│   │   ├── storage.rs
-│   │   └── surreal.rs
-│   └── Cargo.toml
-│
-├── api/
-│   ├── src/
-│   │   ├── middleware/
-│   │   │   ├── auth.rs
-│   │   │   ├── content_negotiation.rs
-│   │   │   ├── cors.rs
-│   │   │   ├── http_signature.rs
-│   │   │   ├── locale.rs
-│   │   │   ├── mod.rs
-│   │   │   └── rate_limit.rs
-│   │   ├── routes/
-│   │   │   ├── activitypub.rs
-│   │   │   ├── mastodon/
-│   │   │   │   ├── mod.rs
-│   │   │   │   └── v1.rs
-│   │   │   ├── misskey/
-│   │   │   │   ├── auth.rs
-│   │   │   │   ├── drive.rs
-│   │   │   │   ├── hashtags.rs
-│   │   │   │   ├── i.rs
-│   │   │   │   ├── mod.rs
-│   │   │   │   ├── notes.rs
-│   │   │   │   ├── notifications.rs
-│   │   │   │   ├── streaming.rs
-│   │   │   │   └── timeline.rs
-│   │   │   ├── users.rs
-│   │   │   ├── mod.rs
-│   │   │   └── ogp.rs
-│   │   ├── services/
-│   │   │   ├── mod.rs
-│   │   │   ├── note.rs
-│   │   │   └── user.rs
-│   │   ├── dto.rs
-│   │   ├── events.rs
-│   │   ├── lib.rs
-│   │   └── state.rs
-│   └── Cargo.toml
-│
-├── federation/
-│   ├── src/
-│   │   ├── lib.rs
-│   │   └── service.rs
-│   └── Cargo.toml
-│
-├── stream/
-│   ├── src/
-│   │   ├── channel.rs
-│   │   ├── channels.rs
-│   │   ├── connection.rs
-│   │   └── lib.rs
-│   └── Cargo.toml
-│
-├── i18n/
-│   ├── locales/
-│   │   ├── en.ftl
-│   │   └── ja.ftl
-│   ├── src/
-│   │   └── lib.rs
-│   └── Cargo.toml
-│
-├── config/
-│   ├── src/
-│   │   └── lib.rs
-│   └── Cargo.toml
+├── db/                      # SurrealDB / Dragonfly / storage
+├── shared/                  # front↔back 型契約 (wasm 対応)
 │
 ├── docs/
 ├── infra/
@@ -246,27 +83,27 @@ mithic/
 
 ## 3. 各クレートの実装内容と現状
 
-### `core/src/models/` — エンティティ定義 (実装済み)
+### `backend/core/src/models/` — エンティティ定義 (実装済み)
 
 28エンティティ定義済み: actor, note, follow, notification, instance, file (DriveFile/DriveFolder), emoji, hashtag, poll, reaction, renote, bookmark, block, mute, filter, antenna, clip, user_list, relay, push_subscription, oauth, export, chart, used_username, user_note_pining, user_publickey, note_unread
 
-### `core/src/services/` — サービス層 (一部実装)
+### `backend/core/src/services/` — サービス層 (一部実装)
 
 auth.rs のみ実装済み。その他のサービスは未実装。
 
-### `core/src/misc/` — ユーティリティ (実装済み)
+### `backend/core/src/misc/` — ユーティリティ (実装済み)
 
 extract_emojis, extract_hashtags, extract_mentions の3モジュール実装済み。
 
-### `api/src/routes/` — APIルート (一部実装)
+### `backend/api/src/routes/` — APIルート
 
-Misskey API (notes, notifications, users, auth, drive, hashtags, i, streaming) と Mastodon API v1 が部分実装済み。ActivityPub ルートも存在。
+mithic ネイティブ REST (`routes/v1/`: auth, users, notes, timelines, notifications, drive, push, streaming, instance, admin) と ActivityPub / OGP。Misskey / Mastodon クライアント互換 API は持たない。
 
-### `api/src/middleware/` — ミドルウェア (実装済み)
+### `backend/api/src/middleware/` — ミドルウェア (実装済み)
 
 auth, cors, rate_limit, http_signature, content_negotiation, locale の6モジュール実装済み。
 
-### `api/src/services/` — APIサービス層 (一部実装)
+### `backend/api/src/services/` — APIサービス層 (一部実装)
 
 note.rs, user.rs, relationship.rs の3モジュール実装済み。
 
@@ -282,23 +119,23 @@ SurrealDB / Dragonfly クライアントラッパー実装済み。クエリモ�
 
 channel.rs, channels.rs, connection.rs でチャンネルアーキテクチャ実装済み。
 
-### `frontend-web/src/pages/` — フロントエンド画面 (UI実装済み)
+### `frontend/src/pages/` — フロントエンド画面 (UI実装済み)
 
 `pages/mod.rs` に全画面を実装: HomePage, LocalTimelinePage, GlobalTimelinePage, StatusDetailPage, NotificationsPage, SearchPage, DmPage, DmConversationPage, ProfilePage, SettingsPage, LoginPage, SignupPage, WelcomePage, AdminPage, NotFoundPage の15画面。実APIとWebSocketに一部接続済み。
 
-### `frontend-web/src/components/` — UIコンポーネント (実装済み)
+### `frontend/src/components/` — UIコンポーネント (実装済み)
 
 Shell, TopBar, Sidebar, BottomNav, RightRail, Avatar, PostCard, PostBody, PostActions, MarkdownText, ComposeModal, Protected, LoadMore の13コンポーネント。レイアウトは3カラムレスポンシブ (drawer/sidebar + main + right-rail)。
 
-### `frontend-web/src/api/` — APIクライアント (一部実装)
+### `frontend/src/api/` — APIクライアント (一部実装)
 
 auth.rs, client.rs, notes.rs, users.rs, notifications.rs, dm.rs の6モジュール実装済み。
 
-### `frontend-web/src/store/` — 状態管理 (実装済み)
+### `frontend/src/store/` — 状態管理 (実装済み)
 
 auth.rs, compose.rs, notifications.rs, stream.rs, mod.rs で状態管理実装済み。
 
-### `frontend-web/src/models/` — フロントエンドモデル (実装済み)
+### `frontend/src/models/` — フロントエンドモデル (実装済み)
 
 Note, User, Notification 等のモデル定義済み。
 
@@ -310,19 +147,17 @@ auth.rs, hashtag.rs, note.rs, notification.rs, stream.rs, user.rs の型定義�
 
 shared/src/types/ に DTO 定義 (auth, hashtag, note, notification, relay, stream, user)。shared/src/markdown.rs で comrak Markdown レンダラ実装。
 
-### `server/src/main.rs` / `worker/src/main.rs` — エントリポイント (スタブ)
+### `backend/server` / `backend/worker` — エントリポイント
 
 起動ロジック未実装。
 
-## 4. Mastodon / ActivityPub 互換性
+## 4. ActivityPub / フロント API
 
-- **API互換性**: Mastodon API v1 準拠で既存クライアントとの互換性確保
-- **Markdown対応**: comrak による Markdown レンダリング
-- **機能セット**:
-  - ノート（投稿）のリアクション、リノート
-  - アンケート機能
-  - ファイル添付（画像、動画等）
-  - ドライブ機能（ファイル管理）
+- **ActivityPub**: WebFinger / Actor / inbox (HTTP 署名必須) / outbox 等。配送は worker + 指数バックオフ
+- **フロント API**: `/api/v1/*` (`routes/v1/`) は **mithic ネイティブ REST** (WebUI/PWA 専用)。Misskey / Mastodon クライアント互換は持たない
+- **連合**: 外部接続は ActivityPub のみ (Misskey 拡張: `_misskey_reaction` / `quoteUrl` 等)
+- **Markdown**: comrak (AP `content` は HTML、`source` に原文)
+- **機能セット**: リアクション、リノート、アンケート、ファイル添付、ドライブ
 
 ## 5. ActivityPubに必ず準拠したつくりにすること
 
