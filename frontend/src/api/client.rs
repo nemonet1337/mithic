@@ -7,14 +7,30 @@ pub fn api_base() -> &'static str {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ApiError {
+    #[serde(default)]
     pub status: u16,
+    #[serde(default)]
     pub code: String,
+    #[serde(default)]
     pub message: String,
+    /// バックエンドが付ける具体メッセージ (例: Invalid username or password)
+    #[serde(default)]
+    pub detail: Option<String>,
+}
+
+impl ApiError {
+    /// ユーザー表示用メッセージ (detail があれば優先)
+    pub fn user_message(&self) -> String {
+        self.detail
+            .clone()
+            .filter(|d| !d.is_empty())
+            .unwrap_or_else(|| self.message.clone())
+    }
 }
 
 impl std::fmt::Display for ApiError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "[{}] {}: {}", self.status, self.code, self.message)
+        write!(f, "[{}] {}: {}", self.status, self.code, self.user_message())
     }
 }
 
@@ -51,16 +67,30 @@ where
                 status: 0,
                 code: "serialize".into(),
                 message: e.to_string(),
+                detail: None,
             })?
             .send()
             .await
     } else {
         req.send().await
     }
-    .map_err(|e| ApiError {
-        status: 0,
-        code: "network".into(),
-        message: e.to_string(),
+    .map_err(|e| {
+        let raw = e.to_string();
+        // Failed to fetch 等はユーザー向けに分かりやすい文言へ
+        let message = if raw.contains("Failed to fetch")
+            || raw.contains("NetworkError")
+            || raw.contains("Load failed")
+        {
+            "サーバーに接続できません。バックエンドが起動しているか確認してください。".into()
+        } else {
+            raw
+        };
+        ApiError {
+            status: 0,
+            code: "network".into(),
+            message,
+            detail: None,
+        }
     })?;
 
     let status = response.status();
@@ -70,15 +100,24 @@ where
             status,
             code: "rate_limit".into(),
             message: "レートリミット".into(),
+            detail: None,
         });
     }
 
     if !response.ok() {
-        let err: ApiError = response.json().await.unwrap_or(ApiError {
+        // バックエンドは { error, message, detail? } 形式。status/code は無いので default で受ける。
+        let mut err: ApiError = response.json().await.unwrap_or(ApiError {
             status,
             code: "unknown".into(),
             message: format!("HTTP {status}"),
+            detail: None,
         });
+        if err.status == 0 {
+            err.status = status;
+        }
+        if err.message.is_empty() {
+            err.message = format!("HTTP {status}");
+        }
         return Err(err);
     }
 
@@ -86,6 +125,7 @@ where
         status: 0,
         code: "deserialize".into(),
         message: e.to_string(),
+        detail: None,
     })
 }
 

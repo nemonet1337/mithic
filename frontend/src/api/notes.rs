@@ -81,3 +81,45 @@ pub async fn renote(token: &str, note_id: &str) -> Result<Note, ApiError> {
     )
     .await
 }
+
+pub async fn search_notes(token: Option<&str>, q: &str, limit: usize) -> Result<Vec<Note>, ApiError> {
+    let path = format!(
+        "notes/search?q={}&limit={}",
+        urlencoding_loose(q),
+        limit
+    );
+    request::<Vec<Note>, ()>("GET", &path, token, None).await
+}
+
+pub async fn fetch_hashtag_timeline(
+    token: Option<&str>,
+    tag: &str,
+    limit: usize,
+) -> Result<Vec<Note>, ApiError> {
+    let tag = tag.trim_start_matches('#');
+    let path = format!(
+        "timelines/hashtag/{}?limit={}",
+        urlencoding_loose(tag),
+        limit
+    );
+    request::<Vec<Note>, ()>("GET", &path, token, None).await
+}
+
+pub async fn fetch_trending(limit: usize) -> Result<Vec<shared::Hashtag>, ApiError> {
+    request::<Vec<shared::Hashtag>, ()>(
+        "GET",
+        &format!("hashtags/trending?limit={limit}"),
+        None,
+        None,
+    )
+    .await
+}
+
+fn urlencoding_loose(s: &str) -> String {
+    s.chars()
+        .map(|c| match c {
+            'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '_' | '.' | '~' => c.to_string(),
+            _ => format!("%{:02X}", c as u32),
+        })
+        .collect()
+}

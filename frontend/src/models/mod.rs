@@ -113,5 +113,7 @@ fn note(id: &str, author: User, content: &str, created_at: &str, accent: bool) -
         attachments: Vec::new(),
         tags: vec!["design".into()],
         is_nsfw: false,
+        renote_id: None,
+        renote: None,
     }
 }

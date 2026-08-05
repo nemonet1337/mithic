@@ -141,11 +141,20 @@ pub async fn unmute(token: &str, user_id: &str) -> Result<UserRelation, ApiError
     .await
 }
 
-#[allow(dead_code)]
 pub async fn search_users(token: Option<&str>, q: &str) -> Result<Vec<User>, ApiError> {
     request::<Vec<User>, ()>(
         "GET",
         &format!("users/search?q={}", urlencoding_loose(q)),
+        token,
+        None,
+    )
+    .await
+}
+
+pub async fn fetch_suggested(token: Option<&str>, limit: usize) -> Result<Vec<User>, ApiError> {
+    request::<Vec<User>, ()>(
+        "GET",
+        &format!("users/suggested?limit={limit}"),
         token,
         None,
     )
