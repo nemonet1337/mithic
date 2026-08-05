@@ -18,7 +18,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use shared::{CreateNoteRequest, Note as NoteDto};
 
-use crate::dto::{actor_to_user, note_to_dto};
+use crate::dto::{actor_to_user, note_to_dto_full};
 use crate::events::StreamBroadcast;
 use crate::http_cache::{CC_PUBLIC_NOTE, json_with_cache};
 use crate::routes::v1::common::{ok_null, parse_note_id};
@@ -72,7 +72,7 @@ pub async fn fetch_note_dto(state: &AppState, note_id: &NoteId) -> Result<(Note,
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?
         .ok_or_else(|| AppError::NotFound("Author not found".to_string()))?;
-    let dto = note_to_dto(&note, actor_to_user(&author));
+    let dto = note_to_dto_full(state, &note, actor_to_user(&author)).await;
     Ok((note, dto))
 }
 
@@ -120,7 +120,7 @@ pub async fn show_note(
         .map_err(|e| AppError::Internal(e.to_string()))?
         .ok_or_else(|| AppError::NotFound("Author not found".to_string()))?;
 
-    let dto = note_to_dto(&note, actor_to_user(&author));
+    let dto = note_to_dto_full(&state, &note, actor_to_user(&author)).await;
     if is_publicish {
         let note_key = format!("note:{note_id}");
         let _ = cache::set_json(state.dragonfly(), &note_key, &dto, NOTE_CACHE_TTL).await;
@@ -163,7 +163,9 @@ pub async fn note_replies(
     let rows = get_note_replies(state.surreal(), &note_id, 100)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
-    Ok(Json(crate::routes::v1::common::rows_to_dtos(rows)))
+    Ok(Json(
+        crate::routes::v1::common::rows_to_dtos(&state, rows).await,
+    ))
 }
 
 pub async fn note_quotes(
@@ -174,7 +176,9 @@ pub async fn note_quotes(
     let rows = get_note_quotes(state.surreal(), &note_id, 100)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
-    Ok(Json(crate::routes::v1::common::rows_to_dtos(rows)))
+    Ok(Json(
+        crate::routes::v1::common::rows_to_dtos(&state, rows).await,
+    ))
 }
 
 #[derive(Debug, Deserialize)]
@@ -298,7 +302,7 @@ pub async fn renote_route(
         publish_notification(&state, &notif, Some(&author), Some(target_dto)).await;
     }
 
-    let dto = note_to_dto(&created, actor_to_user(&author));
+    let dto = note_to_dto_full(&state, &created, actor_to_user(&author)).await;
     state.publish_stream(StreamBroadcast::Note(Box::new(dto.clone())));
     Ok(Json(dto))
 }
@@ -509,5 +513,7 @@ pub async fn search_notes(
         .map_err(|e| AppError::Internal(e.to_string()))?;
     let notes: Vec<mithic_db::queries::NoteWithAuthor> =
         mithic_db::queries::rows_to(rows).map_err(|e| AppError::Internal(e.to_string()))?;
-    Ok(Json(crate::routes::v1::common::rows_to_dtos(notes)))
+    Ok(Json(
+        crate::routes::v1::common::rows_to_dtos(&state, notes).await,
+    ))
 }

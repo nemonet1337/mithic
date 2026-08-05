@@ -15,7 +15,7 @@ use mithic_db::queries::{
 use serde::Deserialize;
 use shared::{Hashtag, Note as NoteDto};
 
-use crate::dto::{actor_to_user, note_to_dto};
+use crate::dto::note_to_dto_full;
 use crate::http_cache::{CC_TIMELINE, CC_TRENDING, json_with_cache};
 use crate::routes::v1::common::{parse_optional_note_id, rows_to_dtos, PagingQuery};
 use crate::state::AppState;
@@ -44,7 +44,7 @@ pub async fn timeline_home(
     }
     .map_err(|e| AppError::Internal(e.to_string()))?;
 
-    Ok(axum::Json(rows_to_dtos(rows)))
+    Ok(axum::Json(rows_to_dtos(&state, rows).await))
 }
 
 pub async fn timeline_local(
@@ -104,7 +104,7 @@ async fn load_public_timeline(
     }
     .map_err(|e| AppError::Internal(e.to_string()))?;
 
-    let dtos = rows_to_dtos(rows);
+    let dtos = rows_to_dtos(state, rows).await;
     if since_id.is_none() && until_id.is_none() {
         let key = cache::timeline_json_key(kind, limit);
         let _ = cache::set_json(
@@ -134,7 +134,9 @@ pub async fn timeline_hashtag(
         if let Ok(Some(author)) =
             mithic_db::queries::get_actor_by_id(state.surreal(), &note.actor_id).await
         {
-            dtos.push(note_to_dto(&note, actor_to_user(&author)));
+            dtos.push(
+                note_to_dto_full(&state, &note, crate::dto::actor_to_user(&author)).await,
+            );
         }
     }
     Ok(axum::Json(dtos))
@@ -162,9 +164,13 @@ pub async fn trending_hashtags(
         .map_err(|e| AppError::Internal(e.to_string()))?;
     let hashtags: Vec<Hashtag> = tags
         .into_iter()
-        .map(|tag| Hashtag {
-            tag: format!("#{tag}"),
-            count: 0,
+        .map(|(tag, count)| Hashtag {
+            tag: if tag.starts_with('#') {
+                tag
+            } else {
+                format!("#{tag}")
+            },
+            count,
         })
         .collect();
 

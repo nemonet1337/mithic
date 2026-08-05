@@ -47,6 +47,12 @@ pub struct Note {
     pub attachments: Vec<MediaAttachment>,
     pub tags: Vec<String>,
     pub is_nsfw: bool,
+    /// リノート先ノート ID（pure renote / quote 共通）
+    #[serde(default)]
+    pub renote_id: Option<String>,
+    /// ネストされた元ノート（表示用）
+    #[serde(default)]
+    pub renote: Option<Box<Note>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

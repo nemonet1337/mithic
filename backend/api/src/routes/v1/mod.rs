@@ -170,6 +170,7 @@ pub fn router(state: AppState) -> Router<AppState> {
         .route("/api/v1/instance", get(instance::get_instance))
         .route("/api/v1/users/check-handle", get(users::check_handle))
         .route("/api/v1/users/search", get(users::search_users))
+        .route("/api/v1/users/suggested", get(users::suggested_users))
         .route("/api/v1/users/{username}", get(users::show_user))
         .route(
             "/api/v1/users/{username}/notes",

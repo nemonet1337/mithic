@@ -178,7 +178,7 @@ pub async fn user_notes(
     .await
     .map_err(|e| AppError::Internal(e.to_string()))?;
 
-    Ok(Json(rows_to_dtos(notes)))
+    Ok(Json(rows_to_dtos(&state, notes).await))
 }
 
 // ---------------------------------------------------------------------------
@@ -461,13 +461,28 @@ pub async fn list_mutes(
 }
 
 // ---------------------------------------------------------------------------
-// search
+// search / suggested
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Deserialize)]
 pub struct SearchQuery {
     pub q: String,
     pub limit: Option<usize>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SuggestedQuery {
+    pub limit: Option<usize>,
+}
+
+fn actors_from_rows(rows: Vec<surrealdb::types::Value>) -> Result<Vec<Actor>> {
+    rows.into_iter()
+        .map(|v| {
+            let mut json = v.into_json_value();
+            mithic_db::queries::strip_record_prefixes(&mut json);
+            serde_json::from_value::<Actor>(json).map_err(|e| AppError::Internal(e.to_string()))
+        })
+        .collect()
 }
 
 pub async fn search_users(
@@ -493,15 +508,60 @@ pub async fn search_users(
     let rows: Vec<surrealdb::types::Value> = response
         .take(0)
         .map_err(|e| AppError::Internal(e.to_string()))?;
-    let actors: Vec<Actor> = rows
-        .into_iter()
-        .map(|v| {
-            let mut json = v.into_json_value();
-            mithic_db::queries::strip_record_prefixes(&mut json);
-            serde_json::from_value::<Actor>(json).map_err(|e| AppError::Internal(e.to_string()))
-        })
-        .collect::<Result<Vec<Actor>>>()?;
+    let actors = actors_from_rows(rows)?;
     Ok(Json(actors.iter().map(actor_to_user).collect()))
+}
+
+/// ローカル人気ユーザー（followers_count 降順）。おすすめ枠用の最小実装。
+pub async fn suggested_users(
+    State(state): State<AppState>,
+    auth: Option<Extension<AuthUser>>,
+    Query(query): Query<SuggestedQuery>,
+) -> Result<Json<Vec<User>>> {
+    let limit = query.limit.unwrap_or(5).min(20);
+    let exclude = auth.map(|Extension(a)| a.user_id.to_string());
+
+    // ローカル優先は FE 側で host フィルタ。DB は人気順の最小クエリのみ。
+    let mut response = if let Some(ref me) = exclude {
+        state
+            .surreal()
+            .query(
+                "
+                SELECT * FROM user
+                WHERE id != type::record('user', $me)
+                ORDER BY followers_count DESC, notes_count DESC
+                LIMIT $limit;
+                ",
+            )
+            .bind(("me", me.clone()))
+            .bind(("limit", (limit * 2) as i64))
+            .await
+    } else {
+        state
+            .surreal()
+            .query(
+                "
+                SELECT * FROM user
+                ORDER BY followers_count DESC, notes_count DESC
+                LIMIT $limit;
+                ",
+            )
+            .bind(("limit", (limit * 2) as i64))
+            .await
+    }
+    .map_err(|e| AppError::Internal(e.to_string()))?;
+
+    let rows: Vec<surrealdb::types::Value> = response
+        .take(0)
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let actors = actors_from_rows(rows)?;
+    let users: Vec<User> = actors
+        .iter()
+        .filter(|a| a.host.as_ref().map(|h| h.is_empty()).unwrap_or(true))
+        .take(limit)
+        .map(actor_to_user)
+        .collect();
+    Ok(Json(users))
 }
 
 // ---------------------------------------------------------------------------

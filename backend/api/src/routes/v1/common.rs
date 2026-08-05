@@ -8,7 +8,8 @@ use serde::Deserialize;
 use serde_json::Value;
 use shared::Note as NoteDto;
 
-use crate::dto::{actor_to_user, note_to_dto};
+use crate::dto::{actor_to_user, note_to_dto_full};
+use crate::state::AppState;
 
 /// フロントの `request::<(), _>` は JSON `null` を期待する
 pub fn ok_null() -> axum::Json<Value> {
@@ -42,10 +43,12 @@ pub fn parse_actor_id(raw: &str) -> Result<ActorId> {
         .map_err(|_| AppError::Validation("Invalid user id".to_string()))
 }
 
-pub fn rows_to_dtos(rows: Vec<NoteWithAuthor>) -> Vec<NoteDto> {
-    rows.into_iter()
-        .map(|row| note_to_dto(&row.note, actor_to_user(&row.author)))
-        .collect()
+pub async fn rows_to_dtos(state: &AppState, rows: Vec<NoteWithAuthor>) -> Vec<NoteDto> {
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        out.push(note_to_dto_full(state, &row.note, actor_to_user(&row.author)).await);
+    }
+    out
 }
 
 pub fn normalize_handle(handle: &str) -> String {

@@ -32,7 +32,8 @@ pub async fn get_notes_by_tag(
     rows_to::<Note>(rows)
 }
 
-pub async fn get_trending_tags(client: &SurrealClient, limit: usize) -> Result<Vec<String>> {
+/// (tag, count) — count は使用回数
+pub async fn get_trending_tags(client: &SurrealClient, limit: usize) -> Result<Vec<(String, u64)>> {
     let mut response = client
         .query(
             "
@@ -51,7 +52,15 @@ pub async fn get_trending_tags(client: &SurrealClient, limit: usize) -> Result<V
         .into_iter()
         .filter_map(|v| {
             let json = v.into_json_value();
-            json.get("tag")?.as_str().map(|s| s.to_string())
+            let tag = json.get("tag")?.as_str()?.to_string();
+            if tag.is_empty() {
+                return None;
+            }
+            let count = json
+                .get("count")
+                .and_then(|c| c.as_u64().or_else(|| c.as_i64().map(|i| i.max(0) as u64)))
+                .unwrap_or(0);
+            Some((tag, count))
         })
         .collect())
 }

@@ -52,9 +52,14 @@ impl AppError {
 
     fn to_error_details(&self) -> ErrorDetails {
         match self {
-            AppError::Unauthorized(_) => ErrorDetails {
+            AppError::Unauthorized(msg) => ErrorDetails {
                 key: "error-unauthorized",
-                detail: None,
+                // クライアントが原因を判別できるよう、具体メッセージを detail に載せる
+                detail: if msg.is_empty() {
+                    None
+                } else {
+                    Some(msg.clone())
+                },
             },
             AppError::Forbidden(_) => ErrorDetails {
                 key: "error-forbidden",

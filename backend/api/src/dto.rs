@@ -1,9 +1,14 @@
 use mithic_core::models::actor::Actor;
+use mithic_core::models::file::FileId;
 use mithic_core::models::note::{Note, NoteVisibility as CoreVisibility};
 use mithic_core::models::notification::NotificationType;
+use mithic_db::queries::{get_actor_by_id, get_drive_file, get_note_by_id};
 use shared::{
-    Note as NoteDto, NoteVisibility, NotificationType as NotifTypeDto, ReactionSummary, User,
+    MediaAttachment, Note as NoteDto, NoteVisibility, NotificationType as NotifTypeDto,
+    ReactionSummary, User,
 };
+
+use crate::state::AppState;
 
 pub fn notif_type_to_dto(nt: NotificationType) -> NotifTypeDto {
     match nt {
@@ -55,6 +60,18 @@ pub fn visibility_from_dto(visibility: NoteVisibility) -> CoreVisibility {
     }
 }
 
+fn drive_file_to_attachment(f: &mithic_core::models::file::DriveFile) -> MediaAttachment {
+    MediaAttachment {
+        id: f.id.to_string(),
+        url: f.url.clone().unwrap_or_default(),
+        preview_url: f.thumbnail_url.clone(),
+        media_type: f.mime_type.clone(),
+        alt: None,
+        is_sensitive: false,
+    }
+}
+
+/// Sync minimal DTO conversion (renote / attachments filled by enrich later)
 pub fn note_to_dto(note: &Note, author: User) -> NoteDto {
     let reactions = note
         .reactions
@@ -80,5 +97,49 @@ pub fn note_to_dto(note: &Note, author: User) -> NoteDto {
         attachments: Vec::new(),
         tags: note.tags.clone(),
         is_nsfw: false,
+        renote_id: note.renote_id.map(|id| id.to_string()),
+        renote: None,
     }
+}
+
+async fn load_attachments(state: &AppState, file_ids: &[String]) -> Vec<MediaAttachment> {
+    let mut out = Vec::with_capacity(file_ids.len());
+    for raw in file_ids {
+        let Ok(fid) = raw.parse::<FileId>() else {
+            continue;
+        };
+        if let Ok(Some(file)) = get_drive_file(state.surreal(), &fid).await {
+            out.push(drive_file_to_attachment(&file));
+        }
+    }
+    out
+}
+
+/// Fill attachments + one-level renote.
+/// ponytail: N+1; batch/join later if TL is slow.
+pub async fn enrich_note_dto(state: &AppState, note: &Note, mut dto: NoteDto) -> NoteDto {
+    if !note.file_ids.is_empty() {
+        dto.attachments = load_attachments(state, &note.file_ids).await;
+    }
+
+    if let Some(renote_id) = note.renote_id {
+        if let Ok(Some(target)) = get_note_by_id(state.surreal(), &renote_id).await {
+            if let Ok(Some(target_author)) =
+                get_actor_by_id(state.surreal(), &target.actor_id).await
+            {
+                let mut nested = note_to_dto(&target, actor_to_user(&target_author));
+                if !target.file_ids.is_empty() {
+                    nested.attachments = load_attachments(state, &target.file_ids).await;
+                }
+                dto.renote = Some(Box::new(nested));
+            }
+        }
+    }
+
+    dto
+}
+
+pub async fn note_to_dto_full(state: &AppState, note: &Note, author: User) -> NoteDto {
+    let dto = note_to_dto(note, author);
+    enrich_note_dto(state, note, dto).await
 }

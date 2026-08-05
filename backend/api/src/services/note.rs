@@ -14,7 +14,7 @@ use mithic_db::queries::{
 };
 use shared::{CreateNoteRequest, Note as NoteDto, Notification as NotifDto};
 
-use crate::dto::{actor_to_user, note_to_dto, notif_type_to_dto, visibility_from_dto};
+use crate::dto::{actor_to_user, note_to_dto_full, notif_type_to_dto, visibility_from_dto};
 use crate::events::StreamBroadcast;
 use crate::state::AppState;
 
@@ -81,7 +81,7 @@ pub async fn create_note_service(
         });
     }
 
-    let dto = note_to_dto(&created, actor_to_user(&author));
+    let dto = note_to_dto_full(state, &created, actor_to_user(&author)).await;
 
     // 通知生成はレスポンスに不要 → バックグラウンド (メンションは一括解決)
     {
