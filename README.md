@@ -18,17 +18,35 @@ cp .env.example .env
 docker compose up -d --build
 
 # 3. 動作確認
-curl http://localhost/api/v1/health      # => {"status":"ok"}
-# ブラウザで http://localhost を開き、サインアップ → 投稿 → タイムライン表示
+curl http://localhost:3000/api/v1/health      # => {"status":"ok"}
+# ブラウザで http://localhost:3000 を開き、サインアップ → 投稿 → タイムライン表示
+# (port 80 でも可: http://localhost )
 ```
 
 | サービス | ポート | 役割 |
 |---|---|---|
-| frontend (caddy) | 80 | WASM 配信 + `/api` リバースプロキシ + WebSocket + PWA静的ファイル |
-| server | 3000 | REST API (`/api/v1/*`) + WebSocket (`/api/v1/streaming`) + ActivityPub |
+| frontend (caddy) | 80, 3000 | WASM 配信 + `/api` リバースプロキシ + WebSocket + PWA静的ファイル |
+| server | 3000 (内部) | REST API (`/api/v1/*`) + WebSocket (`/api/v1/streaming`) + ActivityPub。ホストからは Caddy 経由 |
 | worker | - | 連合配送キュー (並列4 + 指数バックオフ + DLQ) |
 | surrealdb | 8000 | データベース |
 | dragonfly | 6379 | キャッシュ / 配送キュー |
+
+### Windows + Podman で `ERR_CONNECTION_REFUSED` になる場合
+
+Podman Machine (WSL) がコンテナの公開ポートを **WSL 側 IP には出すが Windows の `127.0.0.1` には転送しない**ことがあります。
+コンテナ内ヘルスチェックは通っていても、ブラウザだけ `localhost:3000` に繋がらない状態です。
+
+```powershell
+# 一時回避: Windows localhost を WSL IP へ中継 (管理者権限不要)
+python scripts/localhost_proxy.py
+# 別ターミナルで確認
+curl http://127.0.0.1:3000/api/v1/health
+```
+
+恒久対策の候補:
+1. Podman Desktop で **User mode networking** を有効化してマシンを再作成 / 再起動する
+2. `.wslconfig` で `networkingMode=mirrored` を試す（要 `wsl --shutdown`）
+3. 上記プロキシを開発時に併用する
 
 ## ローカル開発
 

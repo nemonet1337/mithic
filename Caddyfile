@@ -1,63 +1,72 @@
 # Mithic Caddyfile
-# Modern Reverse Proxy configuration
+# Reverse proxy + static SPA
+#
+# IMPORTANT: try_files is evaluated before reverse_proxy by default.
+# Put API / ActivityPub / WebSocket behind `handle` so they are not
+# rewritten to index.html.
 
 {
-    admin off
+	admin off
 }
 
 :80, :3000 {
-    log {
-        output stdout
-    }
+	log {
+		output stdout
+	}
 
-    # Web Root
-    root * /usr/share/caddy
+	root * /usr/share/caddy
+	encode gzip zstd
 
-    # Compression (Gzip & Zstandard)
-    encode gzip zstd
+	# OGP bots (Discord, Twitter, Slack, Googlebot, ...)
+	@bots {
+		header_regexp User-Agent "(?i)(discordbot|twitterbot|slackbot|telegrambot|whatsapp|googlebot|bingbot|facebot|facebookexternalhit|baiduspider|yandexbot)"
+		path_regexp path "^/(notes|profile)/"
+	}
+	handle @bots {
+		reverse_proxy server:3000
+	}
 
-    # Bot Matcher (Discordbot, Twitterbot, Slackbot, Googlebot, etc. for OGP)
-    @bots {
-        header_regexp User-Agent "(?i)(discordbot|twitterbot|slackbot|telegrambot|whatsapp|googlebot|bingbot|facebot|facebookexternalhit|baiduspider|yandexbot)"
-        path_regexp "^/(notes|profile)/"
-    }
-    reverse_proxy @bots server:3000
+	# REST API - must match before SPA fallback
+	handle /api/* {
+		reverse_proxy server:3000
+	}
 
-    # API endpoints proxy
-    reverse_proxy /api/* server:3000
+	# WebSocket
+	@ws {
+		header Connection *Upgrade*
+		header Upgrade websocket
+	}
+	handle @ws {
+		reverse_proxy server:3000
+	}
 
-    # WebSocket connections proxy
-    @ws {
-        header Connection *Upgrade*
-        header Upgrade    websocket
-    }
-    reverse_proxy @ws server:3000
+	# ActivityPub / Federation
+	@activitypub {
+		path_regexp path "^/(\.well-known/|nodeinfo|users/|inbox)"
+	}
+	handle @activitypub {
+		reverse_proxy server:3000
+	}
 
-    # ActivityPub / Federation endpoints proxy
-    @activitypub {
-        path_regexp "^/(\.well-known/|nodeinfo|users/|inbox)"
-    }
-    reverse_proxy @activitypub server:3000
+	# Static SPA (last)
+	handle {
+		@immutable_assets {
+			path *.wasm *.js
+		}
+		header @immutable_assets Cache-Control "public, max-age=31536000, immutable"
 
-    # WASM & JS - long cache (Trunk content-addressed)
-    @immutable_assets {
-        path *.wasm *.js
-    }
-    header @immutable_assets Cache-Control "public, max-age=31536000, immutable"
+		@cached_assets {
+			path *.css *.svg *.ico *.png *.jpg *.webp *.woff2
+		}
+		header @cached_assets Cache-Control "public, max-age=604800, no-transform"
 
-    # Static assets
-    @cached_assets {
-        path *.css *.svg *.ico *.png *.jpg *.webp *.woff2
-    }
-    header @cached_assets Cache-Control "public, max-age=604800, no-transform"
+		try_files {path} {path}/ /index.html
 
-    # SPA routing fallback
-    try_files {path} {path}/ /index.html
+		@index {
+			path /index.html
+		}
+		header @index Cache-Control "no-cache"
 
-    @index {
-        path /index.html
-    }
-    header @index Cache-Control "no-cache"
-
-    file_server
+		file_server
+	}
 }
