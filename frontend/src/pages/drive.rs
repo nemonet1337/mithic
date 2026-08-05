@@ -47,7 +47,7 @@ pub fn DrivePage() -> impl IntoView {
     };
 
     view! {
-        <Shell active="drive" right_rail=false>
+        <Shell active="drive">
             <section class="p-4">
                 <h1 class="wf-title mb-4">"ファイルマネージャー"</h1>
 

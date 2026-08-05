@@ -1,47 +1,47 @@
 // Mithic Service Worker (Workbox 7)
-// Workbox を CDN から importScripts で読み込む
+// HTML は常にネットワーク優先。古い index とハッシュ付き WASM の不整合を防ぐ。
 
 importScripts('https://storage.googleapis.com/workbox-cdn/releases/7.0.0/workbox-sw.js');
 
-const { precaching, routing, strategies, expiration, backgroundSync } = workbox;
+const { routing, strategies, expiration } = workbox;
+const CACHE_VERSION = 'mithic-sw-v2';
 
 // ==================================================
-// Precache (trunk build 時に自動生成されるリストで代替)
-// 静的アセットをプリキャッシュ
+// Navigation / document: NetworkFirst（ソフトリロードで古いシェルを出さない）
 // ==================================================
-precaching.precacheAndRoute([
-  { url: '/', revision: null },
-  { url: '/offline.html', revision: null },
-]);
+routing.registerRoute(
+  ({ request }) => request.mode === 'navigate' || request.destination === 'document',
+  new strategies.NetworkFirst({
+    cacheName: `${CACHE_VERSION}-pages`,
+    networkTimeoutSeconds: 5,
+    plugins: [
+      new expiration.ExpirationPlugin({
+        maxEntries: 10,
+        maxAgeSeconds: 24 * 60 * 60,
+      }),
+    ],
+  })
+);
 
 // ==================================================
 // Runtime Caching
 // ==================================================
 
-// API ルート: NetworkFirst (30秒タイムアウト、オフライン時キャッシュにフォールバック)
+// API: NetworkOnly（認証・書き込みをキャッシュしない）
 routing.registerRoute(
   ({ url }) => url.pathname.startsWith('/api/'),
-  new strategies.NetworkFirst({
-    cacheName: 'mithic-api-cache',
-    networkTimeoutSeconds: 30,
-    plugins: [
-      new expiration.ExpirationPlugin({
-        maxEntries: 100,
-        maxAgeSeconds: 60 * 60, // 1時間
-      }),
-    ],
-  })
+  new strategies.NetworkOnly()
 );
 
 // 画像: CacheFirst
 routing.registerRoute(
   ({ request }) => request.destination === 'image',
   new strategies.CacheFirst({
-    cacheName: 'mithic-images',
+    cacheName: `${CACHE_VERSION}-images`,
     plugins: [
       new expiration.ExpirationPlugin({
         maxEntries: 200,
-        maxAgeSeconds: 7 * 24 * 60 * 60, // 7日
+        maxAgeSeconds: 7 * 24 * 60 * 60,
       }),
     ],
   })
@@ -49,53 +49,80 @@ routing.registerRoute(
 
 // Google Fonts: StaleWhileRevalidate
 routing.registerRoute(
-  ({ url }) => url.origin === 'https://fonts.googleapis.com' || url.origin === 'https://fonts.gstatic.com',
+  ({ url }) =>
+    url.origin === 'https://fonts.googleapis.com' ||
+    url.origin === 'https://fonts.gstatic.com',
   new strategies.StaleWhileRevalidate({
-    cacheName: 'mithic-fonts',
+    cacheName: `${CACHE_VERSION}-fonts`,
     plugins: [
       new expiration.ExpirationPlugin({
         maxEntries: 30,
-        maxAgeSeconds: 30 * 24 * 60 * 60, // 30日
+        maxAgeSeconds: 30 * 24 * 60 * 60,
       }),
     ],
   })
 );
 
-// JS / CSS / WASM: StaleWhileRevalidate
+// JS / CSS: NetworkFirst（Trunk ハッシュ付き成果物の不整合を避ける）
 routing.registerRoute(
   ({ request }) =>
-    request.destination === 'script' ||
-    request.destination === 'style' ||
-    request.url.endsWith('.wasm'),
-  new strategies.StaleWhileRevalidate({
-    cacheName: 'mithic-static',
+    request.destination === 'script' || request.destination === 'style',
+  new strategies.NetworkFirst({
+    cacheName: `${CACHE_VERSION}-static`,
+    networkTimeoutSeconds: 3,
     plugins: [
       new expiration.ExpirationPlugin({
         maxEntries: 50,
-        maxAgeSeconds: 24 * 60 * 60, // 1日
+        maxAgeSeconds: 24 * 60 * 60,
+      }),
+    ],
+  })
+);
+
+// WASM: NetworkFirst
+routing.registerRoute(
+  ({ request, url }) =>
+    request.destination === 'wasm' || url.pathname.endsWith('.wasm'),
+  new strategies.NetworkFirst({
+    cacheName: `${CACHE_VERSION}-wasm`,
+    networkTimeoutSeconds: 5,
+    plugins: [
+      new expiration.ExpirationPlugin({
+        maxEntries: 10,
+        maxAgeSeconds: 24 * 60 * 60,
       }),
     ],
   })
 );
 
 // ==================================================
-// Offline Fallback
+// Offline Fallback（document のみ）
 // ==================================================
-routing.setCatchHandler(async ({ event }) => {
-  if (event.request.destination === 'document') {
-    return caches.match('/offline.html');
+routing.setCatchHandler(async ({ event, error }) => {
+  if (event.request.destination === 'document' || event.request.mode === 'navigate') {
+    const offline = await caches.match('/offline.html');
+    if (offline) return offline;
   }
-  return Response.error();
+  throw error || new Error('Network request failed');
 });
 
-// SW インストール時にオフラインページをキャッシュ
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open('mithic-offline').then((cache) => cache.add('/offline.html'))
+    caches.open(`${CACHE_VERSION}-offline`).then((cache) => cache.add('/offline.html'))
   );
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(clients.claim());
+  event.waitUntil(
+    (async () => {
+      const keys = await caches.keys();
+      await Promise.all(
+        keys
+          .filter((key) => !key.startsWith(CACHE_VERSION))
+          .map((key) => caches.delete(key))
+      );
+      await self.clients.claim();
+    })()
+  );
 });

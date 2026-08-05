@@ -7,41 +7,46 @@ use super::avatar::{Avatar, AvatarAccent, AvatarSize};
 use crate::store::{AuthStore, ComposeStore, NotificationStore};
 
 // ===========================================================
-// Shell — spine layout (paper & ink)
+// Shell — full-bleed timeline canvas + floating chrome
 // ===========================================================
 #[component]
 pub fn Shell(
     #[prop(into)] active: String,
-    #[prop(default = true)] right_rail: bool,
     children: Children,
 ) -> impl IntoView {
     view! {
         <div class="app-root wf-shell" id="app-root">
-            <Sidebar active=active.clone() />
+            // タイムラインが全面。クロームは浮遊オーバーレイ。
             <main class="wf-main">
-                {children()}
+                <div class="wf-main-inner">
+                    {children()}
+                </div>
             </main>
-            <Show when=move || right_rail>
-                <RightRail />
-            </Show>
-
-            // モバイル: トップバー + ボトムタブ + FAB
-            <MobileTopBar active=active.clone() />
-            <MobileBottomNav active=active.clone() />
-            <MobileFab />
+            <AppChrome active=active.clone() />
+            <MobileDock active=active />
         </div>
     }
 }
 
 // ===========================================================
-// Sidebar (spine)
+// Floating chrome (corners)
 // ===========================================================
 #[component]
-pub fn Sidebar(#[prop(into)] active: String) -> impl IntoView {
+fn AppChrome(#[prop(into)] active: String) -> impl IntoView {
     let compose = expect_context::<ComposeStore>();
     let notifications = expect_context::<NotificationStore>();
     let auth = expect_context::<AuthStore>();
     let me = auth.me;
+    let navigate = leptos_router::hooks::use_navigate();
+    let active_for_notif = active.clone();
+
+    let open_menu = RwSignal::new(Option::<&'static str>::None);
+    let close_menus = move || open_menu.set(None);
+    let toggle = move |id: &'static str| {
+        open_menu.update(|cur| {
+            *cur = if *cur == Some(id) { None } else { Some(id) };
+        });
+    };
 
     let profile_href = move || {
         if let Some(user) = me.get() {
@@ -51,272 +56,373 @@ pub fn Sidebar(#[prop(into)] active: String) -> impl IntoView {
         }
     };
 
-    let nav_items = move || {
-        let p_href = profile_href();
-        vec![
-            ("01", "home", "ホーム", id::FiHome, "/".to_string()),
-            ("02", "search", "検索", id::FiSearch, "/search".to_string()),
-            ("03", "notif", "通知", id::FiBell, "/notifications".to_string()),
-            ("04", "dm", "メッセージ", id::FiMail, "/dm".to_string()),
-            ("05", "profile", "プロフィール", id::FiUser, p_href),
-            ("06", "settings", "設定", id::FiSettings, "/settings".to_string()),
-        ]
+    let any_menu = Signal::derive(move || open_menu.get().is_some());
+
+    view! {
+        <div class="wf-chrome" aria-label="アプリ操作">
+            // 左上: ホーム
+            <A href="/" attr:class="wf-chrome-brand" attr:aria-label="ホーム" attr:title="ホーム">
+                <span class="wf-stamp">"m"</span>
+            </A>
+
+            // 右上: 操作クラスタ
+            <div class="wf-chrome-cluster">
+                <div class="wf-ico-wrap">
+                    <button
+                        class=move || {
+                            if open_menu.get() == Some("nav") {
+                                "wf-ico-btn active"
+                            } else {
+                                "wf-ico-btn"
+                            }
+                        }
+                        on:click=move |_| toggle("nav")
+                        aria-label="メニュー"
+                        aria-expanded=move || (open_menu.get() == Some("nav")).to_string()
+                        title="メニュー"
+                    >
+                        <Icon icon=id::FiMenu width="18" height="18" />
+                    </button>
+                    <Show when=move || open_menu.get() == Some("nav")>
+                        <div class="wf-pop wf-nav-pop wf-nav-pop-end" role="menu">
+                            <A href="/" attr:class="wf-pop-item" on:click=move |_| close_menus()>
+                                <Icon icon=id::FiHome width="16" height="16" />
+                                "ホーム"
+                            </A>
+                            <A href="/search" attr:class="wf-pop-item" on:click=move |_| close_menus()>
+                                <Icon icon=id::FiSearch width="16" height="16" />
+                                "検索"
+                            </A>
+                            <A href="/dm" attr:class="wf-pop-item" on:click=move |_| close_menus()>
+                                <Icon icon=id::FiMail width="16" height="16" />
+                                "メッセージ"
+                                <Show when=move || { notifications.unread_messages.get() > 0u32 }>
+                                    <span class="wf-badge" style="margin-left:auto;">
+                                        {move || notifications.unread_messages.get().to_string()}
+                                    </span>
+                                </Show>
+                            </A>
+                            {move || {
+                                let href = profile_href();
+                                view! {
+                                    <A href=href attr:class="wf-pop-item" on:click=move |_| close_menus()>
+                                        <Icon icon=id::FiUser width="16" height="16" />
+                                        "プロフィール"
+                                    </A>
+                                }
+                            }}
+                            <A href="/drive" attr:class="wf-pop-item" on:click=move |_| close_menus()>
+                                <Icon icon=id::FiFolder width="16" height="16" />
+                                "ドライブ"
+                            </A>
+                        </div>
+                    </Show>
+                </div>
+
+                <A
+                    href="/notifications"
+                    attr:class=move || {
+                        if active_for_notif == "notif" {
+                            "wf-ico-btn active"
+                        } else {
+                            "wf-ico-btn"
+                        }
+                    }
+                    attr:aria-label="通知"
+                    attr:title="通知"
+                >
+                    <span class="wf-ico-rel">
+                        <Icon icon=id::FiBell width="18" height="18" />
+                        <Show when=move || { notifications.unread_notifications.get() > 0u32 }>
+                            <span class="wf-badge wf-badge-dot">
+                                {move || {
+                                    let n = notifications.unread_notifications.get();
+                                    if n > 99 {
+                                        "99+".into()
+                                    } else {
+                                        n.to_string()
+                                    }
+                                }}
+                            </span>
+                        </Show>
+                    </span>
+                </A>
+
+                <button
+                    class="wf-ico-btn wf-ico-compose"
+                    on:click=move |_| compose.open()
+                    aria-label="投稿"
+                    title="投稿"
+                >
+                    <Icon icon=id::FiEdit width="16" height="16" />
+                </button>
+
+                <div class="wf-ico-wrap">
+                    <button
+                        class="wf-ico-btn wf-ico-avatar"
+                        on:click=move |_| toggle("account")
+                        aria-label="アカウント"
+                        aria-expanded=move || (open_menu.get() == Some("account")).to_string()
+                        title="アカウント"
+                    >
+                        {move || {
+                            me.get().map(|u| {
+                                view! {
+                                    <Avatar user=u size=AvatarSize::Sm accent=AvatarAccent::None />
+                                }
+                            })
+                        }}
+                    </button>
+                    <Show when=move || open_menu.get() == Some("account")>
+                        <div class="wf-pop wf-nav-pop wf-nav-pop-end" role="menu">
+                            {move || {
+                                me.get().map(|u| {
+                                    let name = u.name();
+                                    let handle = u.handle();
+                                    view! {
+                                        <div class="wf-account-head">
+                                            <div class="wf-account-name">{name}</div>
+                                            <div class="wf-account-handle">{handle}</div>
+                                        </div>
+                                    }
+                                })
+                            }}
+                            {move || {
+                                let href = profile_href();
+                                view! {
+                                    <A href=href attr:class="wf-pop-item" on:click=move |_| close_menus()>
+                                        <Icon icon=id::FiUser width="16" height="16" />
+                                        "プロフィール"
+                                    </A>
+                                }
+                            }}
+                            <A href="/settings" attr:class="wf-pop-item" on:click=move |_| close_menus()>
+                                <Icon icon=id::FiSettings width="16" height="16" />
+                                "設定"
+                            </A>
+                            <hr class="wf-spine-rule" style="margin:4px 0;" />
+                            <button
+                                class="wf-pop-item danger"
+                                on:click={
+                                    let auth = auth.clone();
+                                    let navigate = navigate.clone();
+                                    move |_| {
+                                        open_menu.set(None);
+                                        let token = auth.token.get_untracked();
+                                        auth.logout();
+                                        if let Some(tok) = token {
+                                            wasm_bindgen_futures::spawn_local(async move {
+                                                let _ = crate::api::auth::logout(&tok).await;
+                                            });
+                                        }
+                                        navigate("/login", Default::default());
+                                    }
+                                }
+                            >
+                                <Icon icon=id::FiLogOut width="16" height="16" />
+                                "ログアウト"
+                            </button>
+                        </div>
+                    </Show>
+                </div>
+            </div>
+
+            <Show when=move || any_menu.get()>
+                <div class="wf-menu-scrim" on:click=move |_| close_menus() />
+            </Show>
+        </div>
+    }
+}
+
+// ===========================================================
+// Mobile floating dock
+// ===========================================================
+#[component]
+fn MobileDock(#[prop(into)] active: String) -> impl IntoView {
+    let compose = expect_context::<ComposeStore>();
+    let notifications = expect_context::<NotificationStore>();
+    let auth = expect_context::<AuthStore>();
+    let me = auth.me;
+    let more_open = RwSignal::new(false);
+
+    let profile_href = move || {
+        if let Some(user) = me.get() {
+            format!("/profile/{}", user.username)
+        } else {
+            "/you".into()
+        }
     };
 
-    view! {
-        <aside class="wf-spine">
-            // ブランドロゴ (stamp)
-            <A href="/" attr:class="wf-spine-head">
-                <span class="wf-stamp">"m"</span>
-                <span class="wf-mark wf-mark-md">"[m]"<span class="br">"mithic"</span></span>
-            </A>
-            <hr class="wf-spine-rule" />
-
-            // ナビ (番号付き spine)
-            <nav class="wf-spine-nav">
-                {move || nav_items().into_iter().map(|(num, item_id, label, icon, href)| {
-                    let is_active = active == item_id;
-                    let badge = match item_id {
-                        "notif" => notifications.unread_notifications,
-                        "dm"    => notifications.unread_messages,
-                        _       => RwSignal::new(0),
-                    };
-                    view! {
-                        <A href=href attr:class=move || {
-                            if is_active { "wf-spine-item active" } else { "wf-spine-item" }
-                        }>
-                            <span class="wf-spine-num">{num}</span>
-                            <Icon icon=icon width="18" height="18" />
-                            <span class="flex-1">{label}</span>
-                            <Show when=move || { badge.get() > 0u32 }>
-                                <span class="wf-badge">{move || badge.get().to_string()}</span>
-                            </Show>
-                        </A>
-                    }
-                }).collect_view()}
-            </nav>
-
-            // 投稿ボタン (stamp btn)
-            <button class="wf-stamp-btn" on:click=move |_| compose.open()>
-                <Icon icon=id::FiEdit width="16" height="16" />
-                "NEW + 投稿"
-            </button>
-
-            // ユーザーフッター
-            <div class="wf-spine-foot">
-                {move || me.get().map(|u| {
-                    let href = format!("/profile/{}", u.username);
-                    view! {
-                        <A href=href attr:class="flex items-center gap-2 min-w-0 flex-1">
-                            <Avatar user=u.clone() size=AvatarSize::Sm accent=AvatarAccent::None />
-                            <div class="min-w-0">
-                                <div class="wf-foot-name">{u.name()}</div>
-                                <div class="wf-foot-sig">"SIG·ok"</div>
-                            </div>
-                        </A>
-                    }
-                })}
-            </div>
-        </aside>
-    }
-}
-
-// ===========================================================
-// モバイル トップバー
-// ===========================================================
-#[component]
-pub fn MobileTopBar(#[prop(into)] active: String) -> impl IntoView {
-    let titles = [
-        ("home", "ホーム"),
-        ("search", "検索"),
-        ("notif", "通知"),
-        ("dm", "メッセージ"),
-        ("profile", "プロフィール"),
-        ("settings", "設定"),
-    ];
-    let title = Signal::derive(move || {
-        titles
-            .iter()
-            .find(|(id, _)| *id == active)
-            .map(|(_, t)| t.to_string())
-            .unwrap_or_else(|| "mithic".to_string())
-    });
-    view! {
-        <header class="an-top">
-            <span class="wf-mark wf-mark-sm">"[m]"</span>
-            <span class="an-folio">"[ 01 ]"</span>
-            <span class="an-title">{move || title.get()}</span>
-        </header>
-    }
-}
-
-// ===========================================================
-// モバイル FAB 投稿
-// ===========================================================
-#[component]
-fn MobileFab() -> impl IntoView {
-    let compose = expect_context::<ComposeStore>();
-    view! {
-        <button class="an-fab" on:click=move |_| compose.open() aria-label="投稿">
-            <Icon icon=id::FiEdit width="24" height="24" />
-        </button>
-    }
-}
-
-// ===========================================================
-// モバイル ボトムタブ
-// ===========================================================
-#[component]
-pub fn MobileBottomNav(#[prop(into)] active: String) -> impl IntoView {
-    let notifications = expect_context::<NotificationStore>();
     let act_home = active.clone();
     let act_search = active.clone();
     let act_notif = active.clone();
-    let act_dm = active.clone();
-    let act_profile = active.clone();
+    let act_more = active.clone();
 
     view! {
-        <nav class="an-tab">
-            <A href="/" attr:class=move || if act_home == "home" { "active" } else { "" }>
+        <nav class="wf-dock" aria-label="メインナビ">
+            <A
+                href="/"
+                attr:class=move || {
+                    if act_home == "home" {
+                        "wf-dock-item active"
+                    } else {
+                        "wf-dock-item"
+                    }
+                }
+                attr:aria-label="ホーム"
+                attr:title="ホーム"
+            >
                 <Icon icon=id::FiHome width="20" height="20" />
-                "01"
             </A>
-            <A href="/search" attr:class=move || if act_search == "search" { "active" } else { "" }>
+            <A
+                href="/search"
+                attr:class=move || {
+                    if act_search == "search" {
+                        "wf-dock-item active"
+                    } else {
+                        "wf-dock-item"
+                    }
+                }
+                attr:aria-label="検索"
+                attr:title="検索"
+            >
                 <Icon icon=id::FiSearch width="20" height="20" />
-                "02"
             </A>
-            <A href="/notifications" attr:class=move || if act_notif == "notif" { "active" } else { "" }>
-                <span class="relative inline-flex">
+            <button
+                class="wf-dock-compose"
+                on:click=move |_| compose.open()
+                aria-label="投稿"
+                title="投稿"
+            >
+                <Icon icon=id::FiEdit width="18" height="18" />
+            </button>
+            <A
+                href="/notifications"
+                attr:class=move || {
+                    if act_notif == "notif" {
+                        "wf-dock-item active"
+                    } else {
+                        "wf-dock-item"
+                    }
+                }
+                attr:aria-label="通知"
+                attr:title="通知"
+            >
+                <span class="wf-ico-rel">
                     <Icon icon=id::FiBell width="20" height="20" />
                     <Show when=move || { notifications.unread_notifications.get() > 0u32 }>
-                        <span class="wf-badge" style="position:absolute;top:-6px;right:-8px;margin:0" />
+                        <span class="wf-badge wf-badge-dot" />
                     </Show>
                 </span>
-                "03"
             </A>
-            <A href="/dm" attr:class=move || if act_dm == "dm" { "active" } else { "" }>
-                <span class="relative inline-flex">
-                    <Icon icon=id::FiMail width="20" height="20" />
-                    <Show when=move || { notifications.unread_messages.get() > 0u32 }>
-                        <span class="wf-badge" style="position:absolute;top:-6px;right:-8px;margin:0" />
-                    </Show>
-                </span>
-                "04"
-            </A>
-            <A href="/settings" attr:class=move || if act_profile == "profile" || act_profile == "settings" { "active" } else { "" }>
-                <Icon icon=id::FiSettings width="20" height="20" />
-                "06"
-            </A>
+            <div class="wf-ico-wrap">
+                <button
+                    class=move || {
+                        if more_open.get()
+                            || act_more == "profile"
+                            || act_more == "settings"
+                            || act_more == "dm"
+                        {
+                            "wf-dock-item active"
+                        } else {
+                            "wf-dock-item"
+                        }
+                    }
+                    on:click=move |_| more_open.update(|v| *v = !*v)
+                    aria-label="その他"
+                    title="その他"
+                >
+                    <Icon icon=id::FiMoreHorizontal width="20" height="20" />
+                </button>
+                <Show when=move || more_open.get()>
+                    <div class="wf-menu-scrim" on:click=move |_| more_open.set(false) />
+                    <div class="wf-pop wf-dock-pop" role="menu">
+                        {move || {
+                            let href = profile_href();
+                            view! {
+                                <A href=href attr:class="wf-pop-item" on:click=move |_| more_open.set(false)>
+                                    <Icon icon=id::FiUser width="16" height="16" />
+                                    "プロフィール"
+                                </A>
+                            }
+                        }}
+                        <A href="/dm" attr:class="wf-pop-item" on:click=move |_| more_open.set(false)>
+                            <Icon icon=id::FiMail width="16" height="16" />
+                            "メッセージ"
+                            <Show when=move || { notifications.unread_messages.get() > 0u32 }>
+                                <span class="wf-badge" style="margin-left:auto;">
+                                    {move || notifications.unread_messages.get().to_string()}
+                                </span>
+                            </Show>
+                        </A>
+                        <A href="/settings" attr:class="wf-pop-item" on:click=move |_| more_open.set(false)>
+                            <Icon icon=id::FiSettings width="16" height="16" />
+                            "設定"
+                        </A>
+                        <A href="/drive" attr:class="wf-pop-item" on:click=move |_| more_open.set(false)>
+                            <Icon icon=id::FiFolder width="16" height="16" />
+                            "ドライブ"
+                        </A>
+                    </div>
+                </Show>
+            </div>
         </nav>
     }
 }
 
 // ===========================================================
-// TopBar (folio + hand title + seg tabs)
+// TopBar — floating chips / soft page label
 // ===========================================================
 #[component]
 pub fn TopBar(
-    #[prop(into)] title: String,
-    #[prop(into, optional)] folio: Option<String>,
-    #[prop(optional)] tabs: Option<Vec<(&'static str, &'static str, bool)>>,
+    #[prop(into, optional)] title: Option<String>,
+    #[prop(optional)] tabs: Option<Vec<(icondata::Icon, &'static str, &'static str, bool)>>,
 ) -> impl IntoView {
     let tabs = tabs.unwrap_or_default();
     let has_tabs = !tabs.is_empty();
+    let show_title = title.as_ref().is_some_and(|t| !t.is_empty()) && !has_tabs;
+    let title_text = title.unwrap_or_default();
     let navigate = leptos_router::hooks::use_navigate();
 
+    let seg = tabs
+        .into_iter()
+        .map(|(icon, label, href, active)| {
+            let nav = navigate.clone();
+            view! {
+                <span
+                    class=if active {
+                        "wf-seg-item active"
+                    } else {
+                        "wf-seg-item"
+                    }
+                    on:click=move |_| nav(href, Default::default())
+                    role="button"
+                    title=label
+                    aria-label=label
+                >
+                    <Icon icon=icon width="16" height="16" />
+                </span>
+            }
+        })
+        .collect_view();
+
+    if !show_title && !has_tabs {
+        return view! { <></> }.into_any();
+    }
+
     view! {
-        <header class="wf-topbar">
-            <div class="flex items-center gap-3">
-                {folio.map(|f| view! { <span class="wf-folio">{f}</span> })}
-                <h1 class="wf-title">{title}</h1>
-            </div>
-            <Show when=move || has_tabs>
-                <div class="wf-seg">
-                    {tabs
-                        .iter()
-                        .copied()
-                        .map(|(label, href, active)| {
-                            let nav = navigate.clone();
-                            view! {
-                                <span
-                                    class=move || if active { "wf-seg-item active" } else { "wf-seg-item" }
-                                    on:click=move |_| nav(href, Default::default())
-                                    role="button"
-                                >
-                                    <span class="wf-seg-num">""</span>
-                                    {label}
-                                </span>
-                            }
-                        })
-                        .collect_view()}
-                </div>
-            </Show>
+        <header class=if has_tabs { "wf-topbar wf-topbar-float" } else { "wf-topbar wf-topbar-soft" }>
+            {if show_title {
+                view! { <h1 class="wf-title">{title_text}</h1> }.into_any()
+            } else {
+                view! { <></> }.into_any()
+            }}
+            {if has_tabs {
+                view! { <div class="wf-seg">{seg}</div> }.into_any()
+            } else {
+                view! { <></> }.into_any()
+            }}
         </header>
     }
-}
-
-// ===========================================================
-// RightRail (marginalia)
-// ===========================================================
-#[component]
-pub fn RightRail() -> impl IntoView {
-    let trends = vec![
-        ("#design", "2.1k"),
-        ("#typography", "1.8k"),
-        ("#ux", "1.4k"),
-        ("#wasm", "980"),
-        ("#federated", "760"),
-    ];
-    let suggested = vec!["@inkwell", "@paperpress", "@handdrawn", "@signal", "@noise"];
-
-    view! {
-        <aside class="wf-rail">
-            <div class="wf-find">
-                <Icon icon=id::FiSearch width="16" height="16" attr:class="opacity-40" />
-                <input type="text" placeholder="find…" />
-            </div>
-
-            <div class="wf-rail-card">
-                <div class="wf-rail-head">
-                    <span class="wf-rail-tag">"[ TRENDING ]"</span>
-                    <span class="wf-rail-jp">"急上昇"</span>
-                </div>
-                {trends.into_iter().enumerate().map(|(i, (tag, count))| view! {
-                    <A href=format!("/search?tag={}", tag.trim_start_matches('#')) attr:class="wf-rail-row">
-                        <span class="flex items-center">
-                            <span class="wf-rail-rank">{format!("{:02}.", i + 1)}</span>
-                            <span class="wf-rail-name">{tag}</span>
-                        </span>
-                        <span class="wf-rail-meta">{count}</span>
-                    </A>
-                }).collect_view()}
-            </div>
-
-            <div class="wf-rail-card">
-                <div class="wf-rail-head">
-                    <span class="wf-rail-tag">"[ SUGGESTED ]"</span>
-                    <span class="wf-rail-jp">"おすすめ"</span>
-                </div>
-                {suggested.into_iter().enumerate().map(|(i, handle)| view! {
-                    <div class="wf-rail-row">
-                        <span class="flex items-center">
-                            <span class="wf-rail-rank">{format!("{:02}.", i + 1)}</span>
-                            <span class="wf-rail-name">{handle}</span>
-                        </span>
-                        <button class="wf-follow-pill">"追う"</button>
-                    </div>
-                }).collect_view()}
-            </div>
-
-            <div class="wf-rail-foot">"— mithic · signal not noise —"</div>
-        </aside>
-    }
-}
-
-// ===========================================================
-// BottomNav (後方互換エイリアス、未使用)
-// ===========================================================
-#[component]
-pub fn BottomNav() -> impl IntoView {
-    view! { <div /> }
+    .into_any()
 }

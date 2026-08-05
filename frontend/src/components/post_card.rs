@@ -14,6 +14,33 @@ use shared::MediaAttachment;
 
 #[component]
 pub fn PostCard(note: Note, #[prop(default = false)] flat: bool) -> impl IntoView {
+    let renoter_name = note.author.name();
+    let is_pure_renote = note.renote_id.is_some()
+        && note.content.trim().is_empty()
+        && note.renote.is_some();
+    let is_quote = note.renote_id.is_some()
+        && !note.content.trim().is_empty()
+        && note.renote.is_some();
+    let nested = note.renote.clone();
+
+    // pure renote: バナー + ネストした元ノート
+    if is_pure_renote {
+        if let Some(inner) = nested {
+            return view! {
+                <article class="wf-entry">
+                    <div class="wf-entry-body" style="grid-column:1/-1;">
+                        <div class="wf-renote-banner">
+                            <Icon icon=id::FiRepeat width="14" height="14" />
+                            <span>{format!("{renoter_name} がリノート")}</span>
+                        </div>
+                        <PostCard note=*inner flat=true />
+                    </div>
+                </article>
+            }
+            .into_any();
+        }
+    }
+
     let auth = expect_context::<AuthStore>();
     let toast = expect_context::<ToastStore>();
 
@@ -23,7 +50,6 @@ pub fn PostCard(note: Note, #[prop(default = false)] flat: bool) -> impl IntoVie
     let author_handle = author.handle();
     let route = format!("/profile/{}", author.route_handle());
     let note_href = format!("/notes/{}", note.id);
-    let note_id = note.id.clone();
     let note_id_for_menu = note.id.clone();
     let has_attachments = !note.attachments.is_empty();
     let created_at = note.created_at.clone();
@@ -35,6 +61,7 @@ pub fn PostCard(note: Note, #[prop(default = false)] flat: bool) -> impl IntoVie
     };
     let extra_class = if flat { " is-quote" } else { "" };
     let note_for_actions = note.clone();
+    let quote_inner = if is_quote { nested } else { None };
 
     let menu_open = RwSignal::new(false);
     let is_own = {
@@ -59,7 +86,6 @@ pub fn PostCard(note: Note, #[prop(default = false)] flat: bool) -> impl IntoVie
                         .and_then(|w| w.location().origin().ok())
                         .unwrap_or_default();
                     let url = format!("{origin}/notes/{note_id}");
-                    // Clipboard API は feature 依存なので、トーストに URL を出す
                     toast.push(format!("リンク: {url}"), ToastKind::Info);
                 }
                 NoteMenuAction::Delete => {
@@ -115,11 +141,22 @@ pub fn PostCard(note: Note, #[prop(default = false)] flat: bool) -> impl IntoVie
                 <Show when=move || has_attachments>
                     <MediaThumbs attachments=note.attachments.clone() />
                 </Show>
+                {quote_inner.map(|inner| {
+                    view! {
+                        <div class="wf-quote-wrap">
+                            <PostCard note=*inner flat=true />
+                        </div>
+                    }
+                })}
+                <Show when=move || note.renote_id.is_some() && note.renote.is_none() && note.content.trim().is_empty()>
+                    <div class="wf-entry-meta p-2">"元ノートを表示できません"</div>
+                </Show>
                 <PostActions note=note_for_actions />
                 <A href=note_href attr:class="sr-only">"詳細"</A>
             </div>
         </article>
     }
+    .into_any()
 }
 
 #[component]
