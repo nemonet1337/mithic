@@ -14,15 +14,12 @@
 /frontend/wireframe-ui-sample
 
 # claude
-.claude
-
-# kilo
-.kilo
-.kilocode
+.claude/settings.local.json
 
 # node
 /frontend/node_modules
 /frontend/dist
+node__modules
 
 # playwright
 .playwright-mcp
