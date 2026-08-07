@@ -1,7 +1,6 @@
 use leptos::prelude::*;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-#[allow(dead_code)]
 pub enum NoteMenuAction {
     CopyLink,
     Delete,
@@ -9,7 +8,6 @@ pub enum NoteMenuAction {
     Mute,
     Block,
     Pin,
-    Unpin,
 }
 
 #[component]

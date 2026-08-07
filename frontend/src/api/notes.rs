@@ -1,4 +1,4 @@
-use super::client::{ApiError, request};
+use super::client::{ApiError, request, urlencoding_loose};
 use crate::models::{CreateNoteRequest, Note};
 use serde::Serialize;
 
@@ -18,12 +18,10 @@ pub async fn create_note(token: &str, body: &CreateNoteRequest) -> Result<Note, 
     request("POST", "notes", Some(token), Some(body)).await
 }
 
-#[allow(dead_code)]
 pub async fn fetch_note(token: &str, id: &str) -> Result<Note, ApiError> {
     request::<Note, ()>("GET", &format!("notes/{}", id), Some(token), None).await
 }
 
-#[allow(dead_code)]
 pub async fn fetch_replies(token: &str, id: &str) -> Result<Vec<Note>, ApiError> {
     request::<Vec<Note>, ()>(
         "GET",
@@ -32,11 +30,6 @@ pub async fn fetch_replies(token: &str, id: &str) -> Result<Vec<Note>, ApiError>
         None,
     )
     .await
-}
-
-#[allow(dead_code)]
-pub async fn fetch_quotes(token: &str, id: &str) -> Result<Vec<Note>, ApiError> {
-    request::<Vec<Note>, ()>("GET", &format!("notes/{}/quotes", id), Some(token), None).await
 }
 
 pub async fn delete_note(token: &str, id: &str) -> Result<(), ApiError> {
@@ -55,18 +48,6 @@ pub async fn add_reaction(token: &str, note_id: &str, emoji: &str) -> Result<(),
         &format!("notes/{}/reactions", note_id),
         Some(token),
         Some(&Body { emoji }),
-    )
-    .await
-    .map(|_| ())
-}
-
-#[allow(dead_code)]
-pub async fn remove_reaction(token: &str, note_id: &str, emoji: &str) -> Result<(), ApiError> {
-    request::<serde_json::Value, ()>(
-        "DELETE",
-        &format!("notes/{}/reactions/{}", note_id, emoji),
-        Some(token),
-        None,
     )
     .await
     .map(|_| ())
@@ -113,13 +94,4 @@ pub async fn fetch_trending(limit: usize) -> Result<Vec<shared::Hashtag>, ApiErr
         None,
     )
     .await
-}
-
-fn urlencoding_loose(s: &str) -> String {
-    s.chars()
-        .map(|c| match c {
-            'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '_' | '.' | '~' => c.to_string(),
-            _ => format!("%{:02X}", c as u32),
-        })
-        .collect()
 }

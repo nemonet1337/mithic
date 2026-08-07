@@ -5,10 +5,7 @@ pub fn FollowButton(
     #[prop(into)] is_following: Signal<bool>,
     #[prop(into)] is_pending: Signal<bool>,
     on_toggle: Callback<()>,
-    #[prop(default = "sm")] size: &'static str,
 ) -> impl IntoView {
-    let _ = size;
-
     view! {
         <button
             class=move || {

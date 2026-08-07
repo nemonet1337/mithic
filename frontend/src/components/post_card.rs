@@ -104,7 +104,6 @@ pub fn PostCard(note: Note, #[prop(default = false)] flat: bool) -> impl IntoVie
                 NoteMenuAction::Mute => toast.push("ミュートは準備中です", ToastKind::Info),
                 NoteMenuAction::Block => toast.push("ブロックは準備中です", ToastKind::Info),
                 NoteMenuAction::Report => toast.push("通報は準備中です", ToastKind::Info),
-                NoteMenuAction::Unpin => {}
             }
         })
     };

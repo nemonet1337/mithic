@@ -3,8 +3,22 @@ use leptos::prelude::*;
 use leptos_icons::Icon;
 use leptos_router::components::A;
 
-use super::avatar::{Avatar, AvatarAccent, AvatarSize};
+use super::avatar::{Avatar, AvatarSize};
+use crate::models::User;
 use crate::store::{AuthStore, ComposeStore, NotificationStore};
+
+fn profile_path(me: Option<&User>) -> String {
+    me.map(|u| format!("/profile/{}", u.username))
+        .unwrap_or_else(|| "/you".into())
+}
+
+fn badge_label(n: u32) -> String {
+    if n > 99 {
+        "99+".into()
+    } else {
+        n.to_string()
+    }
+}
 
 // ===========================================================
 // Shell — full-bleed timeline canvas + floating chrome
@@ -46,14 +60,6 @@ fn AppChrome(#[prop(into)] active: String) -> impl IntoView {
         open_menu.update(|cur| {
             *cur = if *cur == Some(id) { None } else { Some(id) };
         });
-    };
-
-    let profile_href = move || {
-        if let Some(user) = me.get() {
-            format!("/profile/{}", user.username)
-        } else {
-            "/you".into()
-        }
     };
 
     let any_menu = Signal::derive(move || open_menu.get().is_some());
@@ -98,12 +104,12 @@ fn AppChrome(#[prop(into)] active: String) -> impl IntoView {
                                 "メッセージ"
                                 <Show when=move || { notifications.unread_messages.get() > 0u32 }>
                                     <span class="wf-badge" style="margin-left:auto;">
-                                        {move || notifications.unread_messages.get().to_string()}
+                                        {move || badge_label(notifications.unread_messages.get())}
                                     </span>
                                 </Show>
                             </A>
                             {move || {
-                                let href = profile_href();
+                                let href = profile_path(me.get().as_ref());
                                 view! {
                                     <A href=href attr:class="wf-pop-item" on:click=move |_| close_menus()>
                                         <Icon icon=id::FiUser width="16" height="16" />
@@ -135,14 +141,7 @@ fn AppChrome(#[prop(into)] active: String) -> impl IntoView {
                         <Icon icon=id::FiBell width="18" height="18" />
                         <Show when=move || { notifications.unread_notifications.get() > 0u32 }>
                             <span class="wf-badge wf-badge-dot">
-                                {move || {
-                                    let n = notifications.unread_notifications.get();
-                                    if n > 99 {
-                                        "99+".into()
-                                    } else {
-                                        n.to_string()
-                                    }
-                                }}
+                                {move || badge_label(notifications.unread_notifications.get())}
                             </span>
                         </Show>
                     </span>
@@ -168,7 +167,7 @@ fn AppChrome(#[prop(into)] active: String) -> impl IntoView {
                         {move || {
                             me.get().map(|u| {
                                 view! {
-                                    <Avatar user=u size=AvatarSize::Sm accent=AvatarAccent::None />
+                                    <Avatar user=u size=AvatarSize::Sm />
                                 }
                             })
                         }}
@@ -188,7 +187,7 @@ fn AppChrome(#[prop(into)] active: String) -> impl IntoView {
                                 })
                             }}
                             {move || {
-                                let href = profile_href();
+                                let href = profile_path(me.get().as_ref());
                                 view! {
                                     <A href=href attr:class="wf-pop-item" on:click=move |_| close_menus()>
                                         <Icon icon=id::FiUser width="16" height="16" />
@@ -244,14 +243,6 @@ fn MobileDock(#[prop(into)] active: String) -> impl IntoView {
     let auth = expect_context::<AuthStore>();
     let me = auth.me;
     let more_open = RwSignal::new(false);
-
-    let profile_href = move || {
-        if let Some(user) = me.get() {
-            format!("/profile/{}", user.username)
-        } else {
-            "/you".into()
-        }
-    };
 
     let act_home = active.clone();
     let act_search = active.clone();
@@ -338,7 +329,7 @@ fn MobileDock(#[prop(into)] active: String) -> impl IntoView {
                     <div class="wf-menu-scrim" on:click=move |_| more_open.set(false) />
                     <div class="wf-pop wf-dock-pop" role="menu">
                         {move || {
-                            let href = profile_href();
+                            let href = profile_path(me.get().as_ref());
                             view! {
                                 <A href=href attr:class="wf-pop-item" on:click=move |_| more_open.set(false)>
                                     <Icon icon=id::FiUser width="16" height="16" />
@@ -351,7 +342,7 @@ fn MobileDock(#[prop(into)] active: String) -> impl IntoView {
                             "メッセージ"
                             <Show when=move || { notifications.unread_messages.get() > 0u32 }>
                                 <span class="wf-badge" style="margin-left:auto;">
-                                    {move || notifications.unread_messages.get().to_string()}
+                                    {move || badge_label(notifications.unread_messages.get())}
                                 </span>
                             </Show>
                         </A>

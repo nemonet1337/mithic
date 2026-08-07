@@ -5,6 +5,16 @@ pub fn api_base() -> &'static str {
     "/api/v1"
 }
 
+/// Minimal percent-encoding for query path segments (ASCII unreserved left as-is).
+pub fn urlencoding_loose(s: &str) -> String {
+    s.chars()
+        .map(|c| match c {
+            'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '_' | '.' | '~' => c.to_string(),
+            _ => format!("%{:02X}", c as u32),
+        })
+        .collect()
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct ApiError {
     #[serde(default)]
@@ -127,30 +137,4 @@ where
         message: e.to_string(),
         detail: None,
     })
-}
-
-#[allow(dead_code)]
-pub async fn request_with_retry<T, B>(
-    method: &str,
-    path: &str,
-    token: Option<&str>,
-    body: Option<&B>,
-    max_attempts: u32,
-) -> Result<T, ApiError>
-where
-    T: DeserializeOwned,
-    B: Serialize,
-{
-    let mut delay_ms = 3_000u32;
-    for attempt in 0..max_attempts {
-        match request(method, path, token, body).await {
-            Ok(v) => return Ok(v),
-            Err(e) if e.status == 429 && attempt + 1 < max_attempts => {
-                gloo_timers::future::sleep(std::time::Duration::from_millis(delay_ms.into())).await;
-                delay_ms *= 2;
-            }
-            Err(e) => return Err(e),
-        }
-    }
-    unreachable!()
 }

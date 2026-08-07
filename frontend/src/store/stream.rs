@@ -1,29 +1,18 @@
 use leptos::prelude::*;
-use serde::Deserialize;
 
-use crate::models::{Note, Notification};
+use crate::models::Note;
 #[cfg(target_arch = "wasm32")]
 use crate::models::NoteVisibility;
 use crate::store::NotificationStore;
-
-/// サーバー `shared::StreamEvent` と同じワイヤフォーマット
-#[derive(Debug, Clone, Deserialize)]
-#[serde(tag = "type", content = "body", rename_all = "camelCase")]
-#[allow(dead_code)]
-pub enum StreamEvent {
-    Note(Box<Note>),
-    Notification(Box<Notification>),
-}
+use shared::StreamEvent;
 
 #[derive(Clone, Default)]
-#[allow(dead_code)]
-pub struct SeenNoteBuffer {
+struct SeenNoteBuffer {
     seen: std::collections::HashSet<String>,
     order: std::collections::VecDeque<String>,
     capacity: usize,
 }
 
-#[allow(dead_code)]
 impl SeenNoteBuffer {
     pub fn new(capacity: usize) -> Self {
         Self {
@@ -96,7 +85,8 @@ pub fn connect_stream(
                         return;
                     }
                     let id = note.id.clone();
-                    if seen.get_untracked().insert(id) {
+                    let is_new = seen.try_update(|buf| buf.insert(id)).unwrap_or(false);
+                    if is_new {
                         notes.update(|items| items.insert(0, note));
                     }
                 }

@@ -3,7 +3,7 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{FormData, Headers, Request, RequestInit, RequestMode, Response};
 
-use super::client::{api_base, ApiError, request};
+use super::client::{api_base, ApiError, request, urlencoding_loose};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -161,13 +161,4 @@ pub async fn upload(token: &str, file: &web_sys::File) -> Result<DriveFileRespon
         message: e.to_string(),
         detail: None,
     })
-}
-
-fn urlencoding_loose(s: &str) -> String {
-    s.chars()
-        .map(|c| match c {
-            'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '_' | '.' | '~' => c.to_string(),
-            _ => format!("%{:02X}", c as u32),
-        })
-        .collect()
 }

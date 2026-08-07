@@ -5,14 +5,6 @@ use crate::models::NoteVisibility;
 
 const DRAFT_KEY: &str = "mithic.compose.draft";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)]
-pub enum ComposeVariant {
-    CenteredModal,
-    InlineTop,
-    FullscreenWriting,
-}
-
 #[derive(Clone, Copy)]
 pub struct ComposeStore {
     pub is_open: RwSignal<bool>,
@@ -20,8 +12,6 @@ pub struct ComposeStore {
     pub cw: RwSignal<String>,
     pub visibility: RwSignal<NoteVisibility>,
     pub nsfw: RwSignal<bool>,
-    #[allow(dead_code)]
-    pub variant: RwSignal<ComposeVariant>,
     pub file_ids: RwSignal<Vec<String>>,
     pub poll_choices: RwSignal<Vec<String>>,
     pub reply_id: RwSignal<Option<String>>,
@@ -36,7 +26,6 @@ impl ComposeStore {
             cw: RwSignal::new(String::new()),
             visibility: RwSignal::new(NoteVisibility::Public),
             nsfw: RwSignal::new(false),
-            variant: RwSignal::new(ComposeVariant::CenteredModal),
             file_ids: RwSignal::new(Vec::new()),
             poll_choices: RwSignal::new(Vec::new()),
             reply_id: RwSignal::new(None),

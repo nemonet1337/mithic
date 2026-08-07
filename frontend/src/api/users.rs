@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::client::{ApiError, request};
+use super::client::{ApiError, request, urlencoding_loose};
 use crate::models::{Note, User};
 
 #[derive(Debug, Deserialize)]
@@ -23,7 +23,6 @@ pub async fn fetch_user_notes(token: &str, username: &str) -> Result<Vec<Note>, 
 }
 
 pub async fn check_handle(username: &str) -> Result<HandleAvailability, ApiError> {
-    // バックエンドは GET /api/v1/users/check-handle?handle=
     request::<HandleAvailability, ()>(
         "GET",
         &format!("users/check-handle?handle={}", urlencoding_loose(username)),
@@ -31,15 +30,6 @@ pub async fn check_handle(username: &str) -> Result<HandleAvailability, ApiError
         None,
     )
     .await
-}
-
-fn urlencoding_loose(s: &str) -> String {
-    s.chars()
-        .map(|c| match c {
-            'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '_' | '.' | '~' => c.to_string(),
-            _ => format!("%{:02X}", c as u32),
-        })
-        .collect()
 }
 
 pub async fn follow(token: &str, user_id: &str) -> Result<(), ApiError> {
@@ -74,87 +64,10 @@ pub async fn update_me(token: &str, body: &UpdateProfileRequest) -> Result<User,
     request("PATCH", "users/me", Some(token), Some(body)).await
 }
 
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[allow(dead_code)]
-pub struct UserRelation {
-    pub id: String,
-    pub is_following: bool,
-    pub is_followed: bool,
-    pub is_blocking: bool,
-    pub is_blocked: bool,
-    pub is_muted: bool,
-}
-
-#[allow(dead_code)]
-pub async fn relation(token: &str, user_id: &str) -> Result<UserRelation, ApiError> {
-    request::<UserRelation, ()>(
-        "GET",
-        &format!("users/{user_id}/relation"),
-        Some(token),
-        None,
-    )
-    .await
-}
-
-#[allow(dead_code)]
-pub async fn block(token: &str, user_id: &str) -> Result<UserRelation, ApiError> {
-    request::<UserRelation, ()>(
-        "POST",
-        &format!("users/{user_id}/block"),
-        Some(token),
-        None,
-    )
-    .await
-}
-
-#[allow(dead_code)]
-pub async fn unblock(token: &str, user_id: &str) -> Result<UserRelation, ApiError> {
-    request::<UserRelation, ()>(
-        "DELETE",
-        &format!("users/{user_id}/block"),
-        Some(token),
-        None,
-    )
-    .await
-}
-
-#[allow(dead_code)]
-pub async fn mute(token: &str, user_id: &str) -> Result<UserRelation, ApiError> {
-    request::<UserRelation, ()>(
-        "POST",
-        &format!("users/{user_id}/mute"),
-        Some(token),
-        None,
-    )
-    .await
-}
-
-#[allow(dead_code)]
-pub async fn unmute(token: &str, user_id: &str) -> Result<UserRelation, ApiError> {
-    request::<UserRelation, ()>(
-        "DELETE",
-        &format!("users/{user_id}/mute"),
-        Some(token),
-        None,
-    )
-    .await
-}
-
 pub async fn search_users(token: Option<&str>, q: &str) -> Result<Vec<User>, ApiError> {
     request::<Vec<User>, ()>(
         "GET",
         &format!("users/search?q={}", urlencoding_loose(q)),
-        token,
-        None,
-    )
-    .await
-}
-
-pub async fn fetch_suggested(token: Option<&str>, limit: usize) -> Result<Vec<User>, ApiError> {
-    request::<Vec<User>, ()>(
-        "GET",
-        &format!("users/suggested?limit={limit}"),
         token,
         None,
     )

@@ -3,12 +3,10 @@ use leptos::prelude::*;
 use crate::models::User;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-#[allow(dead_code)]
 pub enum AvatarSize {
     Sm,
     #[default]
     Md,
-    Lg,
     Xl,
 }
 
@@ -17,27 +15,7 @@ impl AvatarSize {
         match self {
             Self::Sm => "w-8 h-8 text-xs",
             Self::Md => "w-10 h-10 text-sm",
-            Self::Lg => "w-14 h-14 text-base",
             Self::Xl => "w-20 h-20 text-xl",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-#[allow(dead_code)]
-pub enum AvatarAccent {
-    #[default]
-    None,
-    Accent,
-    Ink,
-}
-
-impl AvatarAccent {
-    fn extra_class(self) -> &'static str {
-        match self {
-            Self::None => "",
-            Self::Accent => "avatar-accent",
-            Self::Ink => "",
         }
     }
 }
@@ -46,14 +24,14 @@ impl AvatarAccent {
 pub fn Avatar(
     user: User,
     #[prop(default = AvatarSize::Md)] size: AvatarSize,
-    #[prop(default = AvatarAccent::None)] accent: AvatarAccent,
+    #[prop(default = false)] accent: bool,
 ) -> impl IntoView {
     let initials = user.initials();
     let label = user.handle();
     let name = user.name();
     let avatar_url = user.avatar_url.clone();
     let size_class = size.class_name();
-    let accent_class = accent.extra_class();
+    let accent_class = if accent { "avatar-accent" } else { "" };
 
     view! {
         <div class=format!("avatar {}", accent_class) aria-label=label>
