@@ -1,8 +1,10 @@
+mod worker;
+
 use anyhow::Result;
 use apalis_redis::RedisStorage;
 use tracing::info;
 
-// mimalloc をグローバルアロケータに設定 (TODO Phase 0)
+// mimalloc をグローバルアロケータに設定
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
@@ -32,10 +34,23 @@ async fn main() -> Result<()> {
     info!("Connecting to Dragonfly at {}", config.dragonfly_url);
     let dragonfly_client = mithic_db::create_dragonfly_client(&config.dragonfly_url).await?;
     let apalis_conn = apalis_redis::connect(config.dragonfly_url.clone()).await?;
-    let storage = RedisStorage::new(apalis_conn);
+    let queue_storage = RedisStorage::new(apalis_conn);
 
-    let state =
-        mithic_api::AppState::new(surreal_client, dragonfly_client, storage, config.clone())?;
+    let state = mithic_api::AppState::new(
+        surreal_client,
+        dragonfly_client,
+        queue_storage.clone(),
+        config.clone(),
+    )?;
+
+    // 連合配送ワーカーを同一プロセスで並走
+    let federation_service = state.federation_service().clone();
+    let worker_handle = tokio::spawn(async move {
+        if let Err(e) = worker::run_delivery_worker(queue_storage, federation_service).await {
+            tracing::error!("Delivery worker exited with error: {e:#}");
+        }
+    });
+
     let app = mithic_api::routes::create_router(state);
 
     let addr = format!("0.0.0.0:{}", config.server_port);
@@ -48,6 +63,10 @@ async fn main() -> Result<()> {
     )
     .with_graceful_shutdown(shutdown_signal())
     .await?;
+
+    // HTTP 終了後に配送ワーカーを止める
+    worker_handle.abort();
+    let _ = worker_handle.await;
 
     info!("Server shut down gracefully");
     Ok(())

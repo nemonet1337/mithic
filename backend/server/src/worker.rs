@@ -1,7 +1,4 @@
-//! Mithic Worker
-//!
-//! バックグラウンドワーカープロセス。
-//! フェデレーション配送キューの並列処理とリトライスケジューラを担当する。
+//! 連合配送ワーカー（同一プロセス内で HTTP と並走）
 
 use std::time::Duration;
 
@@ -11,10 +8,6 @@ use futures::future;
 use mithic_federation::{ActivityDelivery, FederationService, DLQ_KEY};
 use tower::retry::Policy;
 use tracing::{info, warn};
-
-// mimalloc をグローバルアロケータに設定
-#[global_allocator]
-static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 /// 配送ワーカーの並列数
 const DELIVERY_CONCURRENCY: usize = 4;
@@ -72,48 +65,13 @@ where
     }
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    dotenvy::dotenv().ok();
-
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
-        )
-        .init();
-
-    info!("Starting Mithic Worker...");
-
-    let config = mithic_config::AppConfig::from_env()?;
-
-    info!("Connecting to SurrealDB at {}", config.surrealdb_endpoint);
-    let surreal_config = mithic_db::SurrealConfig::from(&config);
-    let surreal_client = mithic_db::create_pool(&surreal_config, 2).await?;
-
-    info!("Initializing SurrealDB schema");
-    mithic_db::init_schema(surreal_client.get()).await?;
-
-    info!("Connecting to Dragonfly at {}", config.dragonfly_url);
-    let dragonfly_client = mithic_db::create_dragonfly_client(&config.dragonfly_url).await?;
-
-    let http_client = reqwest::Client::builder()
-        .pool_max_idle_per_host(32)
-        .pool_idle_timeout(Duration::from_secs(90))
-        .build()?;
-
-    let apalis_conn = apalis_redis::connect(config.dragonfly_url.clone()).await?;
-    let storage = RedisStorage::new(apalis_conn);
-
-    let federation_service = mithic_federation::FederationService::new(
-        surreal_client,
-        dragonfly_client,
-        storage.clone(),
-        http_client,
-        config.instance_url.clone(),
-    );
-
+/// 配送キューを消費する（ブロックする）。HTTP サーバーと並走させる想定。
+pub async fn run_delivery_worker(
+    storage: RedisStorage<ActivityDelivery>,
+    federation_service: FederationService,
+) -> anyhow::Result<()> {
     info!(
-        "Worker started (concurrency={}, max_retries={}, dlq={})",
+        "Delivery worker started (concurrency={}, max_retries={}, dlq={})",
         DELIVERY_CONCURRENCY, MAX_DELIVERY_RETRIES, DLQ_KEY
     );
 

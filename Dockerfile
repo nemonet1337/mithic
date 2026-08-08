@@ -27,21 +27,18 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/app/target,sharing=locked \
     cargo chef cook --release \
     --package mithic-server \
-    --package mithic-worker \
     --recipe-path recipe.json
 
 # =============================================================================
-# Stage 4: Build backend binaries (server + worker)
+# Stage 4: Build backend binary (HTTP + federation delivery worker)
 # =============================================================================
 FROM backend-deps AS backend-builder
 COPY . .
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/app/target,sharing=locked \
     cargo build --release \
-    --package mithic-server \
-    --package mithic-worker && \
-    cp /app/target/release/mithic-server /app/mithic-server && \
-    cp /app/target/release/mithic-worker /app/mithic-worker
+    --package mithic-server && \
+    cp /app/target/release/mithic-server /app/mithic-server
 
 # =============================================================================
 # Stage 5: Build frontend WASM with Trunk
@@ -73,9 +70,9 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     trunk build --release
 
 # =============================================================================
-# Stage 6: Server runtime image
+# Stage 6: Backend runtime image (API + delivery worker in one process)
 # =============================================================================
-FROM debian:bookworm-slim AS server
+FROM debian:bookworm-slim AS backend
 # curl はコンテナの healthcheck に必要
 RUN apt-get update && apt-get install -y \
     ca-certificates \
@@ -89,20 +86,7 @@ EXPOSE 3000
 ENTRYPOINT ["mithic-server"]
 
 # =============================================================================
-# Stage 7: Worker runtime image
-# =============================================================================
-FROM debian:bookworm-slim AS worker
-RUN apt-get update && apt-get install -y \
-    ca-certificates \
-    libssl3 \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY --from=backend-builder /app/mithic-worker /usr/local/bin/
-
-ENTRYPOINT ["mithic-worker"]
-
-# =============================================================================
-# Stage 8: Frontend — caddy serving WASM dist
+# Stage 7: Frontend — caddy serving WASM dist
 # =============================================================================
 FROM caddy:alpine AS frontend
 COPY --from=frontend-builder /app/frontend/dist /usr/share/caddy

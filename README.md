@@ -14,7 +14,7 @@ Rust製 ActivityPub対応SNS
 cp .env.example .env
 # .env の JWT_SECRET を十分な長さのランダム文字列に書き換える
 
-# 2. ビルドして起動 (server / worker / frontend / surrealdb / dragonfly)
+# 2. ビルドして起動 (backend / frontend / surrealdb / dragonfly)
 docker compose up -d --build
 
 # 3. 動作確認
@@ -26,10 +26,11 @@ curl http://localhost:3000/api/v1/health      # => {"status":"ok"}
 | サービス | ポート | 役割 |
 |---|---|---|
 | frontend (caddy) | 80, 3000 | WASM 配信 + `/api` リバースプロキシ + WebSocket + PWA静的ファイル |
-| server | 3000 (内部) | REST API (`/api/v1/*`) + WebSocket (`/api/v1/streaming`) + ActivityPub。ホストからは Caddy 経由 |
-| worker | - | 連合配送キュー (並列4 + 指数バックオフ + DLQ) |
+| backend | 3000 (内部) | REST API + WebSocket + ActivityPub + 連合配送ワーカー（同一プロセス）。ホストからは Caddy 経由 |
 | surrealdb | 8000 | データベース |
 | dragonfly | 6379 | キャッシュ / 配送キュー |
+
+メディアはデフォルトでローカル FS（`media_files` ボリューム）。外部 S3 互換を使う場合は `.env` に `STORAGE_TYPE=s3` と `STORAGE_S3_*` を設定する。
 
 ### Windows + Podman で `ERR_CONNECTION_REFUSED` になる場合
 
@@ -54,9 +55,8 @@ curl http://127.0.0.1:3000/api/v1/health
 # インフラのみ Docker で起動
 docker compose up -d surrealdb dragonfly
 
-# バックエンド (http://localhost:3000)
+# バックエンド (http://localhost:3000) — HTTP + 連合配送ワーカー
 cargo run -p mithic-server
-cargo run -p mithic-worker
 
 # フロントエンド (http://localhost:1420, /api は :3000 へプロキシ)
 # Tailwind CSS は Trunk の standalone CLI がビルド時に処理する (Node.js 不要)

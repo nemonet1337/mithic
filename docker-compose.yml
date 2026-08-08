@@ -44,10 +44,10 @@ services:
   # ---------------------------------------------------------------------------
   # Application
   # ---------------------------------------------------------------------------
-  server:
+  backend:
     build:
       context: .
-      target: server
+      target: backend
     restart: unless-stopped
     env_file:
       - path: .env
@@ -55,13 +55,9 @@ services:
     environment:
       SURREALDB_ENDPOINT: ws://surrealdb:8000
       DRAGONFLY_URL: redis://dragonfly:6379
+      # デフォルトはローカル FS。外部 S3 は .env の STORAGE_TYPE / STORAGE_S3_* で指定
       STORAGE_TYPE: ${STORAGE_TYPE:-local}
-      STORAGE_S3_ENDPOINT: ${STORAGE_S3_ENDPOINT:-http://minio:9000}
-      STORAGE_S3_BUCKET: ${STORAGE_S3_BUCKET:-mithic-media}
-      STORAGE_S3_ACCESS_KEY: ${STORAGE_S3_ACCESS_KEY:-minioadmin}
-      STORAGE_S3_SECRET_KEY: ${STORAGE_S3_SECRET_KEY:-minioadmin}
-      STORAGE_S3_REGION: ${STORAGE_S3_REGION:-us-east-1}
-      STORAGE_S3_PUBLIC_URL: ${STORAGE_S3_PUBLIC_URL:-http://localhost:9000/mithic-media}
+      LOCAL_STORAGE_PATH: ${LOCAL_STORAGE_PATH:-/app/files}
     volumes:
       - media_files:/app/files
     depends_on:
@@ -78,34 +74,6 @@ services:
       retries: 5
       start_period: 15s
 
-  worker:
-    build:
-      context: .
-      target: worker
-    restart: unless-stopped
-    env_file:
-      - path: .env
-        required: false
-    environment:
-      SURREALDB_ENDPOINT: ws://surrealdb:8000
-      DRAGONFLY_URL: redis://dragonfly:6379
-      STORAGE_TYPE: ${STORAGE_TYPE:-local}
-      STORAGE_S3_ENDPOINT: ${STORAGE_S3_ENDPOINT:-http://minio:9000}
-      STORAGE_S3_BUCKET: ${STORAGE_S3_BUCKET:-mithic-media}
-      STORAGE_S3_ACCESS_KEY: ${STORAGE_S3_ACCESS_KEY:-minioadmin}
-      STORAGE_S3_SECRET_KEY: ${STORAGE_S3_SECRET_KEY:-minioadmin}
-      STORAGE_S3_REGION: ${STORAGE_S3_REGION:-us-east-1}
-      STORAGE_S3_PUBLIC_URL: ${STORAGE_S3_PUBLIC_URL:-http://localhost:9000/mithic-media}
-    volumes:
-      - media_files:/app/files
-    depends_on:
-      surrealdb:
-        condition: service_healthy
-      dragonfly:
-        condition: service_healthy
-    networks:
-      - mithic
-
   frontend:
     build:
       context: .
@@ -116,43 +84,8 @@ services:
       - "3000:3000"
       - "443:443"
     depends_on:
-      server:
+      backend:
         condition: service_healthy
-    networks:
-      - mithic
-
-  minio:
-    image: minio/minio:latest
-    restart: unless-stopped
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
-    volumes:
-      - minio_data:/data
-    command: server /data --console-address ":9001"
-    networks:
-      - mithic
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  createbuckets:
-    image: minio/mc
-    depends_on:
-      minio:
-        condition: service_healthy
-    entrypoint: >
-      /bin/sh -c "
-      /usr/bin/mc alias set myminio http://minio:9000 minioadmin minioadmin;
-      /usr/bin/mc mb myminio/mithic-media || true;
-      /usr/bin/mc anonymous set public myminio/mithic-media || true;
-      exit 0;
-      "
     networks:
       - mithic
 
@@ -163,7 +96,6 @@ volumes:
   surrealdb_data:
   dragonfly_data:
   media_files:
-  minio_data:
 
 # -----------------------------------------------------------------------------
 # Networks

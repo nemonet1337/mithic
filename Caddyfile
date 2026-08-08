@@ -23,12 +23,12 @@
 		path_regexp path "^/(notes|profile)/"
 	}
 	handle @bots {
-		reverse_proxy server:3000
+		reverse_proxy backend:3000
 	}
 
 	# REST API - must match before SPA fallback
 	handle /api/* {
-		reverse_proxy server:3000
+		reverse_proxy backend:3000
 	}
 
 	# WebSocket
@@ -37,7 +37,7 @@
 		header Upgrade websocket
 	}
 	handle @ws {
-		reverse_proxy server:3000
+		reverse_proxy backend:3000
 	}
 
 	# ActivityPub / Federation
@@ -45,7 +45,7 @@
 		path_regexp path "^/(\.well-known/|nodeinfo|users/|inbox)"
 	}
 	handle @activitypub {
-		reverse_proxy server:3000
+		reverse_proxy backend:3000
 	}
 
 	# Static SPA (last)

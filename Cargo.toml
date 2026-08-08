@@ -7,7 +7,6 @@ members = [
     "backend/stream",
     "backend/api",
     "backend/server",
-    "backend/worker",
     "db",
     "shared",
     "frontend",
@@ -101,7 +100,7 @@ web-push = "0.11"
 apalis = { version = "0.6", features = ["retry", "limit"] }
 apalis-redis = { version = "0.6" }
 
-# Memory allocator (server/worker)
+# Memory allocator (server)
 mimalloc = "0.1"
 
 # Image processing

@@ -4337,12 +4337,14 @@ dependencies = [
  "apalis-redis",
  "axum",
  "dotenvy",
+ "futures",
  "mimalloc",
  "mithic-api",
  "mithic-config",
  "mithic-db",
  "mithic-federation",
  "tokio",
+ "tower",
  "tracing",
  "tracing-subscriber",
 ]
@@ -4365,29 +4367,6 @@ dependencies = [
  "surrealdb",
  "tokio",
  "tracing",
-]
-
-[[package]]
-name = "mithic-worker"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "apalis",
- "apalis-redis",
- "dotenvy",
- "futures",
- "mimalloc",
- "mithic-config",
- "mithic-core",
- "mithic-db",
- "mithic-federation",
- "reqwest 0.13.3",
- "serde",
- "serde_json",
- "tokio",
- "tower",
- "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]

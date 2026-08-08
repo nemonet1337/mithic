@@ -70,8 +70,7 @@ mithic/
 │   │       ├── activitypub.rs
 │   │       ├── ogp.rs
 │   │       └── v1/          # mithic ネイティブ REST (`/api/v1/*`)
-│   ├── server/              # bin: mithic-server
-│   └── worker/              # bin: mithic-worker
+│   └── server/              # bin: mithic-server (HTTP + 連合配送)
 │
 ├── db/                      # SurrealDB / Dragonfly / storage
 ├── shared/                  # front↔back 型契約 (wasm 対応)
@@ -147,13 +146,13 @@ auth.rs, hashtag.rs, note.rs, notification.rs, stream.rs, user.rs の型定義�
 
 shared/src/types/ に DTO 定義 (auth, hashtag, note, notification, relay, stream, user)。shared/src/markdown.rs で comrak Markdown レンダラ実装。
 
-### `backend/server` / `backend/worker` — エントリポイント
+### `backend/server` — エントリポイント
 
-起動ロジック未実装。
+`mithic-server`: HTTP (Axum) と連合配送ワーカー (apalis) を同一プロセスで起動。
 
 ## 4. ActivityPub / フロント API
 
-- **ActivityPub**: WebFinger / Actor / inbox (HTTP 署名必須) / outbox 等。配送は worker + 指数バックオフ
+- **ActivityPub**: WebFinger / Actor / inbox (HTTP 署名必須) / outbox 等。配送は backend 内ワーカー + 指数バックオフ
 - **フロント API**: `/api/v1/*` (`routes/v1/`) は **mithic ネイティブ REST** (WebUI/PWA 専用)。Misskey / Mastodon クライアント互換は持たない
 - **連合**: 外部接続は ActivityPub のみ (Misskey 拡張: `_misskey_reaction` / `quoteUrl` 等)
 - **Markdown**: comrak (AP `content` は HTML、`source` に原文)
