@@ -1,11 +1,129 @@
-# To get started with Dependabot version updates, you'll need to specify which
-# package ecosystems to update and where the package manifests are located.
-# Please see the documentation for all configuration options:
-# https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
-
+# Rust (Axum + SurrealDB + Redis) + Docker
 version: 2
 updates:
-  - package-ecosystem: "" # See documentation for possible values
-    directory: "/" # Location of package manifests
+  - package-ecosystem: cargo
+    directory: /
     schedule:
-      interval: "weekly"
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Tokyo
+    open-pull-requests-limit: 15
+    labels:
+      - dependencies
+      - rust
+    groups:
+      web:
+        patterns:
+          - "axum"
+          - "tower"
+          - "tower-http"
+          - "http"
+          - "bytes"
+          - "mime"
+          - "url"
+        update-types:
+          - minor
+          - patch
+      async:
+        patterns:
+          - "tokio*"
+          - "futures*"
+          - "async-trait"
+        update-types:
+          - minor
+          - patch
+      database:
+        patterns:
+          - "surrealdb"
+          - "redis"
+          - "object_store"
+        update-types:
+          - minor
+          - patch
+      auth-crypto:
+        patterns:
+          - "jsonwebtoken"
+          - "argon2"
+          - "rsa"
+          - "sha2"
+          - "hex"
+          - "base64"
+          - "secrecy"
+          - "rand"
+          - "totp-rs"
+        update-types:
+          - minor
+          - patch
+      serde:
+        patterns:
+          - "serde*"
+        update-types:
+          - minor
+          - patch
+      observability:
+        patterns:
+          - "tracing*"
+          - "anyhow"
+        update-types:
+          - minor
+          - patch
+      jobs:
+        patterns:
+          - "apalis*"
+          - "web-push"
+        update-types:
+          - minor
+          - patch
+      i18n:
+        patterns:
+          - "fluent"
+          - "unic-langid"
+        update-types:
+          - minor
+          - patch
+      utils:
+        patterns:
+          - "chrono"
+          - "ulid"
+          - "uuid"
+          - "dotenvy"
+          - "regex"
+          - "validator"
+          - "tempfile"
+          - "reqwest"
+          - "mimalloc"
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Tokyo
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - docker
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Tokyo
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - github-actions
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
