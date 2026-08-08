@@ -98,7 +98,7 @@ web-push = "0.11"
 
 # Background Jobs
 apalis = { version = "0.6", features = ["retry", "limit"] }
-apalis-redis = { version = "0.6" }
+apalis-redis = { version = "0.7" }
 
 # Memory allocator (server)
 mimalloc = "0.1"
