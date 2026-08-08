@@ -60,7 +60,7 @@ pub fn visibility_from_dto(visibility: NoteVisibility) -> CoreVisibility {
     }
 }
 
-fn drive_file_to_attachment(f: &mithic_core::models::file::DriveFile) -> MediaAttachment {
+pub fn drive_file_to_attachment(f: &mithic_core::models::file::DriveFile) -> MediaAttachment {
     MediaAttachment {
         id: f.id.to_string(),
         url: f.url.clone().unwrap_or_default(),

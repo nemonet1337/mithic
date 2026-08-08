@@ -11,6 +11,8 @@ use tokio::sync::Mutex;
 
 use crate::state::AppState;
 
+/// プロセス内トークンバケツ。単一インスタンス前提。
+/// 水平スケール時は Dragonfly INCR+EXPIRE へ置換すること。
 #[derive(Debug, Clone)]
 pub struct RateLimiter {
     buckets: Arc<Mutex<std::collections::HashMap<String, TokenBucket>>>,

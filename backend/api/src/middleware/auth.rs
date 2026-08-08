@@ -9,20 +9,9 @@ use mithic_db::queries::get_actor_by_id;
 
 use crate::state::AppState;
 
-pub async fn auth_middleware(
-    State(state): State<AppState>,
-    mut request: Request,
-    next: Next,
-) -> Result<Response, AppError> {
-    let token = request
-        .headers()
-        .get(axum::http::header::AUTHORIZATION)
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.strip_prefix("Bearer "))
-        .map(|s| s.to_string())
-        .ok_or_else(|| AppError::Unauthorized("Missing authorization header".to_string()))?;
-
-    let claims = verify_jwt(&token, &state.config().jwt_secret)
+/// Bearer トークンを検証し AuthUser を返す (middleware / streaming 共通)
+pub async fn resolve_bearer(state: &AppState, token: &str) -> Result<AuthUser, AppError> {
+    let claims = verify_jwt(token, &state.config().jwt_secret)
         .map_err(|_| AppError::Unauthorized("Invalid token".to_string()))?;
 
     let user_id = claims
@@ -30,7 +19,6 @@ pub async fn auth_middleware(
         .parse::<ulid::Ulid>()
         .map_err(|_| AppError::Unauthorized("Invalid user ID".to_string()))?;
 
-    // DB の token と突合 (signout / regenerate / password change で失効)
     let actor = get_actor_by_id(state.surreal(), &user_id)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?
@@ -49,12 +37,27 @@ pub async fn auth_middleware(
         }
     }
 
-    request.extensions_mut().insert(AuthUser {
+    Ok(AuthUser {
         user_id,
         username: actor.username,
         is_admin: actor.is_admin,
-    });
+    })
+}
 
+pub async fn auth_middleware(
+    State(state): State<AppState>,
+    mut request: Request,
+    next: Next,
+) -> Result<Response, AppError> {
+    let token = request
+        .headers()
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .ok_or_else(|| AppError::Unauthorized("Missing authorization header".to_string()))?;
+
+    let auth = resolve_bearer(&state, token).await?;
+    request.extensions_mut().insert(auth);
     Ok(next.run(request).await)
 }
 

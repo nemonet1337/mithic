@@ -64,7 +64,6 @@ mithic/
 │   ├── i18n/                # fluent ロケール
 │   ├── core/                # モデル + エラー型
 │   ├── federation/          # ActivityPub 配送
-│   ├── stream/              # WebSocket チャンネル
 │   ├── api/                 # ルート / middleware / services
 │   │   └── src/routes/
 │   │       ├── activitypub.rs
@@ -84,11 +83,11 @@ mithic/
 
 ### `backend/core/src/models/` — エンティティ定義 (実装済み)
 
-28エンティティ定義済み: actor, note, follow, notification, instance, file (DriveFile/DriveFolder), emoji, hashtag, poll, reaction, renote, bookmark, block, mute, filter, antenna, clip, user_list, relay, push_subscription, oauth, export, chart, used_username, user_note_pining, user_publickey, note_unread
+使用中のみ: actor, note, notification, file (DriveFile/DriveFolder), relay, activity
 
-### `backend/core/src/services/` — サービス層 (一部実装)
+### `backend/core/src/services/` — サービス層
 
-auth.rs のみ実装済み。その他のサービスは未実装。
+auth.rs のみ（JWT / Argon2 / TOTP）。
 
 ### `backend/core/src/misc/` — ユーティリティ (実装済み)
 
@@ -100,7 +99,7 @@ mithic ネイティブ REST (`routes/v1/`: auth, users, notes, timelines, notifi
 
 ### `backend/api/src/middleware/` — ミドルウェア (実装済み)
 
-auth, cors, rate_limit, http_signature, content_negotiation, locale の6モジュール実装済み。
+auth, cors, rate_limit, http_signature の4モジュール実装済み。
 
 ### `backend/api/src/services/` — APIサービス層 (一部実装)
 
@@ -114,9 +113,9 @@ SurrealDB / Dragonfly クライアントラッパー実装済み。クエリモ�
 
 `FederationService` (キュー配送・signed POST) + `http_sig` (署名/検証の単一実装)。
 
-### `stream/src/` — WebSocket ストリーミング (実装済み)
+### WebSocket ストリーミング
 
-channel.rs, channels.rs, connection.rs でチャンネルアーキテクチャ実装済み。
+`api/events.rs` の process-local broadcast + `/api/v1/streaming` が `shared::StreamEvent` を push。Misskey 風チャンネル抽象は撤去済み。
 
 ### `frontend/src/pages/` — フロントエンド画面 (UI実装済み)
 
@@ -162,7 +161,7 @@ shared/src/types/ に DTO 定義 (auth, hashtag, note, notification, relay, stre
 
 - **Actor実装**: Person タイプのアクターオブジェクト
 - **WebFinger**: ユーザー発見プロトコル実装
-- **HTTP Signatures**: すべての連携リクエストに署名 (`sigh`)
+- **HTTP Signatures**: すべての連携リクエストに署名 (手書き RSA-SHA256)
 - **アクティビティ対応**:
   - Create, Delete, Follow, Undo
   - Accept, Reject, Announce, Like, Update

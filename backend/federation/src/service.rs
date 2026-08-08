@@ -96,16 +96,6 @@ impl FederationService {
         Ok(())
     }
 
-    /// 複数 inbox へ同じアクティビティをキューする。
-    /// sharedInbox の選択・ホスト dedupe は呼び出し元 (`broadcast_to_followers` 等) に任せる。
-    pub async fn queue_batch_delivery(
-        &self,
-        activity: serde_json::Value,
-        inbox_urls: Vec<String>,
-    ) -> anyhow::Result<()> {
-        self.queue_delivery(activity, inbox_urls).await
-    }
-
     /// 秘密鍵 PEM をパースしキャッシュする
     async fn signing_key_for(&self, actor: &Actor) -> anyhow::Result<Arc<RsaPrivateKey>> {
         let key_id = actor
@@ -286,8 +276,7 @@ impl FederationService {
         let inbox_urls: Vec<String> = accepted_relays.into_iter().map(|r| r.inbox).collect();
 
         info!("Fanning out to {} relay inboxes", inbox_urls.len());
-        self.queue_batch_delivery(activity.clone(), inbox_urls)
-            .await
+        self.queue_delivery(activity.clone(), inbox_urls).await
     }
 
     /// 自インスタンスに関係あるノートのみ保存するか判定。

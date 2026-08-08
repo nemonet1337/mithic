@@ -6,7 +6,7 @@
 use mithic_core::misc::extract_hashtags::extract_hashtags;
 use mithic_core::misc::extract_mentions::extract_local_mentions;
 use mithic_core::models::actor::{Actor, ActorId};
-use mithic_core::models::note::{Note, NoteId, NoteVisibility};
+use mithic_core::models::note::{Note, NoteVisibility};
 use mithic_core::models::notification::{Notification, NotificationType};
 use mithic_core::{AppError, Result};
 use mithic_db::queries::{
@@ -16,12 +16,8 @@ use shared::{CreateNoteRequest, Note as NoteDto, Notification as NotifDto};
 
 use crate::dto::{actor_to_user, note_to_dto_full, notif_type_to_dto, visibility_from_dto};
 use crate::events::StreamBroadcast;
+use crate::routes::v1::common::parse_note_id;
 use crate::state::AppState;
-
-fn parse_note_id(raw: &str) -> Result<NoteId> {
-    raw.parse::<NoteId>()
-        .map_err(|_| AppError::Validation("Invalid note id".to_string()))
-}
 
 /// ノート本文の最大文字数
 const MAX_NOTE_CHARS: usize = 3000;

@@ -66,16 +66,6 @@ pub fn connect_stream(
 
     let seen = RwSignal::new(SeenNoteBuffer::new(200));
 
-    let ws_for_open = ws.clone();
-    let onopen = Closure::<dyn FnMut()>::wrap(Box::new(move || {
-        // id 省略可 (サーバー側で channel 名を id に使う)
-        let _ = ws_for_open.send_with_str(r#"{"type":"connect","channel":"homeTimeline"}"#);
-        let _ = ws_for_open.send_with_str(r#"{"type":"connect","channel":"notifications"}"#);
-        let _ = ws_for_open.send_with_str(r#"{"type":"connect","channel":"mainChannel"}"#);
-    }));
-    ws.set_onopen(Some(onopen.as_ref().unchecked_ref()));
-    onopen.forget();
-
     let onmessage = Closure::<dyn FnMut(MessageEvent)>::wrap(Box::new(move |event: MessageEvent| {
         if let Some(text) = event.data().as_string() {
             match serde_json::from_str::<StreamEvent>(&text) {
@@ -107,9 +97,7 @@ pub fn connect_stream(
                             .update(|c| *c = c.saturating_add(1));
                     }
                 }
-                Err(_) => {
-                    // connected / channel 等は無視
-                }
+                Err(_) => {}
             }
         }
     }));

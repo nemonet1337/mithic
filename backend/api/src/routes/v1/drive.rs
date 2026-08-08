@@ -17,6 +17,7 @@ use serde::Deserialize;
 use sha2::Digest;
 use shared::MediaAttachment;
 
+use crate::dto::drive_file_to_attachment;
 use crate::ssrf::{max_fetch_bytes, read_body_limited, validate_public_url};
 use crate::state::AppState;
 
@@ -24,14 +25,7 @@ const ALLOWED_MIME_PREFIXES: &[&str] = &["image/", "video/", "audio/"];
 const MAX_UPLOAD_BYTES: usize = 32 * 1024 * 1024;
 
 pub fn file_to_dto(f: &DriveFile) -> MediaAttachment {
-    MediaAttachment {
-        id: f.id.to_string(),
-        url: f.url.clone().unwrap_or_default(),
-        preview_url: f.thumbnail_url.clone(),
-        media_type: f.mime_type.clone(),
-        alt: None,
-        is_sensitive: false,
-    }
+    drive_file_to_attachment(f)
 }
 
 fn detect_mime(data: &[u8], claimed: &str) -> Result<String> {
