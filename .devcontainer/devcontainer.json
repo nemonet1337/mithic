@@ -1,0 +1,46 @@
+{
+  "name": "mithic",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {
+      "moby": true,
+      "dockerDashComposeVersion": "v2"
+    },
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+  "forwardPorts": [3000, 1420, 8000, 6379],
+  "portsAttributes": {
+    "3000": { "label": "backend / caddy", "onAutoForward": "notify" },
+    "1420": { "label": "trunk serve (frontend)", "onAutoForward": "notify" },
+    "8000": { "label": "SurrealDB", "onAutoForward": "silent" },
+    "6379": { "label": "Dragonfly", "onAutoForward": "silent" }
+  },
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+  "postStartCommand": "docker compose up -d surrealdb dragonfly || true",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "tamasfe.even-better-toml",
+        "vadimcn.vscode-lldb",
+        "ms-azuretools.vscode-docker"
+      ],
+      "settings": {
+        "rust-analyzer.check.command": "clippy",
+        "rust-analyzer.cargo.features": "all"
+      }
+    }
+  },
+  "mounts": [
+    "source=mithic-cargo-registry,target=/usr/local/cargo/registry,type=volume",
+    "source=mithic-cargo-git,target=/usr/local/cargo/git,type=volume",
+    "source=mithic-target,target=${containerWorkspaceFolder}/target,type=volume"
+  ],
+  "remoteUser": "vscode",
+  "hostRequirements": {
+    "memory": "8gb",
+    "cpus": 4
+  }
+}
