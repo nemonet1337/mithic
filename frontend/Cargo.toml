@@ -10,7 +10,7 @@ rust-version.workspace = true
 leptos = { version = "0.8", default-features = false, features = ["csr"] }
 leptos_router = { version = "0.7", default-features = false }
 gloo-net = { version = "0.7", features = ["http", "websocket"] }
-gloo-timers = { version = "0.3", features = ["futures"] }
+gloo-timers = { version = "0.4", features = ["futures"] }
 gloo-storage = "0.4"
 leptos_icons = "0.7"
 icondata = "0.7"
