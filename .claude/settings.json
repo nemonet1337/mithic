@@ -1,0 +1,28 @@
+{
+  "enabledPlugins": {
+    "cloudflare@cloudflare": true,
+    "ponytail@ponytail": true,
+    "databases-on-aws@claude-plugins-official": true,
+    "headroom@headroom-marketplace": false
+  },
+  "extraKnownMarketplaces": {
+    "cloudflare": {
+      "source": {
+        "source": "github",
+        "repo": "cloudflare/skills"
+      }
+    },
+    "ponytail": {
+      "source": {
+        "source": "github",
+        "repo": "DietrichGebert/ponytail"
+      }
+    },
+    "headroom-marketplace": {
+      "source": {
+        "source": "github",
+        "repo": "chopratejas/headroom"
+      }
+    }
+  }
+}

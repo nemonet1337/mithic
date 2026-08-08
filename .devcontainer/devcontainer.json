@@ -17,7 +17,7 @@
     "8000": { "label": "SurrealDB", "onAutoForward": "silent" },
     "6379": { "label": "Dragonfly", "onAutoForward": "silent" }
   },
-  "postCreateCommand": "bash .devcontainer/post-create.sh",
+  "postCreateCommand": "bash /opt/devcontainer-shared/setup-agent.sh && bash .devcontainer/post-create.sh",
   "postStartCommand": "docker compose up -d surrealdb dragonfly || true",
   "customizations": {
     "vscode": {
@@ -33,7 +33,29 @@
       }
     }
   },
+  "remoteEnv": {
+    "CLOUDFLARE_API_TOKEN": "${localEnv:CLOUDFLARE_API_TOKEN}",
+    "CLOUDFLARE_ACCOUNT_ID": "${localEnv:CLOUDFLARE_ACCOUNT_ID}",
+    "AWS_REGION": "${localEnv:AWS_REGION}",
+    "AWS_PROFILE": "${localEnv:AWS_PROFILE}",
+    "AWS_ACCESS_KEY_ID": "${localEnv:AWS_ACCESS_KEY_ID}",
+    "AWS_SECRET_ACCESS_KEY": "${localEnv:AWS_SECRET_ACCESS_KEY}",
+    "AWS_SESSION_TOKEN": "${localEnv:AWS_SESSION_TOKEN}",
+    "GITHUB_TOKEN": "${localEnv:GITHUB_TOKEN}",
+    "GH_TOKEN": "${localEnv:GH_TOKEN}",
+    "CONTEXT7_API_KEY": "${localEnv:CONTEXT7_API_KEY}",
+    "NOTION_TOKEN": "${localEnv:NOTION_TOKEN}",
+    "SHARED_DEVCONTAINER_DIR": "/opt/devcontainer-shared",
+    "HOST_CLAUDE_PLUGIN_CACHE": "/opt/host-claude-plugins",
+    "HOST_AGENTS_DIR": "/opt/host-agents"
+  },
   "mounts": [
+    "source=${localEnv:HOME}${localEnv:USERPROFILE}/.claude/plugins/cache,target=/opt/host-claude-plugins,type=bind,readonly",
+    "source=${localEnv:HOME}${localEnv:USERPROFILE}/.mcp-auth,target=/home/vscode/.mcp-auth,type=bind",
+    "source=${localEnv:HOME}${localEnv:USERPROFILE}/.headroom,target=/home/vscode/.headroom,type=bind",
+    "source=${localEnv:HOME}${localEnv:USERPROFILE}/.aws,target=/home/vscode/.aws,type=bind",
+    "source=${localEnv:HOME}${localEnv:USERPROFILE}/.agents,target=/opt/host-agents,type=bind,readonly",
+    "source=${localWorkspaceFolder}/../_shared/devcontainer,target=/opt/devcontainer-shared,type=bind,readonly",
     "source=mithic-cargo-registry,target=/usr/local/cargo/registry,type=volume",
     "source=mithic-cargo-git,target=/usr/local/cargo/git,type=volume",
     "source=mithic-target,target=${containerWorkspaceFolder}/target,type=volume"

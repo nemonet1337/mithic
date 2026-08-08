@@ -1,0 +1,54 @@
+# Portable MCP for Grok (repo .grok/config.toml). No secrets.
+
+[mcp_servers.cloudflare-docs]
+url = "https://docs.mcp.cloudflare.com/mcp"
+enabled = true
+
+[mcp_servers.cloudflare-api]
+url = "https://mcp.cloudflare.com/mcp"
+enabled = true
+
+[mcp_servers.cloudflare-bindings]
+url = "https://bindings.mcp.cloudflare.com/mcp"
+enabled = true
+
+[mcp_servers.cloudflare-builds]
+url = "https://builds.mcp.cloudflare.com/mcp"
+enabled = true
+
+[mcp_servers.cloudflare-observability]
+url = "https://observability.mcp.cloudflare.com/mcp"
+enabled = true
+
+[mcp_servers.awsknowledge]
+url = "https://knowledge-mcp.global.api.aws"
+enabled = true
+
+[mcp_servers.aurora-dsql]
+command = "uvx"
+args = ["awslabs.aurora-dsql-mcp-server@latest"]
+enabled = true
+env = { FASTMCP_LOG_LEVEL = "ERROR" }
+
+[mcp_servers.cloudwatch]
+command = "uvx"
+args = ["awslabs.cloudwatch-mcp-server@latest"]
+enabled = true
+env = { FASTMCP_LOG_LEVEL = "ERROR", AWS_REGION = "${AWS_REGION:-us-east-1}", AWS_PROFILE = "${AWS_PROFILE:-default}" }
+
+[mcp_servers.context7]
+url = "https://mcp.context7.com/mcp/oauth"
+enabled = true
+
+[mcp_servers.github]
+url = "https://api.githubcopilot.com/mcp/x/all"
+enabled = true
+
+[mcp_servers.notion]
+url = "https://mcp.notion.com/mcp"
+enabled = true
+
+[mcp_servers.headroom]
+command = "headroom"
+args = ["mcp", "serve"]
+enabled = true
