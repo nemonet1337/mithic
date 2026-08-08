@@ -1,7 +1,7 @@
 # =============================================================================
 # Stage 1: cargo-chef installer (shared base for dep caching)
 # =============================================================================
-FROM rust:1.94-bookworm AS chef
+FROM rust:1.97-bookworm AS chef
 RUN apt-get update && apt-get install -y clang mold && rm -rf /var/lib/apt/lists/*
 RUN cargo install cargo-chef --locked
 ENV CARGO_BUILD_JOBS=4
@@ -44,7 +44,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
 # Stage 5: Build frontend WASM with Trunk
 # Tailwind CSS v4 is built by Trunk's standalone CLI (no Node.js / package.json)
 # =============================================================================
-FROM rust:1.94-bookworm AS frontend-builder
+FROM rust:1.97-bookworm AS frontend-builder
 RUN apt-get update && apt-get install -y \
     pkg-config \
     libssl-dev \
