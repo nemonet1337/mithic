@@ -55,7 +55,7 @@ web-sys = { version = "0.3", features = [
 console_error_panic_hook = "0.1"
 getrandom = { version = "0.4", features = ["wasm_js"] }
 comrak = "0.54"
-leptos_i18n = "0.5"
+leptos_i18n = "0.6"
 
 [features]
 default = ["csr"]
