@@ -264,20 +264,6 @@ shared/src/types/ に DTO 定義 (auth, hashtag, note, notification, relay, stre
 - **ドキュメント**: コードコメント、APIドキュメント
 - **ライセンス**: AGPL-3.0 の遵守
 
-### RTK (Rust Token Killer)
-
-すべてのシェルコマンド実行時に `rtk` をプレフィックスすること。
-
-```bash
-rtk git status
-rtk cargo test
-rtk ls src/
-rtk grep "pattern" src/
-rtk find "*.rs" .
-rtk docker ps
-rtk gh pr list
-```
-
 ### Ponytail モード（怠惰なシニア開発者）
 
 実装時は以下の優先順位で検討すること：
