@@ -91,7 +91,7 @@ base64 = "0.23"
 sha2 = "0.11"
 hex = "0.4"
 rsa = { version = "0.9", features = ["sha2", "pem"] }
-validator = { version = "0.20", features = ["derive"] }
+validator = { version = "0.21", features = ["derive"] }
 
 # Web Push
 web-push = "0.11"
