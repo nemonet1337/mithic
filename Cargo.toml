@@ -28,7 +28,7 @@ serde_json = "1"
 chrono = { version = "0.4", features = ["serde"] }
 
 # ID generation
-ulid = { version = "1", features = ["serde"] }
+ulid = { version = "3", features = ["serde"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 
 # Async runtime
