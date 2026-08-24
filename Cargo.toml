@@ -97,7 +97,7 @@ validator = { version = "0.21", features = ["derive"] }
 web-push = "0.11"
 
 # Background Jobs
-apalis = { version = "0.6", features = ["retry", "limit"] }
+apalis = { version = "0.7", features = ["retry", "limit"] }
 apalis-redis = { version = "0.7" }
 
 # Memory allocator (server)
