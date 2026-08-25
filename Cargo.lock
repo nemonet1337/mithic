@@ -191,7 +191,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.18",
  "tower",
- "ulid",
+ "ulid 1.2.1",
 ]
 
 [[package]]
@@ -4338,7 +4338,7 @@ dependencies = [
  "tower",
  "tower-http 0.7.0",
  "tracing",
- "ulid",
+ "ulid 3.0.0",
  "url",
  "uuid",
  "validator",
@@ -4378,7 +4378,7 @@ dependencies = [
  "surrealdb",
  "totp-rs",
  "tracing",
- "ulid",
+ "ulid 3.0.0",
  "url",
  "uuid",
  "validator",
@@ -4398,7 +4398,7 @@ dependencies = [
  "serde_json",
  "surrealdb",
  "tokio",
- "ulid",
+ "ulid 3.0.0",
 ]
 
 [[package]]
@@ -6596,7 +6596,7 @@ dependencies = [
  "comrak",
  "serde",
  "serde_json",
- "ulid",
+ "ulid 3.0.0",
 ]
 
 [[package]]
@@ -6967,7 +6967,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
- "ulid",
+ "ulid 1.2.1",
  "unicase",
  "url",
  "uuid",
@@ -7037,7 +7037,7 @@ dependencies = [
  "surrealdb-protocol",
  "surrealdb-types-derive",
  "tracing",
- "ulid",
+ "ulid 1.2.1",
  "url",
  "uuid",
 ]
@@ -7854,6 +7854,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "470dbf6591da1b39d43c14523b2b469c86879a53e8b758c8e090a470fe7b1fbe"
 dependencies = [
  "rand 0.9.4",
+ "serde",
+ "web-time",
+]
+
+[[package]]
+name = "ulid"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "947dde63b6d514cc5e044edad4e0ca7261afd1099d16c83d942cb2b2f348689c"
+dependencies = [
+ "rand 0.10.2",
  "serde",
  "web-time",
 ]
