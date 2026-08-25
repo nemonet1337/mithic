@@ -1,0 +1,5 @@
+{
+  // Application-scoped: also set in User settings.json on Windows hosts.
+  // Workspace alone is ignored by Dev Containers for this key.
+  "dev.containers.mountWaylandSocket": false
+}
