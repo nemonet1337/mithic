@@ -13,8 +13,20 @@
 # wireframe
 /frontend/wireframe-ui-sample
 
-# claude
+# Agent / local tooling
+# Share: .grok/config.toml, .claude/settings.json, .claude/rules/,
+#        .serena/project.yml, .serena/memories/
 .claude/settings.local.json
+.mcp-auth/
+.headroom/
+.serena/cache/
+.serena/project.local.yml
+
+# Editors / OS
+.idea/
+.DS_Store
+Thumbs.db
+Desktop.ini
 
 # node
 /frontend/node_modules
@@ -23,3 +35,8 @@ node__modules
 
 # playwright
 .playwright-mcp
+
+# Secrets / local credentials (do not commit)
+.dev.vars
+*.pem
+*.key
