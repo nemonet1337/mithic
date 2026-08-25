@@ -3,7 +3,7 @@
     "cloudflare@cloudflare": true,
     "ponytail@ponytail": true,
     "databases-on-aws@claude-plugins-official": true,
-    "headroom@headroom-marketplace": false
+    "headroom@headroom-marketplace": true
   },
   "extraKnownMarketplaces": {
     "cloudflare": {
