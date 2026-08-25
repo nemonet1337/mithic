@@ -1,9 +1,12 @@
+name: mithic
+
 services:
   # ---------------------------------------------------------------------------
   # Infrastructure
   # ---------------------------------------------------------------------------
   surrealdb:
     image: surrealdb/surrealdb:latest
+    container_name: mithic-surrealdb
     restart: unless-stopped
     command:
       - start
@@ -26,6 +29,7 @@ services:
 
   dragonfly:
     image: docker.dragonflydb.io/dragonflydb/dragonfly:latest
+    container_name: mithic-dragonfly
     restart: unless-stopped
     ulimits:
       memlock: -1
@@ -48,6 +52,7 @@ services:
     build:
       context: .
       target: backend
+    container_name: mithic-backend
     restart: unless-stopped
     env_file:
       - path: .env
@@ -78,6 +83,7 @@ services:
     build:
       context: .
       target: frontend
+    container_name: mithic-frontend
     restart: unless-stopped
     ports:
       - "80:80"
