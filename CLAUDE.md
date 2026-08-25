@@ -10,11 +10,11 @@
 - **キャッシュ/キュー**: Dragonfly (Redis互換)
 - **非同期ランタイム**: Tokio 1.0
 - **認証**: JWT (`jsonwebtoken`) + Argon2 (パスワードハッシュ)
-- **ActivityPub**: HTTP Signatures (`sigh`)
+- **ActivityPub**: HTTP Signatures (`mithic_federation::http_sig` — RSA-SHA256 sign/verify 共通)
 - **WebSocket**: Axum WebSocket
 - **国際化**: fluent + unic-langid
 - **Markdownパーサ**: comrak
-- **Web Push**: web-push
+- **Web Push**: web-push (VAPID; `VAPID_PRIVATE_KEY` 設定時に配送)
 
 ### フロントエンド
 
@@ -110,9 +110,9 @@ note.rs, user.rs, relationship.rs の3モジュール実装済み。
 
 SurrealDB / Dragonfly クライアントラッパー実装済み。クエリモジュール (actors, drive, favorites, follows, hashtags, notes, notifications, polls, timeline) あり。
 
-### `federation/src/` — ActivityPub (スタブ)
+### `federation/src/` — ActivityPub 配送
 
-`FederationService` 定義のみ。actor/inbox/outbox 実装が未。
+`FederationService` (キュー配送・signed POST) + `http_sig` (署名/検証の単一実装)。
 
 ### `stream/src/` — WebSocket ストリーミング (実装済み)
 
