@@ -120,7 +120,7 @@
 - [ ] 自動テスト: API 結合・AP 連合・WASM E2E がほぼ無い（`http_sig` 単体はあり）
 - [ ] メトリクス / Prometheus（依存は落としたまま）
 - [ ] 本番向け監視・バックアップ手順ドキュメント
-- [ ] MSRV / toolchain 文書の実態合わせ（依存が 1.88+ を要求し始めている）
+- [x] MSRV / toolchain 文書の実態合わせ（`rust-version` 1.88。jsonwebtoken 11 が要求）
 - [ ] 水平スケール時のストリーム: 現状 process-local broadcast のみ（複数 `mithic-server` では WS が共有されない）
 
 ---
