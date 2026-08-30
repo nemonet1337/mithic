@@ -12,14 +12,16 @@ use mithic_core::{AppError, AuthUser, Result};
 use mithic_db::cache;
 use mithic_db::queries::{
     add_favorite, add_reaction, create_note, delete_note, get_actor_by_id, get_note_by_id,
-    get_note_quotes, get_note_replies, get_reaction_by_actor, is_following, remove_all_reactions_by_actor,
-    remove_favorite, remove_reaction,
+    get_note_quotes, get_note_replies, get_reaction_by_actor, is_following,
+    remove_all_reactions_by_actor, remove_favorite, remove_reaction,
 };
 use serde::Deserialize;
 use serde_json::Value;
 use shared::{CreateNoteRequest, Note as NoteDto, ReactionSummary};
 
-use crate::dto::{actor_to_user, apply_viewer_reaction, note_to_dto_full, reaction_summaries_from_map};
+use crate::dto::{
+    actor_to_user, apply_viewer_reaction, note_to_dto_full, reaction_summaries_from_map,
+};
 use crate::events::StreamBroadcast;
 use crate::http_cache::{CC_PUBLIC_NOTE, json_with_cache};
 use crate::routes::v1::common::{ok_null, parse_note_id};
@@ -251,8 +253,7 @@ pub async fn add_reaction_route(
             .await
             .map_err(|e| AppError::Internal(e.to_string()))?;
             if let Some(ref reactor) = sender {
-                crate::services::note::deliver_reaction(&state, reactor, &note, &emoji, true)
-                    .await;
+                crate::services::note::deliver_reaction(&state, reactor, &note, &emoji, true).await;
             }
         }
         Some(prev) => {
@@ -404,9 +405,8 @@ pub async fn unrenote_route(
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
-    let deleted_rows: Vec<surrealdb::types::Value> = del
-        .take(0)
-        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let deleted_rows: Vec<surrealdb::types::Value> =
+        del.take(0).map_err(|e| AppError::Internal(e.to_string()))?;
     let deleted_count = deleted_rows.len() as i64;
 
     if deleted_count > 0 {

@@ -1,10 +1,6 @@
 //! GET /api/v1/instance — メタ + カスタム絵文字一覧
 
-use axum::{
-    extract::State,
-    http::HeaderMap,
-    response::Response,
-};
+use axum::{extract::State, http::HeaderMap, response::Response};
 use mithic_core::{AppError, Result};
 use mithic_db::cache;
 use mithic_db::queries::rows_to;
@@ -40,10 +36,7 @@ pub struct InstanceInfo {
     pub vapid_public_key: Option<String>,
 }
 
-pub async fn get_instance(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-) -> Result<Response> {
+pub async fn get_instance(State(state): State<AppState>, headers: HeaderMap) -> Result<Response> {
     if let Some(mut info) =
         cache::get_json::<InstanceInfo>(state.dragonfly(), INSTANCE_CACHE_KEY).await
     {
@@ -61,8 +54,13 @@ pub async fn get_instance(
         emojis,
         vapid_public_key: state.vapid_public_key().map(|s| s.to_string()),
     };
-    let _ = cache::set_json(state.dragonfly(), INSTANCE_CACHE_KEY, &info, INSTANCE_CACHE_TTL)
-        .await;
+    let _ = cache::set_json(
+        state.dragonfly(),
+        INSTANCE_CACHE_KEY,
+        &info,
+        INSTANCE_CACHE_TTL,
+    )
+    .await;
 
     Ok(json_with_cache(&headers, info, CC_INSTANCE))
 }

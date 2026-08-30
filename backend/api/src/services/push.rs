@@ -1,9 +1,9 @@
 //! Web Push delivery (VAPID + encrypted payload)
 
-use mithic_db::queries::{
-    delete_push_subscription_by_endpoint, list_push_subscriptions, PushSubscription,
-};
 use mithic_core::models::actor::ActorId;
+use mithic_db::queries::{
+    PushSubscription, delete_push_subscription_by_endpoint, list_push_subscriptions,
+};
 use shared::Notification as NotifDto;
 use tracing::{debug, warn};
 use web_push::{
@@ -93,8 +93,8 @@ pub async fn deliver_web_push(state: &AppState, recipient_id: ActorId, dto: &Not
             Err(e) => match e {
                 web_push::WebPushError::EndpointNotValid(_)
                 | web_push::WebPushError::EndpointNotFound(_) => {
-                    let _ = delete_push_subscription_by_endpoint(state.surreal(), &sub.endpoint)
-                        .await;
+                    let _ =
+                        delete_push_subscription_by_endpoint(state.surreal(), &sub.endpoint).await;
                     debug!("Removed stale push subscription {}", sub.endpoint);
                 }
                 other => warn!("Web push failed for {}: {other}", sub.endpoint),

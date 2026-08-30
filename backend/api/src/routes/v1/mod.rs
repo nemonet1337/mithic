@@ -54,10 +54,7 @@ pub fn router(state: AppState) -> Router<AppState> {
         )
         .route("/api/v1/users/{id}/relation", get(users::relation))
         // follow requests
-        .route(
-            "/api/v1/follow-requests",
-            get(users::list_follow_requests),
-        )
+        .route("/api/v1/follow-requests", get(users::list_follow_requests))
         .route(
             "/api/v1/follow-requests/{id}/accept",
             post(users::accept_follow_request),
@@ -76,10 +73,7 @@ pub fn router(state: AppState) -> Router<AppState> {
         .route("/api/v1/timelines/home", get(timelines::timeline_home))
         // notes write
         .route("/api/v1/notes", post(notes::create_note_route))
-        .route(
-            "/api/v1/notes/{id}",
-            delete(notes::delete_note_route),
-        )
+        .route("/api/v1/notes/{id}", delete(notes::delete_note_route))
         .route(
             "/api/v1/notes/{id}/reactions",
             post(notes::add_reaction_route),
@@ -89,10 +83,7 @@ pub fn router(state: AppState) -> Router<AppState> {
             delete(notes::remove_reaction_route),
         )
         .route("/api/v1/notes/{id}/renotes", post(notes::renote_route))
-        .route(
-            "/api/v1/notes/{id}/renote",
-            delete(notes::unrenote_route),
-        )
+        .route("/api/v1/notes/{id}/renote", delete(notes::unrenote_route))
         .route(
             "/api/v1/notes/{id}/favorite",
             post(notes::favorite_route).delete(notes::unfavorite_route),
@@ -103,7 +94,10 @@ pub fn router(state: AppState) -> Router<AppState> {
         )
         .route("/api/v1/notes/{id}/vote", post(notes::vote_route))
         // notifications
-        .route("/api/v1/notifications", get(notifications::list_notifications))
+        .route(
+            "/api/v1/notifications",
+            get(notifications::list_notifications),
+        )
         .route(
             "/api/v1/notifications/read-all",
             post(notifications::read_all_notifications),
@@ -113,19 +107,16 @@ pub fn router(state: AppState) -> Router<AppState> {
             post(notifications::read_notification),
         )
         // drive
-        .route("/api/v1/drive/files", post(drive::upload_file).get(drive::find))
         .route(
-            "/api/v1/drive/files/from-url",
-            post(drive::upload_from_url),
+            "/api/v1/drive/files",
+            post(drive::upload_file).get(drive::find),
         )
+        .route("/api/v1/drive/files/from-url", post(drive::upload_from_url))
         .route(
             "/api/v1/drive/files/{id}",
             get(drive::show).delete(drive::delete),
         )
-        .route(
-            "/api/v1/drive/files/{id}/notes",
-            get(drive::attached_notes),
-        )
+        .route("/api/v1/drive/files/{id}/notes", get(drive::attached_notes))
         // push
         .route(
             "/api/v1/push/subscription",
@@ -134,18 +125,12 @@ pub fn router(state: AppState) -> Router<AppState> {
                 .delete(push::unsubscribe),
         )
         // admin
-        .route(
-            "/api/v1/admin/accounts/{id}/suspend",
-            post(admin::suspend),
-        )
+        .route("/api/v1/admin/accounts/{id}/suspend", post(admin::suspend))
         .route(
             "/api/v1/admin/accounts/{id}/unsuspend",
             post(admin::unsuspend),
         )
-        .route(
-            "/api/v1/admin/accounts/{id}",
-            delete(admin::delete_account),
-        )
+        .route("/api/v1/admin/accounts/{id}", delete(admin::delete_account))
         .route(
             "/api/v1/admin/relays",
             get(admin::list_relays_route).post(admin::add_relay),
@@ -172,23 +157,11 @@ pub fn router(state: AppState) -> Router<AppState> {
         .route("/api/v1/users/search", get(users::search_users))
         .route("/api/v1/users/suggested", get(users::suggested_users))
         .route("/api/v1/users/{username}", get(users::show_user))
-        .route(
-            "/api/v1/users/{username}/notes",
-            get(users::user_notes),
-        )
-        .route(
-            "/api/v1/users/{id}/following",
-            get(users::following),
-        )
-        .route(
-            "/api/v1/users/{id}/followers",
-            get(users::followers),
-        )
+        .route("/api/v1/users/{username}/notes", get(users::user_notes))
+        .route("/api/v1/users/{id}/following", get(users::following))
+        .route("/api/v1/users/{id}/followers", get(users::followers))
         .route("/api/v1/timelines/local", get(timelines::timeline_local))
-        .route(
-            "/api/v1/timelines/global",
-            get(timelines::timeline_global),
-        )
+        .route("/api/v1/timelines/global", get(timelines::timeline_global))
         .route(
             "/api/v1/timelines/hashtag/{tag}",
             get(timelines::timeline_hashtag),

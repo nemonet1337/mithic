@@ -18,7 +18,10 @@ pub fn weak_etag<T: Serialize>(body: &T) -> String {
 
 /// If-None-Match が ETag と一致するか
 pub fn etag_matches(headers: &HeaderMap, etag: &str) -> bool {
-    let Some(raw) = headers.get(header::IF_NONE_MATCH).and_then(|v| v.to_str().ok()) else {
+    let Some(raw) = headers
+        .get(header::IF_NONE_MATCH)
+        .and_then(|v| v.to_str().ok())
+    else {
         return false;
     };
     raw.split(',')

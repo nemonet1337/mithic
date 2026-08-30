@@ -117,7 +117,12 @@ pub async fn create_note_service(
 
             const FANOUT_THRESHOLD: usize = 10_000;
             if follower_count < FANOUT_THRESHOLD {
-                let followers = match mithic_db::queries::get_followers(&surreal, &author_id_for_fanout).await {
+                let followers = match mithic_db::queries::get_followers(
+                    &surreal,
+                    &author_id_for_fanout,
+                )
+                .await
+                {
                     Ok(f) => f,
                     Err(e) => {
                         tracing::warn!("Failed to get followers for fan-out: {}", e);
@@ -127,10 +132,28 @@ pub async fn create_note_service(
 
                 for follower in followers {
                     let key = format!("home_timeline:{}", follower.id);
-                    let _ = mithic_db::cache::timeline_push(&dragonfly, &key, &created_id.to_string(), score).await;
+                    let _ = mithic_db::cache::timeline_push(
+                        &dragonfly,
+                        &key,
+                        &created_id.to_string(),
+                        score,
+                    )
+                    .await;
                 }
-                let _ = mithic_db::cache::timeline_push(&dragonfly, "local_timeline", &created_id.to_string(), score).await;
-                let _ = mithic_db::cache::timeline_push(&dragonfly, "global_timeline", &created_id.to_string(), score).await;
+                let _ = mithic_db::cache::timeline_push(
+                    &dragonfly,
+                    "local_timeline",
+                    &created_id.to_string(),
+                    score,
+                )
+                .await;
+                let _ = mithic_db::cache::timeline_push(
+                    &dragonfly,
+                    "global_timeline",
+                    &created_id.to_string(),
+                    score,
+                )
+                .await;
                 // 公開 TL の JSON キャッシュを無効化
                 mithic_db::cache::invalidate_public_timelines(&dragonfly).await;
             } else {
@@ -138,7 +161,8 @@ pub async fn create_note_service(
                 mithic_db::cache::invalidate_public_timelines(&dragonfly).await;
                 tracing::debug!(
                     "Follower count {} >= threshold {}, skipping dragonfly fan-out (Pull model)",
-                    follower_count, FANOUT_THRESHOLD
+                    follower_count,
+                    FANOUT_THRESHOLD
                 );
             }
         });
@@ -168,12 +192,7 @@ pub async fn create_note_service(
 }
 
 /// 返信・メンション通知をバックグラウンドで生成する
-async fn spawn_note_notifications(
-    state: AppState,
-    author: Actor,
-    created: Note,
-    dto: NoteDto,
-) {
+async fn spawn_note_notifications(state: AppState, author: Actor, created: Note, dto: NoteDto) {
     // 返信通知
     if let Some(reply_id) = created.reply_id {
         if let Ok(Some(parent)) = get_note_by_id(state.surreal(), &reply_id).await {
@@ -204,15 +223,10 @@ async fn spawn_note_notifications(
             // 1 クエリで解決 (username_lower IN)
             let mut response = match state
                 .surreal()
-                .query(
-                    "SELECT * FROM user WHERE username_lower IN $names AND host = NONE;",
-                )
+                .query("SELECT * FROM user WHERE username_lower IN $names AND host = NONE;")
                 .bind((
                     "names",
-                    names
-                        .iter()
-                        .map(|n| n.to_lowercase())
-                        .collect::<Vec<_>>(),
+                    names.iter().map(|n| n.to_lowercase()).collect::<Vec<_>>(),
                 ))
                 .await
             {

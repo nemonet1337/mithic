@@ -12,7 +12,7 @@ use serde_json::Value;
 use shared::Notification as NotifDto;
 
 use crate::dto::{actor_to_user, notif_type_to_dto};
-use crate::routes::v1::common::{ok_null, PagingQuery};
+use crate::routes::v1::common::{PagingQuery, ok_null};
 use crate::routes::v1::notes::fetch_note_dto;
 use crate::state::AppState;
 

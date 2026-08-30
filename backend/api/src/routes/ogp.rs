@@ -26,12 +26,7 @@ fn html_escape(s: &str) -> String {
 fn ogp_html(title: &str, description: &str, url: &str, image: Option<&str>) -> String {
     let avatar_meta = image
         .filter(|u| !u.is_empty())
-        .map(|u| {
-            format!(
-                r#"<meta property="og:image" content="{}">"#,
-                html_escape(u)
-            )
-        })
+        .map(|u| format!(r#"<meta property="og:image" content="{}">"#, html_escape(u)))
         .unwrap_or_default();
 
     format!(

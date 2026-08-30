@@ -12,7 +12,8 @@ pub fn max_fetch_bytes() -> usize {
 
 /// http/https のみ許可し、ホスト名を解決してプライベート IP を拒否する。
 pub fn validate_public_url(raw: &str) -> Result<()> {
-    let url = url::Url::parse(raw).map_err(|e| AppError::Validation(format!("Invalid URL: {e}")))?;
+    let url =
+        url::Url::parse(raw).map_err(|e| AppError::Validation(format!("Invalid URL: {e}")))?;
 
     match url.scheme() {
         "http" | "https" => {}
@@ -87,10 +88,7 @@ fn is_blocked_ip(ip: IpAddr) -> bool {
 }
 
 /// Content-Length があれば上限チェック。無ければストリーム読みで上限を適用。
-pub async fn read_body_limited(
-    response: reqwest::Response,
-    max_bytes: usize,
-) -> Result<Vec<u8>> {
+pub async fn read_body_limited(response: reqwest::Response, max_bytes: usize) -> Result<Vec<u8>> {
     if let Some(len) = response.content_length() {
         if len as usize > max_bytes {
             return Err(AppError::Validation(format!(

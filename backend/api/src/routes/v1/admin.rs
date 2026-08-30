@@ -8,7 +8,8 @@ use axum::{
 use mithic_core::models::actor::ActorId;
 use mithic_core::{AppError, AuthUser, Result};
 use mithic_db::queries::{
-    create_relay, delete_relay, get_relay_by_id, get_relay_by_inbox, list_relays, update_relay_status,
+    create_relay, delete_relay, get_relay_by_id, get_relay_by_inbox, list_relays,
+    update_relay_status,
 };
 use serde::Deserialize;
 use shared::Relay;

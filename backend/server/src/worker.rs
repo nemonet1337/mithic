@@ -5,7 +5,7 @@ use std::time::Duration;
 use apalis::prelude::*;
 use apalis_redis::RedisStorage;
 use futures::future;
-use mithic_federation::{ActivityDelivery, FederationService, DLQ_KEY};
+use mithic_federation::{ActivityDelivery, DLQ_KEY, FederationService};
 use tower::retry::Policy;
 use tracing::{info, warn};
 

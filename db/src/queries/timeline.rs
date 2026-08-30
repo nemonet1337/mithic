@@ -1,6 +1,6 @@
-use crate::{DragonflyClient, SurrealClient};
 use crate::cache::timeline_range;
 use crate::queries::rows_to;
+use crate::{DragonflyClient, SurrealClient};
 use mithic_core::models::actor::Actor;
 use mithic_core::models::note::{Note, NoteId};
 use serde::Deserialize;
@@ -75,15 +75,13 @@ pub async fn get_home_timeline_cached(
         .unwrap_or_default();
 
     if cached_ids.is_empty() {
-        let actor_id: mithic_core::models::actor::ActorId = user_id.parse()
+        let actor_id: mithic_core::models::actor::ActorId = user_id
+            .parse()
             .map_err(|_| anyhow::anyhow!("Invalid actor id"))?;
         return get_home_timeline(surreal, &actor_id, limit, None, None).await;
     }
 
-    let id_records: Vec<String> = cached_ids
-        .iter()
-        .map(|id| format!("note:{}", id))
-        .collect();
+    let id_records: Vec<String> = cached_ids.iter().map(|id| format!("note:{}", id)).collect();
 
     let mut response = surreal
         .query(format!(

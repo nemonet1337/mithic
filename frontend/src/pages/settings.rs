@@ -15,7 +15,10 @@ use shared::ProfileField;
 pub fn SettingsPage() -> impl IntoView {
     let params = use_params_map();
     let section = move || {
-        let raw = params.read().get("section").unwrap_or_else(|| "プロフィール".into());
+        let raw = params
+            .read()
+            .get("section")
+            .unwrap_or_else(|| "プロフィール".into());
         match raw.as_str() {
             "パスワード" | "プライバシー" | "通知" | "テーマ" | "QR" => raw,
             _ => "プロフィール".into(),
@@ -121,7 +124,9 @@ fn ProfileSection() -> impl IntoView {
         };
         let Some(files) = inp.files() else { return };
         let Some(file) = files.item(0) else { return };
-        let Some(tok) = token.get_untracked() else { return };
+        let Some(tok) = token.get_untracked() else {
+            return;
+        };
         wasm_bindgen_futures::spawn_local(async move {
             match crate::api::drive::upload(&tok, &file).await {
                 Ok(stored) => {

@@ -21,10 +21,7 @@ pub async fn create_activity(
     Ok(())
 }
 
-pub async fn get_activity_by_uri(
-    client: &SurrealClient,
-    uri: &str,
-) -> anyhow::Result<bool> {
+pub async fn get_activity_by_uri(client: &SurrealClient, uri: &str) -> anyhow::Result<bool> {
     let mut response = client
         .query("SELECT VALUE count() FROM activity WHERE uri = $uri")
         .bind(("uri", uri.to_string()))

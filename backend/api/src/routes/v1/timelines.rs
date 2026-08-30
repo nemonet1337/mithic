@@ -17,7 +17,9 @@ use shared::{Hashtag, Note as NoteDto};
 
 use crate::dto::note_to_dto_full;
 use crate::http_cache::{CC_TIMELINE, CC_TRENDING, json_with_cache};
-use crate::routes::v1::common::{parse_optional_note_id, rows_to_dtos, rows_to_dtos_for, PagingQuery};
+use crate::routes::v1::common::{
+    PagingQuery, parse_optional_note_id, rows_to_dtos, rows_to_dtos_for,
+};
 use crate::state::AppState;
 
 /// home は認証必須 (個人タイムラインのため JSON キャッシュしない / 短命 ID キャッシュは利用)
@@ -136,9 +138,7 @@ pub async fn timeline_hashtag(
         if let Ok(Some(author)) =
             mithic_db::queries::get_actor_by_id(state.surreal(), &note.actor_id).await
         {
-            dtos.push(
-                note_to_dto_full(&state, &note, crate::dto::actor_to_user(&author)).await,
-            );
+            dtos.push(note_to_dto_full(&state, &note, crate::dto::actor_to_user(&author)).await);
         }
     }
     Ok(axum::Json(dtos))

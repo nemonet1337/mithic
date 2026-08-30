@@ -4,12 +4,12 @@
 
 use base64::prelude::*;
 use rsa::RsaPrivateKey;
+use rsa::RsaPublicKey;
 use rsa::pkcs1::DecodeRsaPublicKey;
 use rsa::pkcs1v15::{Signature, SigningKey, VerifyingKey};
 use rsa::pkcs8::DecodePublicKey;
 use rsa::sha2::Sha256 as RsaSha256;
 use rsa::signature::{SignatureEncoding, Signer, Verifier};
-use rsa::RsaPublicKey;
 use sha2::{Digest, Sha256};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -402,7 +402,13 @@ mod tests {
     fn sign_post_verifies() {
         let (pkey, public_pem) = gen_keypair();
         let body = br#"{"type":"Create"}"#;
-        let signed = sign_post(&pkey, "https://ex/users/a#main-key", "/inbox", "ex.com", body);
+        let signed = sign_post(
+            &pkey,
+            "https://ex/users/a#main-key",
+            "/inbox",
+            "ex.com",
+            body,
+        );
 
         assert!(verify_digest(body, &signed.digest));
 

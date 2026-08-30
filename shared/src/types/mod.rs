@@ -1,8 +1,8 @@
 mod auth;
-pub mod relay;
 mod hashtag;
 mod note;
 mod notification;
+pub mod relay;
 mod stream;
 mod user;
 

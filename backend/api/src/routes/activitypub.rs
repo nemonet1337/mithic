@@ -15,8 +15,8 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use tracing::{info, warn};
 
-use mithic_core::models::actor::{Actor, ProfileField};
 use crate::events::StreamBroadcast;
+use mithic_core::models::actor::{Actor, ProfileField};
 use mithic_core::models::note::{Note, NoteVisibility};
 use mithic_core::models::notification::Notification;
 use mithic_core::{AppError, Result};
@@ -246,10 +246,7 @@ fn build_actor_document(actor: &Actor, instance_url: &str) -> Value {
             }
         }
         if let Some(url) = &actor.banner_url {
-            obj.insert(
-                "image".into(),
-                json!({ "type": "Image", "url": url }),
-            );
+            obj.insert("image".into(), json!({ "type": "Image", "url": url }));
         }
         if actor.is_cat {
             obj.insert("isCat".into(), json!(true));
@@ -258,10 +255,7 @@ fn build_actor_document(actor: &Actor, instance_url: &str) -> Value {
             obj.insert("_misskey_followedMessage".into(), json!(msg));
         }
         if let Some(loc) = &actor.location {
-            obj.insert(
-                "location".into(),
-                json!({ "type": "Place", "name": loc }),
-            );
+            obj.insert("location".into(), json!({ "type": "Place", "name": loc }));
         }
         if let Some(bday) = &actor.birthday {
             obj.insert("vcard:bday".into(), json!(bday));
@@ -338,10 +332,11 @@ async fn actor_document(
     )))
 }
 
-async fn actor_redirect(
-    Path(username): Path<String>,
-) -> impl IntoResponse {
-    (StatusCode::TEMPORARY_REDIRECT, [(header::LOCATION, format!("/users/{}", username))])
+async fn actor_redirect(Path(username): Path<String>) -> impl IntoResponse {
+    (
+        StatusCode::TEMPORARY_REDIRECT,
+        [(header::LOCATION, format!("/users/{}", username))],
+    )
 }
 
 async fn outbox(
@@ -531,7 +526,10 @@ fn object_id(value: &Value) -> Option<&str> {
 }
 
 fn object_type(value: &Value) -> &str {
-    value.get("type").and_then(|v| v.as_str()).unwrap_or_default()
+    value
+        .get("type")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
 }
 
 fn object_text(object: &Value) -> Option<String> {
@@ -590,7 +588,11 @@ async fn cache_emoji_tags(state: &AppState, tags: &Value, host: Option<&str>) {
         let url = tag
             .pointer("/icon/url")
             .and_then(|v| v.as_str())
-            .or_else(|| tag.get("icon").and_then(|i| i.get("url")).and_then(|u| u.as_str()))
+            .or_else(|| {
+                tag.get("icon")
+                    .and_then(|i| i.get("url"))
+                    .and_then(|u| u.as_str())
+            })
             .unwrap_or("")
             .to_string();
         if name.is_empty() || url.is_empty() {
@@ -713,7 +715,12 @@ async fn handle_create(
     // 投票: name のみの Note (inReplyTo = Question/Note)
     if object_type == "Note" {
         if let Some(choice_name) = object.get("name").and_then(|v| v.as_str()) {
-            if object.get("content").and_then(|v| v.as_str()).unwrap_or("").is_empty() {
+            if object
+                .get("content")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .is_empty()
+            {
                 return handle_poll_vote(state, remote_actor_uri, object, choice_name).await;
             }
         }
@@ -817,7 +824,10 @@ async fn handle_create(
     note.cw = cw;
     note.reply_id = reply_id;
     note.renote_id = renote_id;
-    note.actor_host = remote_actor.host.clone().or_else(|| host_from_uri(remote_actor_uri));
+    note.actor_host = remote_actor
+        .host
+        .clone()
+        .or_else(|| host_from_uri(remote_actor_uri));
     if let Some(tags) = object.get("tag").and_then(|t| t.as_array()) {
         note.tags = tags
             .iter()
@@ -1035,9 +1045,8 @@ async fn handle_poll_vote(
         .bind(("nid", note.id.to_string()))
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
-    let rows: Vec<surrealdb::types::Value> = res
-        .take(0)
-        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let rows: Vec<surrealdb::types::Value> =
+        res.take(0).map_err(|e| AppError::Internal(e.to_string()))?;
     let Some(poll_json) = rows.into_iter().next().map(|v| v.into_json_value()) else {
         return Ok(StatusCode::ACCEPTED);
     };
@@ -1062,13 +1071,9 @@ async fn handle_poll_vote(
         return Ok(StatusCode::ACCEPTED);
     };
 
-    if let Err(e) = mithic_db::queries::vote_poll(
-        state.surreal(),
-        &poll_id,
-        &remote_actor.id.to_string(),
-        idx,
-    )
-    .await
+    if let Err(e) =
+        mithic_db::queries::vote_poll(state.surreal(), &poll_id, &remote_actor.id.to_string(), idx)
+            .await
     {
         warn!("Remote poll vote failed: {e}");
     }
@@ -1320,14 +1325,20 @@ async fn handle_update(
             if id != remote_actor_uri && remote_actor.uri.as_deref() != Some(id) {
                 return Ok(StatusCode::ACCEPTED);
             }
-            let name = object.get("name").and_then(|v| v.as_str()).map(String::from);
+            let name = object
+                .get("name")
+                .and_then(|v| v.as_str())
+                .map(String::from);
             let bio = object
                 .get("summary")
                 .and_then(|v| v.as_str())
                 .map(String::from);
             let avatar_url = ap_url(object.get("icon"));
             let banner_url = ap_url(object.get("image"));
-            let inbox = object.get("inbox").and_then(|v| v.as_str()).map(String::from);
+            let inbox = object
+                .get("inbox")
+                .and_then(|v| v.as_str())
+                .map(String::from);
             let shared_inbox = object
                 .get("endpoints")
                 .and_then(|e| e.get("sharedInbox"))
@@ -1507,12 +1518,18 @@ mod tests {
     #[test]
     fn follow_uris_ignores_string_and_other_types() {
         assert_eq!(follow_uris(&json!("https://example/activities/1")), None);
-        assert_eq!(follow_uris(&json!({"type": "Note", "actor": "a", "object": "b"})), None);
+        assert_eq!(
+            follow_uris(&json!({"type": "Note", "actor": "a", "object": "b"})),
+            None
+        );
     }
 
     #[test]
     fn object_id_accepts_string_or_embedded() {
-        assert_eq!(object_id(&json!("https://x/notes/1")), Some("https://x/notes/1"));
+        assert_eq!(
+            object_id(&json!("https://x/notes/1")),
+            Some("https://x/notes/1")
+        );
         assert_eq!(
             object_id(&json!({"id": "https://x/notes/1", "type": "Tombstone"})),
             Some("https://x/notes/1")

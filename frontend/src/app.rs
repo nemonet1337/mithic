@@ -9,7 +9,7 @@ use crate::pages::{
     SettingsPage, SignupPage, StatusDetailPage,
 };
 use crate::store::{
-    stream::connect_stream, AuthStore, ComposeStore, NotificationStore, StreamStore,
+    AuthStore, ComposeStore, NotificationStore, StreamStore, stream::connect_stream,
 };
 
 #[component]

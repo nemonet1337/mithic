@@ -15,19 +15,14 @@ pub async fn create_relay(client: &SurrealClient, inbox: &str) -> anyhow::Result
     Ok(())
 }
 
-pub async fn get_relay_by_id(
-    client: &SurrealClient,
-    id: &str,
-) -> anyhow::Result<Option<Relay>> {
+pub async fn get_relay_by_id(client: &SurrealClient, id: &str) -> anyhow::Result<Option<Relay>> {
     let mut response = client
         .query("SELECT * FROM relay WHERE id = $id LIMIT 1")
         .bind(("id", id.to_string()))
         .await?;
     let rows: Vec<surrealdb::types::Value> = response.take(0)?;
-    let mut result: Vec<serde_json::Value> = rows
-        .into_iter()
-        .map(|v| v.into_json_value())
-        .collect();
+    let mut result: Vec<serde_json::Value> =
+        rows.into_iter().map(|v| v.into_json_value()).collect();
     Ok(result.pop().and_then(|mut v| {
         crate::queries::strip_record_prefixes(&mut v);
         serde_json::from_value(v).ok()
@@ -43,10 +38,8 @@ pub async fn get_relay_by_inbox(
         .bind(("inbox", inbox.to_string()))
         .await?;
     let rows: Vec<surrealdb::types::Value> = response.take(0)?;
-    let mut result: Vec<serde_json::Value> = rows
-        .into_iter()
-        .map(|v| v.into_json_value())
-        .collect();
+    let mut result: Vec<serde_json::Value> =
+        rows.into_iter().map(|v| v.into_json_value()).collect();
     Ok(result.pop().and_then(|mut v| {
         crate::queries::strip_record_prefixes(&mut v);
         serde_json::from_value(v).ok()
@@ -61,10 +54,8 @@ pub async fn list_relays(client: &SurrealClient, limit: usize) -> anyhow::Result
         ))
         .await?;
     let rows: Vec<surrealdb::types::Value> = response.take(0)?;
-    let mut values: Vec<serde_json::Value> = rows
-        .into_iter()
-        .map(|v| v.into_json_value())
-        .collect();
+    let mut values: Vec<serde_json::Value> =
+        rows.into_iter().map(|v| v.into_json_value()).collect();
     let mut relays = Vec::new();
     for mut v in values.drain(..) {
         crate::queries::strip_record_prefixes(&mut v);
@@ -102,12 +93,12 @@ pub async fn delete_relay(client: &SurrealClient, id: &str) -> anyhow::Result<()
 }
 
 pub async fn get_accepted_relays(client: &SurrealClient) -> anyhow::Result<Vec<Relay>> {
-    let mut response = client.query("SELECT * FROM relay WHERE status = 'accepted'").await?;
+    let mut response = client
+        .query("SELECT * FROM relay WHERE status = 'accepted'")
+        .await?;
     let rows: Vec<surrealdb::types::Value> = response.take(0)?;
-    let mut values: Vec<serde_json::Value> = rows
-        .into_iter()
-        .map(|v| v.into_json_value())
-        .collect();
+    let mut values: Vec<serde_json::Value> =
+        rows.into_iter().map(|v| v.into_json_value()).collect();
     let mut relays = Vec::new();
     for mut v in values.drain(..) {
         crate::queries::strip_record_prefixes(&mut v);

@@ -31,9 +31,7 @@ pub async fn resolve_bearer(state: &AppState, token: &str) -> Result<AuthUser, A
     match actor.token.as_deref() {
         Some(stored) if stored == token => {}
         _ => {
-            return Err(AppError::Unauthorized(
-                "Token has been revoked".to_string(),
-            ));
+            return Err(AppError::Unauthorized("Token has been revoked".to_string()));
         }
     }
 

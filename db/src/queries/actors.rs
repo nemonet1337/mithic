@@ -126,11 +126,7 @@ pub async fn update_actor_token(
     Ok(())
 }
 
-pub async fn enable_totp(
-    client: &SurrealClient,
-    id: &ActorId,
-    secret: &str,
-) -> anyhow::Result<()> {
+pub async fn enable_totp(client: &SurrealClient, id: &ActorId, secret: &str) -> anyhow::Result<()> {
     let id_str = id.to_string();
     client
         .query("UPDATE user SET totp_secret = $secret, totp_verified = true WHERE id = type::record('user', $id);")

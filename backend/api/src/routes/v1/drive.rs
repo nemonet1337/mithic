@@ -91,9 +91,7 @@ fn make_thumbnail_webp(data: &[u8]) -> Option<(Vec<u8>, i32, i32)> {
     let (w, h) = (img.width() as i32, img.height() as i32);
     let thumb = img.thumbnail(400, 400);
     let mut buf = Cursor::new(Vec::new());
-    thumb
-        .write_to(&mut buf, image::ImageFormat::WebP)
-        .ok()?;
+    thumb.write_to(&mut buf, image::ImageFormat::WebP).ok()?;
     Some((buf.into_inner(), w, h))
 }
 
@@ -394,10 +392,7 @@ pub async fn serve_upload(
         .header(header::CONTENT_TYPE, mime)
         .header(header::CONTENT_DISPOSITION, disposition)
         .header(header::X_CONTENT_TYPE_OPTIONS, "nosniff")
-        .header(
-            header::CACHE_CONTROL,
-            "public, max-age=31536000, immutable",
-        )
+        .header(header::CACHE_CONTROL, "public, max-age=31536000, immutable")
         .body(body)
         .map_err(|e| AppError::Internal(e.to_string()))?;
 

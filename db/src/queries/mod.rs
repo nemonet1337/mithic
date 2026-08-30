@@ -14,8 +14,8 @@ pub mod timeline;
 
 pub use activity::{create_activity, get_activity_by_uri};
 pub use actors::{
-    create_actor, get_actor_by_id, get_actor_by_username, get_actor_by_username_or_email,
-    update_actor_token, enable_totp,
+    create_actor, enable_totp, get_actor_by_id, get_actor_by_username,
+    get_actor_by_username_or_email, update_actor_token,
 };
 pub use drive::{
     create_drive_file, delete_drive_file, get_drive_file, get_drive_file_by_hash,
@@ -23,8 +23,8 @@ pub use drive::{
 };
 pub use favorites::{add_favorite, is_favorited, remove_favorite};
 pub use follows::{
-    block_user, count_followers, follow_user, get_followers, get_following, is_blocking, is_following, is_muting,
-    mute_user, unblock_user, unfollow_user, unmute_user,
+    block_user, count_followers, follow_user, get_followers, get_following, is_blocking,
+    is_following, is_muting, mute_user, unblock_user, unfollow_user, unmute_user,
 };
 pub use hashtags::{get_notes_by_tag, get_trending_tags};
 pub use notes::{create_note, delete_note, get_note_by_id, get_note_by_uri};

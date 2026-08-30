@@ -38,8 +38,7 @@ impl Mention {
 }
 
 static MENTION_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"@([a-zA-Z0-9_]+(?:\.[a-zA-Z0-9_]+)*)(?:@([a-zA-Z0-9.-]+\.[a-zA-Z]{2,}))?")
-        .unwrap()
+    Regex::new(r"@([a-zA-Z0-9_]+(?:\.[a-zA-Z0-9_]+)*)(?:@([a-zA-Z0-9.-]+\.[a-zA-Z]{2,}))?").unwrap()
 });
 
 pub fn extract_mentions(text: &str) -> Vec<Mention> {

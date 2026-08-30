@@ -14,8 +14,8 @@ use serde::Deserialize;
 use shared::StreamEvent;
 use tracing::{debug, warn};
 
-use mithic_core::models::actor::ActorId;
 use mithic_core::AppError;
+use mithic_core::models::actor::ActorId;
 
 use crate::events::StreamBroadcast;
 use crate::middleware::resolve_bearer;

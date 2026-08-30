@@ -20,7 +20,7 @@ use shared::{ProfileField, User, UserRelation};
 
 use crate::dto::actor_to_user;
 use crate::routes::v1::common::{
-    normalize_handle, ok_null, parse_actor_id, parse_optional_note_id, rows_to_dtos, PagingQuery,
+    PagingQuery, normalize_handle, ok_null, parse_actor_id, parse_optional_note_id, rows_to_dtos,
 };
 use crate::services::note::publish_notification;
 use crate::services::relationship::{block, follow, mute, unblock, unfollow, unmute};
@@ -191,9 +191,7 @@ pub async fn change_password(
     let new_hash = hash_password(&request.new_password)?;
     state
         .surreal()
-        .query(
-            "UPDATE user SET password_hash = $hash WHERE id = type::record('user', $user_id);",
-        )
+        .query("UPDATE user SET password_hash = $hash WHERE id = type::record('user', $user_id);")
         .bind(("user_id", auth.user_id.to_string()))
         .bind(("hash", new_hash))
         .await
@@ -296,7 +294,11 @@ async fn check_muting_cached(
     is_muting(state.surreal(), muter_id, muted_id).await
 }
 
-async fn build_relation(state: &AppState, my_id: ActorId, target_id: ActorId) -> Result<UserRelation> {
+async fn build_relation(
+    state: &AppState,
+    my_id: ActorId,
+    target_id: ActorId,
+) -> Result<UserRelation> {
     let is_following_val = is_following(state.surreal(), &my_id, &target_id)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
@@ -329,9 +331,7 @@ pub async fn relation(
     Path(id): Path<String>,
 ) -> Result<Json<UserRelation>> {
     let target_id = parse_actor_id(&id)?;
-    Ok(Json(
-        build_relation(&state, auth.user_id, target_id).await?,
-    ))
+    Ok(Json(build_relation(&state, auth.user_id, target_id).await?))
 }
 
 pub async fn following(
@@ -385,7 +385,9 @@ pub async fn follow_user(
         .ok()
         .flatten()
         .and_then(|a| a.followed_message);
-    Ok(Json(serde_json::json!({ "followedMessage": followed_message })))
+    Ok(Json(
+        serde_json::json!({ "followedMessage": followed_message }),
+    ))
 }
 
 pub async fn unfollow_user(
@@ -416,9 +418,7 @@ pub async fn block_user(
         cache::BLOCK_MUTE_SET_TTL,
     )
     .await;
-    Ok(Json(
-        build_relation(&state, auth.user_id, target_id).await?,
-    ))
+    Ok(Json(build_relation(&state, auth.user_id, target_id).await?))
 }
 
 pub async fn unblock_user(
@@ -436,9 +436,7 @@ pub async fn unblock_user(
         &target_id.to_string(),
     )
     .await;
-    Ok(Json(
-        build_relation(&state, auth.user_id, target_id).await?,
-    ))
+    Ok(Json(build_relation(&state, auth.user_id, target_id).await?))
 }
 
 pub async fn mute_user(
@@ -457,9 +455,7 @@ pub async fn mute_user(
         cache::BLOCK_MUTE_SET_TTL,
     )
     .await;
-    Ok(Json(
-        build_relation(&state, auth.user_id, target_id).await?,
-    ))
+    Ok(Json(build_relation(&state, auth.user_id, target_id).await?))
 }
 
 pub async fn unmute_user(
@@ -477,9 +473,7 @@ pub async fn unmute_user(
         &target_id.to_string(),
     )
     .await;
-    Ok(Json(
-        build_relation(&state, auth.user_id, target_id).await?,
-    ))
+    Ok(Json(build_relation(&state, auth.user_id, target_id).await?))
 }
 
 #[derive(Debug, Deserialize)]
@@ -711,9 +705,7 @@ pub async fn accept_follow_request(
     );
     publish_notification(&state, &notif, None, None).await;
 
-    Ok(Json(
-        build_relation(&state, auth.user_id, target_id).await?,
-    ))
+    Ok(Json(build_relation(&state, auth.user_id, target_id).await?))
 }
 
 pub async fn reject_follow_request(
