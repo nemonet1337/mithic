@@ -16,7 +16,7 @@ resolver = "2"
 edition = "2024"
 authors = ["Nemo"]
 license = "AGPL-3.0"
-rust-version = "1.85.0"
+rust-version = "1.88.0"
 
 [workspace.dependencies]
 # Serialization
@@ -62,7 +62,7 @@ dotenvy = "0.15"
 secrecy = "0.10"
 
 # Auth
-jsonwebtoken = "10"
+jsonwebtoken = { version = "11", features = ["rust_crypto"] }
 argon2 = "0.5"
 rand = "0.10"
 totp-rs = { version = "6", features = ["gen_secret", "otpauth"] }
