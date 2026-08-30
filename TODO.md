@@ -1,6 +1,6 @@
 # Mithic TODO
 
-最終更新: 2026-08-30（DTO enrich バッチ / i18n 7キー / YAGNI 掃除）
+最終更新: 2026-08-30（クレート 9→3: backend / shared / frontend）
 
 凡例:
 
@@ -24,6 +24,7 @@
 - [x] HTTP Signature **sign/verify 共通化** (`mithic_federation::http_sig`)
 - [x] プロセス内ストリーム (`events` broadcast) + `/api/v1/streaming`
 - [x] YAGNI 掃除: 未配線 middleware、Misskey 風 stream クレート、推測モデル群、未使用 deps
+- [x] クレート統合: backend 7 + db → `mithic-server` 1 クレート。`shared` は DTO + markdown のみ。`common/` は作らない
 - [x] TL DTO enrich の N+1 解消（添付/リノート/閲覧者リアクションをバッチ）
 - [x] バックエンド i18n FTL を実際に使う error キーのみに縮小
 - [x] DB: 未使用テーブル削除 (`word_mute` / `chart` / `meta` / `hashtag`)、重複インデックス削減
@@ -164,6 +165,7 @@ VAPID_CONTACT=mailto:admin@example.com
 
 ```bash
 # ローカル確認の目安
-cargo check -p mithic-api -p mithic-server
-cargo test -p mithic-federation --lib
+cargo check -p mithic-server
+cargo test -p mithic-server --lib
+cargo check -p frontend --target wasm32-unknown-unknown
 ```

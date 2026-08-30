@@ -4,8 +4,8 @@ use leptos_icons::Icon;
 use leptos_router::components::A;
 
 use super::avatar::{Avatar, AvatarSize};
-use crate::models::User;
 use crate::store::{AuthStore, ComposeStore, NotificationStore};
+use shared::User;
 
 fn profile_path(me: Option<&User>) -> String {
     me.map(|u| format!("/profile/{}", u.username))

@@ -1,8 +1,7 @@
 use serde::Serialize;
 
 use super::client::{ApiError, request};
-use crate::models::User;
-pub use shared::{LoginRequest, TokenPair};
+pub use shared::{LoginRequest, TokenPair, User};
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

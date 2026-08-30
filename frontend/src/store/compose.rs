@@ -1,7 +1,7 @@
 use gloo_storage::{LocalStorage, Storage};
 use leptos::prelude::*;
 
-use crate::models::NoteVisibility;
+use shared::NoteVisibility;
 
 const DRAFT_KEY: &str = "mithic.compose.draft";
 

@@ -2,8 +2,8 @@ use leptos::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{File, HtmlInputElement};
 
-use crate::models::{CreateNoteRequest, NoteVisibility};
 use crate::store::{AuthStore, ComposeStore};
+use shared::{CreateNoteRequest, NoteVisibility};
 
 const MAX_FILES: usize = 4;
 const MAX_FILE_BYTES: f64 = 32.0 * 1024.0 * 1024.0;

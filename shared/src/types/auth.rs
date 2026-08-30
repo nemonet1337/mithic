@@ -10,33 +10,7 @@ pub struct SignupRequest {
     pub email: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SigninRequest {
-    pub username: String,
-    pub password: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SigninResponse {
-    pub token: String,
-    pub user: User,
-    #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub requires_2fa: Option<bool>,
-    #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub temp_token: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MeResponse {
-    pub user: User,
-}
-
-/// `/api/v1/auth/login` リクエスト (フロントエンド互換)
+/// `/api/v1/auth/login` リクエスト
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LoginRequest {

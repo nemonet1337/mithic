@@ -8,9 +8,9 @@ use crate::components::{
     Avatar, AvatarSize, FollowButton, LoadMore, MarkdownText, PostCard, Shell, ToastKind,
     ToastStore, TopBar,
 };
-use crate::models::{Note, NotificationType};
 use crate::store::{AuthStore, NotificationStore, StreamStore};
 use crate::time::clock_hm;
+use shared::{Note, Notification, NotificationType, User};
 
 mod settings;
 pub use settings::SettingsPage;
@@ -281,7 +281,7 @@ pub fn NotificationsPage() -> impl IntoView {
     let notification_store = expect_context::<NotificationStore>();
     let auth = expect_context::<AuthStore>();
     let token = auth.token;
-    let notifications = RwSignal::<Vec<crate::models::Notification>>::new(vec![]);
+    let notifications = RwSignal::<Vec<Notification>>::new(vec![]);
     let filter = RwSignal::new("all");
 
     // 実 API から通知一覧を取得
@@ -414,7 +414,7 @@ pub fn SearchPage() -> impl IntoView {
 
     let search_input = RwSignal::new(query.read().get("q").unwrap_or_default());
     let notes = RwSignal::<Vec<Note>>::new(Vec::new());
-    let users = RwSignal::<Vec<crate::models::User>>::new(Vec::new());
+    let users = RwSignal::<Vec<User>>::new(Vec::new());
     let trend_tags = RwSignal::<Vec<shared::Hashtag>>::new(Vec::new());
     let loading = RwSignal::new(false);
     let searched = RwSignal::new(false);
@@ -637,7 +637,7 @@ pub fn ProfilePage() -> impl IntoView {
             .get("username")
             .unwrap_or_else(|| "hana".into())
     };
-    let user = RwSignal::<Option<crate::models::User>>::new(None);
+    let user = RwSignal::<Option<User>>::new(None);
     let notes = RwSignal::<Vec<Note>>::new(vec![]);
     let is_following = RwSignal::new(false);
     let follow_busy = RwSignal::new(false);

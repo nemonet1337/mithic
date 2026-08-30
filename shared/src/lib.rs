@@ -3,7 +3,7 @@ pub mod types;
 
 pub use types::relay::{Relay, RelayStatus};
 pub use types::{
-    CreateNoteRequest, Hashtag, LoginRequest, MeResponse, MediaAttachment, Note, NoteVisibility,
-    Notification, NotificationType, ProfileField, ReactionRequest, ReactionSummary, RefreshRequest,
-    SigninRequest, SigninResponse, SignupRequest, StreamEvent, TokenPair, User, UserRelation,
+    CreateNoteRequest, Hashtag, LoginRequest, MediaAttachment, Note, NoteVisibility, Notification,
+    NotificationType, ProfileField, ReactionSummary, RefreshRequest, SignupRequest, StreamEvent,
+    TokenPair, UpdateProfileRequest, User, UserRelation,
 };

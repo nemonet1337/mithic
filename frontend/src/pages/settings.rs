@@ -7,9 +7,8 @@ use web_sys::HtmlInputElement;
 
 use crate::api::users::UpdateProfileRequest;
 use crate::components::{Avatar, AvatarSize, Shell, ToastKind, ToastStore};
-use crate::models::User;
 use crate::store::AuthStore;
-use shared::ProfileField;
+use shared::{ProfileField, User};
 
 #[component]
 pub fn SettingsPage() -> impl IntoView {

@@ -91,13 +91,7 @@ OGP 用に `/notes/{id}` と `/profile/{username}` をボット向けに返す�
 
 | クレート | 役割 |
 |---|---|
-| `backend/server` (`mithic-server`) | エントリ。HTTP + 配送ワーカー起動 |
-| `backend/api` | ルート、ミドルウェア、ノート / ユーザー / 関係 / Push のサービス |
-| `backend/federation` | キュー配送、HTTP Signature の sign / verify |
-| `backend/core` | エンティティ、JWT / Argon2 / TOTP、抽出ユーティリティ |
-| `backend/config` | 環境変数 |
-| `backend/i18n` | fluent ロケール（ja / en） |
-| `db` | SurrealDB / Dragonfly クライアントとクエリ |
+| `backend` (`mithic-server`) | HTTP + 連合配送。モデル、クエリ、ルート、フェデレーションを同一クレートのモジュールとして持つ |
 | `shared` | フロント↔バックの DTO と Markdown レンダラ（wasm 対応） |
 | `frontend` | Leptos UI。Trunk で WASM ビルド |
 
@@ -121,14 +115,9 @@ MSRV はワークスペースで 1.85。Docker イメージは新しい stable R
 
 ```text
 mithic/
-├── backend/
-│   ├── api/           REST / ActivityPub / OGP / サービス
-│   ├── config/        環境変数
-│   ├── core/          モデル・認証・抽出
-│   ├── federation/    配送 + HTTP Signature
-│   ├── i18n/          fluent
-│   └── server/        mithic-server
-├── db/                SurrealDB / Dragonfly / ストレージ
+├── backend/           mithic-server（lib + bin）
+│   ├── locales/       fluent (ja / en)
+│   └── src/           ルート / モデル / db / federation / サービス
 ├── shared/            共有 DTO + Markdown
 ├── frontend/          Leptos CSR (Trunk)
 ├── scripts/           開発用（Windows localhost 中継など）

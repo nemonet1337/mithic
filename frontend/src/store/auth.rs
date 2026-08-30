@@ -1,7 +1,7 @@
 use gloo_storage::{LocalStorage, Storage};
 use leptos::prelude::*;
 
-use crate::models::User;
+use shared::User;
 
 const TOKEN_KEY: &str = "mithic.auth.token";
 

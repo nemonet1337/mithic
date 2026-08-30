@@ -67,10 +67,3 @@ pub struct CreateNoteRequest {
     pub poll_choices: Vec<String>,
     pub scheduled_at: Option<String>,
 }
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ReactionRequest {
-    pub note_id: String,
-    pub reaction: String,
-}

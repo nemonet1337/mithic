@@ -10,7 +10,7 @@
 - **キャッシュ/キュー**: Dragonfly (Redis互換)
 - **非同期ランタイム**: Tokio 1.0
 - **認証**: JWT (`jsonwebtoken`) + Argon2 (パスワードハッシュ)
-- **ActivityPub**: HTTP Signatures (`mithic_federation::http_sig` — RSA-SHA256 sign/verify 共通)
+- **ActivityPub**: HTTP Signatures (`mithic_server::federation::http_sig` — RSA-SHA256 sign/verify 共通)
 - **WebSocket**: Axum WebSocket
 - **国際化**: fluent + unic-langid
 - **Markdownパーサ**: comrak
@@ -48,7 +48,6 @@ mithic/
 │   ├── src/
 │   │   ├── api/
 │   │   ├── components/
-│   │   ├── models/
 │   │   ├── pages/
 │   │   ├── store/
 │   │   ├── app.rs
@@ -59,20 +58,18 @@ mithic/
 │   ├── Trunk.toml
 │   └── Cargo.toml
 │
-├── backend/                 # HTTP + ロジック + フェデレーション
-│   ├── config/              # 環境変数設定
-│   ├── i18n/                # fluent ロケール
-│   ├── core/                # モデル + エラー型
-│   ├── federation/          # ActivityPub 配送
-│   ├── api/                 # ルート / middleware / services
-│   │   └── src/routes/
-│   │       ├── activitypub.rs
-│   │       ├── ogp.rs
-│   │       └── v1/          # mithic ネイティブ REST (`/api/v1/*`)
-│   └── server/              # bin: mithic-server (HTTP + 連合配送)
+├── backend/                 # crate: mithic-server (lib + bin)
+│   ├── locales/             # fluent (ja / en)
+│   └── src/
+│       ├── main.rs          # HTTP + 連合配送ワーカー起動
+│       ├── models/          # DB エンティティ
+│       ├── db/              # SurrealDB / Dragonfly / クエリ
+│       ├── federation/      # 配送 + HTTP Signature
+│       ├── routes/          # REST / ActivityPub / OGP
+│       ├── services/
+│       └── middleware/
 │
-├── db/                      # SurrealDB / Dragonfly / storage
-├── shared/                  # front↔back 型契約 (wasm 対応)
+├── shared/                  # front↔back DTO + Markdown (wasm 対応)
 │
 ├── docs/
 ├── infra/
@@ -81,41 +78,44 @@ mithic/
 
 ## 3. 各クレートの実装内容と現状
 
-### `backend/core/src/models/` — エンティティ定義 (実装済み)
+ワークスペースは 3 クレート: `backend` (`mithic-server`) / `shared` / `frontend`。
 
-使用中のみ: actor, note, notification, file (DriveFile/DriveFolder), relay, activity
+### `backend/src/models/` — エンティティ定義 (実装済み)
 
-### `backend/core/src/services/` — サービス層
+使用中のみ: actor, note, notification, file (DriveFile), relay, activity。
+`NoteVisibility` / `NotificationType` / `RelayStatus` / `ProfileField` の正本は `shared`。
 
-auth.rs のみ（JWT / Argon2 / TOTP）。
+### `backend/src/auth.rs`
 
-### `backend/core/src/misc/` — ユーティリティ (実装済み)
+JWT / Argon2 / TOTP + `AuthUser`。
 
-extract_emojis, extract_hashtags, extract_mentions の3モジュール実装済み。
+### `backend/src/extract/` — ユーティリティ (実装済み)
 
-### `backend/api/src/routes/` — APIルート
+extract_hashtags, extract_mentions。
+
+### `backend/src/routes/` — APIルート
 
 mithic ネイティブ REST (`routes/v1/`: auth, users, notes, timelines, notifications, drive, push, streaming, instance, admin) と ActivityPub / OGP。Misskey / Mastodon クライアント互換 API は持たない。
 
-### `backend/api/src/middleware/` — ミドルウェア (実装済み)
+### `backend/src/middleware/` — ミドルウェア (実装済み)
 
 auth, cors, rate_limit, http_signature の4モジュール実装済み。
 
-### `backend/api/src/services/` — APIサービス層 (一部実装)
+### `backend/src/services/` — APIサービス層
 
-note.rs, user.rs, relationship.rs の3モジュール実装済み。
+note.rs, user.rs, push.rs。関係操作は `db/queries/follows.rs` をルートから直接呼ぶ。
 
-### `db/src/` — データベース層 (実装済み)
+### `backend/src/db/` — データベース層 (実装済み)
 
-SurrealDB / Dragonfly クライアントラッパー実装済み。クエリモジュール (actors, drive, favorites, follows, hashtags, notes, notifications, polls, timeline) あり。
+SurrealDB / Dragonfly クライアントラッパー。クエリモジュール (actors, drive, favorites, follows, hashtags, notes, notifications, polls, timeline 等)。
 
-### `federation/src/` — ActivityPub 配送
+### `backend/src/federation/` — ActivityPub 配送
 
 `FederationService` (キュー配送・signed POST) + `http_sig` (署名/検証の単一実装)。
 
 ### WebSocket ストリーミング
 
-`api/events.rs` の process-local broadcast + `/api/v1/streaming` が `shared::StreamEvent` を push。Misskey 風チャンネル抽象は撤去済み。
+`events.rs` の process-local broadcast + `/api/v1/streaming` が `shared::StreamEvent` を push。Misskey 風チャンネル抽象は撤去済み。
 
 ### `frontend/src/pages/` — フロントエンド画面 (UI実装済み)
 
@@ -127,32 +127,24 @@ Shell, TopBar, Sidebar, BottomNav, RightRail, Avatar, PostCard, PostBody, PostAc
 
 ### `frontend/src/api/` — APIクライアント (一部実装)
 
-auth.rs, client.rs, notes.rs, users.rs, notifications.rs, dm.rs の6モジュール実装済み。
+auth.rs, client.rs, notes.rs, users.rs, notifications.rs, drive.rs, push.rs。
 
 ### `frontend/src/store/` — 状態管理 (実装済み)
 
 auth.rs, compose.rs, notifications.rs, stream.rs, mod.rs で状態管理実装済み。
 
-### `frontend/src/models/` — フロントエンドモデル (実装済み)
-
-Note, User, Notification 等のモデル定義済み。
-
-### `shared/src/types/` — 共有DTO (実装済み)
-
-auth.rs, hashtag.rs, note.rs, notification.rs, stream.rs, user.rs の型定義。
-
 ### `shared/src/` — 共有コード (実装済み)
 
-shared/src/types/ に DTO 定義 (auth, hashtag, note, notification, relay, stream, user)。shared/src/markdown.rs で comrak Markdown レンダラ実装。
+`types/` に DTO（auth, hashtag, note, notification, relay, stream, user）。`markdown.rs` で comrak Markdown レンダラ。フロントは `shared` を直接 `use` する。
 
-### `backend/server` — エントリポイント
+### `backend` — エントリポイント
 
 `mithic-server`: HTTP (Axum) と連合配送ワーカー (apalis) を同一プロセスで起動。
 
 ## 4. ActivityPub / フロント API
 
 - **ActivityPub**: WebFinger / Actor / inbox (HTTP 署名必須) / outbox 等。配送は backend 内ワーカー + 指数バックオフ
-- **フロント API**: `/api/v1/*` (`routes/v1/`) は **mithic ネイティブ REST** (WebUI/PWA 専用)。Misskey / Mastodon クライアント互換は持たない
+- **フロント API**: `/api/v1/*` (`backend/src/routes/v1/`) は **mithic ネイティブ REST** (WebUI/PWA 専用)。Misskey / Mastodon クライアント互換は持たない
 - **連合**: 外部接続は ActivityPub のみ (Misskey 拡張: `_misskey_reaction` / `quoteUrl` 等)
 - **Markdown**: comrak (AP `content` は HTML、`source` に原文)
 - **機能セット**: リアクション、リノート、アンケート、ファイル添付、ドライブ

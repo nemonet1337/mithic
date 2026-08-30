@@ -6,14 +6,9 @@ pub mod relay;
 mod stream;
 mod user;
 
-pub use auth::{
-    LoginRequest, MeResponse, RefreshRequest, SigninRequest, SigninResponse, SignupRequest,
-    TokenPair,
-};
+pub use auth::{LoginRequest, RefreshRequest, SignupRequest, TokenPair};
 pub use hashtag::Hashtag;
-pub use note::{
-    CreateNoteRequest, MediaAttachment, Note, NoteVisibility, ReactionRequest, ReactionSummary,
-};
+pub use note::{CreateNoteRequest, MediaAttachment, Note, NoteVisibility, ReactionSummary};
 pub use notification::{Notification, NotificationType};
 pub use stream::StreamEvent;
-pub use user::{ProfileField, User, UserRelation};
+pub use user::{ProfileField, UpdateProfileRequest, User, UserRelation};

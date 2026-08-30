@@ -1,12 +1,6 @@
 [workspace]
 members = [
-    "backend/config",
-    "backend/i18n",
-    "backend/core",
-    "backend/federation",
-    "backend/api",
-    "backend/server",
-    "db",
+    "backend",
     "shared",
     "frontend",
 ]
@@ -94,13 +88,7 @@ apalis-redis = { version = "0.7" }
 mimalloc = "0.1"
 
 # Internal crates
-mithic-config     = { path = "backend/config" }
-mithic-i18n       = { path = "backend/i18n" }
-mithic-db         = { path = "db" }
-mithic-core       = { path = "backend/core" }
-mithic-federation = { path = "backend/federation" }
-mithic-api        = { path = "backend/api" }
-shared            = { path = "shared" }
+shared = { path = "shared" }
 
 # リリースビルド最適化
 [profile.release]

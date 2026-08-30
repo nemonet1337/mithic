@@ -1,5 +1,5 @@
 use super::client::{ApiError, request};
-use crate::models::Notification;
+use shared::Notification;
 
 pub async fn fetch_notifications(
     token: &str,

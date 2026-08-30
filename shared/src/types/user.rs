@@ -42,33 +42,25 @@ pub struct User {
     pub created_at: Option<String>,
 }
 
-impl User {
-    pub fn local(username: impl Into<String>, display_name: impl Into<String>) -> Self {
-        let username = username.into();
-        Self {
-            id: username.clone(),
-            username,
-            host: None,
-            display_name: Some(display_name.into()),
-            bio: None,
-            avatar_url: None,
-            banner_url: None,
-            followers_count: 0,
-            following_count: 0,
-            notes_count: 0,
-            is_locked: false,
-            is_bot: false,
-            is_cat: false,
-            location: None,
-            birthday: None,
-            lang: None,
-            fields: Vec::new(),
-            followed_message: None,
-            reaction_acceptance: None,
-            created_at: None,
-        }
-    }
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateProfileRequest {
+    pub display_name: Option<String>,
+    pub bio: Option<String>,
+    pub is_locked: Option<bool>,
+    pub is_bot: Option<bool>,
+    pub is_cat: Option<bool>,
+    pub avatar_url: Option<String>,
+    pub banner_url: Option<String>,
+    pub location: Option<String>,
+    pub birthday: Option<String>,
+    pub lang: Option<String>,
+    pub fields: Option<Vec<ProfileField>>,
+    pub followed_message: Option<String>,
+    pub reaction_acceptance: Option<String>,
+}
 
+impl User {
     pub fn name(&self) -> String {
         self.display_name
             .clone()

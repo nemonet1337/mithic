@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 use super::client::{ApiError, request, urlencoding_loose};
-use crate::models::{Note, User};
+pub use shared::UpdateProfileRequest;
+use shared::{Note, User};
 
 #[derive(Debug, Deserialize)]
 pub struct HandleAvailability {
@@ -102,24 +103,6 @@ pub async fn unfollow(token: &str, user_id: &str) -> Result<(), ApiError> {
     )
     .await
     .map(|_| ())
-}
-
-#[derive(Debug, Serialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct UpdateProfileRequest {
-    pub display_name: Option<String>,
-    pub bio: Option<String>,
-    pub is_locked: Option<bool>,
-    pub is_bot: Option<bool>,
-    pub is_cat: Option<bool>,
-    pub avatar_url: Option<String>,
-    pub banner_url: Option<String>,
-    pub location: Option<String>,
-    pub birthday: Option<String>,
-    pub lang: Option<String>,
-    pub fields: Option<Vec<shared::ProfileField>>,
-    pub followed_message: Option<String>,
-    pub reaction_acceptance: Option<String>,
 }
 
 pub async fn update_me(token: &str, body: &UpdateProfileRequest) -> Result<User, ApiError> {

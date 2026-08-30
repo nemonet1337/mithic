@@ -1,6 +1,6 @@
 use super::client::{ApiError, request, urlencoding_loose};
-use crate::models::{CreateNoteRequest, Note};
 use serde::Serialize;
+use shared::{CreateNoteRequest, Note};
 
 pub async fn fetch_timeline(
     token: &str,

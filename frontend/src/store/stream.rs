@@ -2,10 +2,10 @@ use std::collections::HashSet;
 
 use leptos::prelude::*;
 
-use crate::models::Note;
-#[cfg(target_arch = "wasm32")]
-use crate::models::NoteVisibility;
 use crate::store::NotificationStore;
+use shared::Note;
+#[cfg(target_arch = "wasm32")]
+use shared::NoteVisibility;
 #[cfg(target_arch = "wasm32")]
 use shared::StreamEvent;
 

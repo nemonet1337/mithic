@@ -9,10 +9,10 @@ use super::markdown::MarkdownText;
 use super::note_menu::{NoteMenu, NoteMenuAction};
 use super::reaction_picker::ReactionPicker;
 use super::toast::{ToastKind, ToastStore};
-use crate::models::{Note, NoteVisibility};
 use crate::store::{AuthStore, ComposeStore, StreamStore};
 use crate::time::{date_label, relative_label};
 use shared::MediaAttachment;
+use shared::{Note, NoteVisibility};
 
 #[component]
 pub fn PostCard(note: Note, #[prop(default = false)] flat: bool) -> impl IntoView {
