@@ -124,6 +124,9 @@
 - [ ] 本番向け監視・バックアップ手順ドキュメント
 - [x] MSRV / toolchain 文書の実態合わせ（`rust-version` 1.88。jsonwebtoken 11 が要求）
 - [ ] 水平スケール時のストリーム: 現状 process-local broadcast のみ（複数 `mithic-server` では WS が共有されない）
+- [x] Docker: `mithic-server` のコンパイル落ち修正。BuildKit cache を backend/frontend で分離、mold + cargo-chef バイナリ、コンテナ内 LTO オフで再ビルド短縮
+- [x] SurrealDB 3: `user.fields` を `array<object> FLEXIBLE` に修正（`array FLEXIBLE` はパースエラー）
+- [x] Caddy: `:3000` を `http://` + `bind 0.0.0.0` で IPv4 HTTP として listen。`/uploads/*` をバックエンドへ。hashed 以外の JS（`sw.js`）を immutable にしない。静的アセット欠落は SPA フォールバックしない
 
 ---
 

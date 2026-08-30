@@ -4,12 +4,18 @@
 # IMPORTANT: try_files is evaluated before reverse_proxy by default.
 # Put API / ActivityPub / WebSocket behind `handle` so they are not
 # rewritten to index.html.
-
+#
+# Listen as HTTP on IPv4. `:3000` without an `http://` prefix is treated as
+# HTTPS-capable and Podman/netavark DNAT to the container is IPv4-only, so
+# `localhost:3000` from the host/VM would fail or speak the wrong protocol.
 {
 	admin off
+	auto_https off
 }
 
-:80, :3000 {
+http://:80, http://:3000 {
+	bind tcp4/0.0.0.0
+
 	log {
 		output stdout
 	}
@@ -26,12 +32,15 @@
 		reverse_proxy backend:3000
 	}
 
-	# REST API - must match before SPA fallback
+	# REST API + drive blobs — must match before SPA fallback
 	handle /api/* {
 		reverse_proxy backend:3000
 	}
+	handle /uploads/* {
+		reverse_proxy backend:3000
+	}
 
-	# WebSocket
+	# WebSocket (paths not already covered by /api/*)
 	@ws {
 		header Connection *Upgrade*
 		header Upgrade websocket
@@ -48,18 +57,26 @@
 		reverse_proxy backend:3000
 	}
 
+	# Hashed / binary assets: 404 if missing (do not SPA-fallback to index.html)
+	@static {
+		path *.css *.js *.wasm *.map *.png *.jpg *.jpeg *.webp *.svg *.ico *.woff2 *.webmanifest
+	}
+	handle @static {
+		@hashed {
+			path *.wasm /frontend-*.js /main-*.css
+		}
+		header @hashed Cache-Control "public, max-age=31536000, immutable"
+
+		@sw {
+			path /sw.js
+		}
+		header @sw Cache-Control "no-cache"
+
+		file_server
+	}
+
 	# Static SPA (last)
 	handle {
-		@immutable_assets {
-			path *.wasm *.js
-		}
-		header @immutable_assets Cache-Control "public, max-age=31536000, immutable"
-
-		@cached_assets {
-			path *.css *.svg *.ico *.png *.jpg *.webp *.woff2
-		}
-		header @cached_assets Cache-Control "public, max-age=604800, no-transform"
-
 		try_files {path} {path}/ /index.html
 
 		@index {

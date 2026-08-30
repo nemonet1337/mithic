@@ -1,10 +1,24 @@
 # =============================================================================
-# Stage 1: cargo-chef installer (shared base for dep caching)
+# Stage 1: cargo-chef + mold (shared base)
 # =============================================================================
 FROM rust:1.98-bookworm AS chef
-RUN apt-get update && apt-get install -y clang mold && rm -rf /var/lib/apt/lists/*
-RUN cargo install cargo-chef --locked
-ENV CARGO_BUILD_JOBS=4
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    clang \
+    mold \
+    pkg-config \
+    libssl-dev \
+    ca-certificates \
+    curl \
+    xz-utils \
+    && rm -rf /var/lib/apt/lists/*
+# ソースから cargo install すると数分かかるので公式バイナリを使う
+RUN curl --proto '=https' --tlsv1.2 -LsSf \
+    https://github.com/LukeMathWalker/cargo-chef/releases/download/v0.1.78/cargo-chef-installer.sh | sh
+ENV CARGO_INCREMENTAL=0
+ENV CARGO_TERM_COLOR=never
+ENV CARGO_TARGET_DIR=/app/target
+# コンテナ再ビルドでは thin LTO のコストが大きい。opt-level=3 + strip は残す
+ENV CARGO_PROFILE_RELEASE_LTO=false
 WORKDIR /app
 
 # =============================================================================
@@ -18,13 +32,11 @@ RUN cargo chef prepare --recipe-path recipe.json
 # Stage 3: Pre-compile backend dependencies (cached Docker layer)
 # =============================================================================
 FROM chef AS backend-deps
-RUN apt-get update && apt-get install -y \
-    pkg-config \
-    libssl-dev \
-    && rm -rf /var/lib/apt/lists/*
+COPY --from=planner /app/.cargo .cargo
 COPY --from=planner /app/recipe.json recipe.json
-RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
-    --mount=type=cache,target=/app/target,sharing=locked \
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=shared \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=shared \
+    --mount=type=cache,target=/app/target,sharing=shared \
     cargo chef cook --release \
     --package mithic-server \
     --recipe-path recipe.json
@@ -34,47 +46,49 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
 # =============================================================================
 FROM backend-deps AS backend-builder
 COPY . .
-RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
-    --mount=type=cache,target=/app/target,sharing=locked \
-    cargo build --release \
-    --package mithic-server && \
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=shared \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=shared \
+    --mount=type=cache,target=/app/target,sharing=shared \
+    cargo build --release --package mithic-server && \
     cp /app/target/release/mithic-server /app/mithic-server
 
 # =============================================================================
-# Stage 5: Build frontend WASM with Trunk
-# Tailwind CSS v4 is built by Trunk's standalone CLI (no Node.js / package.json)
+# Stage 5: Pre-compile frontend WASM dependencies
 # =============================================================================
-FROM rust:1.98-bookworm AS frontend-builder
-RUN apt-get update && apt-get install -y \
-    pkg-config \
-    libssl-dev \
-    curl \
-    clang \
-    mold \
-    && rm -rf /var/lib/apt/lists/*
-
+FROM chef AS frontend-deps
 RUN rustup target add wasm32-unknown-unknown
-
-# Install Trunk binary (much faster than cargo install)
 RUN curl -sSLf \
     https://github.com/trunk-rs/trunk/releases/latest/download/trunk-x86_64-unknown-linux-gnu.tar.gz \
     | tar -xzf - -C /usr/local/bin
+COPY --from=planner /app/.cargo .cargo
+COPY --from=planner /app/recipe.json recipe.json
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=shared \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=shared \
+    --mount=type=cache,id=frontend-target,target=/app/target,sharing=shared \
+    cargo chef cook --release \
+    --package frontend \
+    --target wasm32-unknown-unknown \
+    --recipe-path recipe.json
 
-WORKDIR /app
+# =============================================================================
+# Stage 6: Build frontend WASM with Trunk
+# Tailwind CSS v4 is built by Trunk's standalone CLI (no Node.js / package.json)
+# =============================================================================
+FROM frontend-deps AS frontend-builder
 COPY . .
 WORKDIR /app/frontend
-
-# trunk build downloads wasm-bindgen, wasm-opt, and Tailwind CLI at build time
-RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
-    --mount=type=cache,target=/app/target,sharing=locked \
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=shared \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=shared \
+    --mount=type=cache,id=frontend-target,target=/app/target,sharing=shared \
+    --mount=type=cache,id=trunk-cache,target=/root/.cache/trunk,sharing=shared \
     trunk build --release
 
 # =============================================================================
-# Stage 6: Backend runtime image (API + delivery worker in one process)
+# Stage 7: Backend runtime image (API + delivery worker in one process)
 # =============================================================================
 FROM debian:bookworm-slim AS backend
 # curl はコンテナの healthcheck に必要
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     libssl3 \
     curl \
@@ -86,7 +100,7 @@ EXPOSE 3000
 ENTRYPOINT ["mithic-server"]
 
 # =============================================================================
-# Stage 7: Frontend — caddy serving WASM dist
+# Stage 8: Frontend — caddy serving WASM dist
 # =============================================================================
 FROM caddy:alpine AS frontend
 COPY --from=frontend-builder /app/frontend/dist /usr/share/caddy

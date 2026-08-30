@@ -112,7 +112,7 @@ pub async fn update_me(
         .bind(("birthday", empty_to_none(request.birthday)))
         .bind(("lang_set", request.lang.is_some()))
         .bind(("lang", empty_to_none(request.lang)))
-        .bind(("fields", fields))
+        .bind(("fields", fields.as_ref().and_then(|f| serde_json::to_value(f).ok())))
         .bind(("followed_set", request.followed_message.is_some()))
         .bind(("followed_message", empty_to_none(request.followed_message)))
         .bind(("accept_set", accept_set))

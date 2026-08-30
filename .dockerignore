@@ -6,3 +6,8 @@ old-src/
 dist/
 *.md
 .env
+frontend/dist/
+frontend/wireframe-ui-sample/
+.claude/
+.grok/
+**/*.pdb

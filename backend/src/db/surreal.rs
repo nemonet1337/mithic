@@ -64,13 +64,13 @@ pub async fn create_client(config: &SurrealConfig) -> anyhow::Result<DbClient> {
 pub async fn create_pool(
     config: &SurrealConfig,
     size: usize,
-) -> anyhow::Result<crate::SurrealClient> {
+) -> anyhow::Result<super::SurrealClient> {
     let size = size.max(1);
     let mut connections = Vec::with_capacity(size);
     for _ in 0..size {
         connections.push(create_client(config).await?);
     }
-    Ok(crate::SurrealClient::new(connections))
+    Ok(super::SurrealClient::new(connections))
 }
 
 /// Table initialization (schema definition)
@@ -138,7 +138,7 @@ pub async fn init_schema(client: &DbClient) -> anyhow::Result<()> {
         DEFINE FIELD IF NOT EXISTS location ON user TYPE option<string>;
         DEFINE FIELD IF NOT EXISTS birthday ON user TYPE option<string>;
         DEFINE FIELD IF NOT EXISTS lang ON user TYPE option<string>;
-        DEFINE FIELD IF NOT EXISTS fields ON user TYPE array FLEXIBLE DEFAULT [];
+        DEFINE FIELD IF NOT EXISTS fields ON user TYPE array<object> FLEXIBLE DEFAULT [];
         DEFINE FIELD IF NOT EXISTS followed_message ON user TYPE option<string>;
         DEFINE FIELD IF NOT EXISTS reaction_acceptance ON user TYPE option<string>;
         DEFINE FIELD IF NOT EXISTS host ON user TYPE option<string>;

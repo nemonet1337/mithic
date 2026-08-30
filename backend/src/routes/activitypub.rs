@@ -193,7 +193,7 @@ async fn nodeinfo(State(state): State<AppState>) -> Json<Value> {
 
 fn build_actor_document(actor: &Actor, instance_url: &str) -> Value {
     let actor_uri = actor.actor_uri(instance_url);
-    json!({
+    let mut doc = json!({
         "@context": [
             "https://www.w3.org/ns/activitystreams",
             "https://w3id.org/security/v1",
@@ -1405,7 +1405,7 @@ async fn handle_update(
                 .bind(("location", location))
                 .bind(("birthday", birthday))
                 .bind(("followed_message", followed_message))
-                .bind(("fields", fields))
+                .bind(("fields", serde_json::to_value(&fields).unwrap_or_else(|_| json!([]))))
                 .await;
         }
         other => warn!("Unhandled Update object type: {other}"),
