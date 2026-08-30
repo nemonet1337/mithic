@@ -10,6 +10,7 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
 
+# Workspace: backend (mithic-server) / shared / frontend (WASM)
 jobs:
   fmt:
     name: Rustfmt
@@ -19,7 +20,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
-      - run: cargo fmt --all -- --check
+      - run: cargo fmt --all --check
 
   clippy:
     name: Clippy
@@ -31,7 +32,7 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
-      - run: cargo clippy --workspace --exclude frontend -- -D warnings
+      - run: cargo clippy -p mithic-server -p shared -- -D warnings
 
   test:
     name: Test
@@ -41,7 +42,7 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y clang mold
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo test --workspace --exclude frontend
+      - run: cargo test -p mithic-server -p shared
 
   frontend:
     name: Frontend (WASM)

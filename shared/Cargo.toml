@@ -11,4 +11,5 @@ chrono.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 ulid.workspace = true
-comrak = "0.54"
+# default features pull syntect-onig (onig_sys / C), which cannot build for wasm32.
+comrak = { version = "0.54", default-features = false }

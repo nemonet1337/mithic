@@ -25,6 +25,7 @@
 - [x] プロセス内ストリーム (`events` broadcast) + `/api/v1/streaming`
 - [x] YAGNI 掃除: 未配線 middleware、Misskey 風 stream クレート、推測モデル群、未使用 deps
 - [x] クレート統合: backend 7 + db → `mithic-server` 1 クレート。`shared` は DTO + markdown のみ。`common/` は作らない
+- [x] CI: rustfmt / clippy+test (`mithic-server` + `shared`) / frontend WASM check
 - [x] TL DTO enrich の N+1 解消（添付/リノート/閲覧者リアクションをバッチ）
 - [x] バックエンド i18n FTL を実際に使う error キーのみに縮小
 - [x] DB: 未使用テーブル削除 (`word_mute` / `chart` / `meta` / `hashtag`)、重複インデックス削減

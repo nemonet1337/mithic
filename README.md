@@ -224,8 +224,8 @@ VAPID_CONTACT=mailto:admin@example.com
 
 ```bash
 cargo fmt --all --check
-cargo clippy --workspace --exclude frontend -- -D warnings
-cargo test --workspace --exclude frontend
+cargo clippy -p mithic-server -p shared -- -D warnings
+cargo test -p mithic-server -p shared
 cargo check -p frontend --target wasm32-unknown-unknown
 ```
 
