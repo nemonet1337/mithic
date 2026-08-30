@@ -8,16 +8,34 @@ use crate::pages::{
     LocalTimelinePage, LoginPage, NotFoundPage, NotificationsPage, ProfilePage, SearchPage,
     SettingsPage, SignupPage, StatusDetailPage,
 };
-use crate::store::{AuthStore, ComposeStore, NotificationStore};
+use crate::store::{
+    stream::connect_stream, AuthStore, ComposeStore, NotificationStore, StreamStore,
+};
 
 #[component]
 pub fn App() -> impl IntoView {
     let auth = AuthStore::new();
     auth.verify_on_startup();
+    let auth_for_stream = auth.clone();
     provide_context(auth);
     provide_context(ComposeStore::new());
-    provide_context(NotificationStore::new());
+    let notifications = NotificationStore::new();
+    provide_context(notifications);
     provide_context(ToastStore::new());
+    let stream = StreamStore::new();
+    provide_context(stream);
+
+    let last_stream_token = RwSignal::new(None::<String>);
+    Effect::new(move |_| {
+        let Some(token) = auth_for_stream.token.get() else {
+            return;
+        };
+        if last_stream_token.get_untracked().as_ref() == Some(&token) {
+            return;
+        }
+        last_stream_token.set(Some(token.clone()));
+        connect_stream(token, stream, notifications);
+    });
 
     view! {
         <Router>

@@ -182,20 +182,57 @@ html.dark {
 
   /* shell */
   .wf-shell {
-    @apply relative h-dvh overflow-hidden bg-paper;
+    @apply relative flex h-dvh overflow-hidden bg-paper;
   }
   .wf-main {
-    @apply flex h-dvh min-w-0 flex-col overflow-hidden;
+    @apply flex h-dvh min-w-0 flex-1 flex-col overflow-hidden;
   }
   .wf-main-inner {
-    @apply mx-auto flex min-h-0 w-full max-w-[680px] flex-1 flex-col overflow-hidden pt-14 pb-6;
+    @apply mx-auto flex min-h-0 w-full max-w-[720px] flex-1 flex-col overflow-hidden pt-6 pb-6;
     &:has(.wf-dm),
     &:has(.wf-settings-layout) {
-      max-width: min(1000px, 100%);
+      max-width: min(1100px, 100%);
     }
     @media (width < 64rem) {
-      @apply max-w-none pb-[88px];
+      @apply max-w-none pt-14 pb-[88px];
     }
+  }
+  .wf-spine {
+    display: none;
+    @apply w-14 shrink-0 flex-col items-center gap-1 border-r border-line-soft bg-paper-2 px-1.5 py-3;
+    @media (width >= 64rem) {
+      display: flex;
+    }
+  }
+  .wf-spine-brand {
+    @apply mb-1 flex items-baseline justify-center no-underline;
+  }
+  .wf-mark-bracket {
+    @apply font-mono text-[18px] text-ink;
+  }
+  .wf-mark-glyph {
+    @apply font-hand text-[20px] font-bold italic text-accent;
+  }
+  .wf-spine-nav {
+    @apply flex flex-col items-center gap-0.5;
+  }
+  .wf-spine-icon {
+    @apply relative flex size-10 flex-col items-center justify-center rounded-lg text-ink-soft no-underline;
+    &:hover {
+      @apply bg-paper text-ink;
+    }
+    &.on {
+      @apply bg-ink text-paper;
+    }
+  }
+  .wf-spine-num {
+    @apply font-mono text-[8px] leading-none tracking-widest opacity-60;
+  }
+  .wf-spine-foot-av {
+    @apply mt-2;
+  }
+  .wf-stamp-btn.compact {
+    @apply mx-auto mt-2 size-9 p-0 text-lg leading-none;
   }
   .wf-scroll {
     @apply flex-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable];
@@ -321,6 +358,52 @@ html.dark {
     &.active {
       @apply bg-ink text-paper;
     }
+  }
+  .wf-seg-tl {
+    @apply mb-3 flex gap-1 px-4;
+  }
+  .wf-seg-tl .seg {
+    @apply flex cursor-pointer flex-col items-start rounded-wf border border-line-soft bg-transparent px-3 py-1.5 text-ink-soft no-underline;
+    &.on {
+      @apply border-ink bg-paper-2 text-ink;
+    }
+  }
+  .wf-tl-wrap {
+    @apply relative pl-[72px];
+  }
+  .wf-tl-wrap::before {
+    content: "";
+    @apply absolute top-2 bottom-2 left-[52px] w-px bg-line-soft;
+  }
+  .wf-tl-item {
+    @apply relative mb-3;
+  }
+  .wf-tl-time {
+    @apply absolute -left-[72px] top-3 w-14 text-right font-mono text-[11px] text-ink-faint;
+  }
+  .wf-tl-dot {
+    @apply absolute -left-[26px] top-[18px] size-2.5 rounded-full border-[1.5px] border-ink bg-paper;
+  }
+  .wf-confirm {
+    @apply rounded-wf;
+  }
+  .wf-detail-split {
+    @apply grid gap-4 p-4;
+    @media (width >= 64rem) {
+      grid-template-columns: 1.6fr 1fr;
+    }
+  }
+  .wf-profile-editorial .wf-profile-name {
+    @apply font-hand text-[42px] leading-none;
+  }
+  .wf-profile-grid {
+    @apply mt-5 grid gap-4 border-t border-line-soft pt-4;
+    @media (width >= 48rem) {
+      grid-template-columns: 1fr 1fr 1fr;
+    }
+  }
+  .wf-spread {
+    @apply flex items-center justify-between gap-2;
   }
 
   /* rails / find */
@@ -907,6 +990,9 @@ html.dark {
   @media (width >= 64rem) {
     .wf-dock {
       display: none !important;
+    }
+    .wf-chrome {
+      display: none;
     }
   }
 }

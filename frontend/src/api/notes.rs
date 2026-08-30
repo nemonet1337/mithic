@@ -23,13 +23,7 @@ pub async fn fetch_note(token: &str, id: &str) -> Result<Note, ApiError> {
 }
 
 pub async fn fetch_replies(token: &str, id: &str) -> Result<Vec<Note>, ApiError> {
-    request::<Vec<Note>, ()>(
-        "GET",
-        &format!("notes/{}/replies", id),
-        Some(token),
-        None,
-    )
-    .await
+    request::<Vec<Note>, ()>("GET", &format!("notes/{}/replies", id), Some(token), None).await
 }
 
 pub async fn delete_note(token: &str, id: &str) -> Result<(), ApiError> {
@@ -38,19 +32,28 @@ pub async fn delete_note(token: &str, id: &str) -> Result<(), ApiError> {
         .map(|_| ())
 }
 
-pub async fn add_reaction(token: &str, note_id: &str, emoji: &str) -> Result<(), ApiError> {
+pub async fn add_reaction(
+    token: &str,
+    note_id: &str,
+    emoji: &str,
+) -> Result<Vec<shared::ReactionSummary>, ApiError> {
     #[derive(Serialize)]
     struct Body<'a> {
         emoji: &'a str,
     }
-    request::<serde_json::Value, Body>(
+    request::<Vec<shared::ReactionSummary>, Body>(
         "POST",
         &format!("notes/{}/reactions", note_id),
         Some(token),
         Some(&Body { emoji }),
     )
     .await
-    .map(|_| ())
+}
+
+pub async fn pin_note(token: &str, note_id: &str) -> Result<(), ApiError> {
+    request::<serde_json::Value, ()>("POST", &format!("notes/{note_id}/pin"), Some(token), None)
+        .await
+        .map(|_| ())
 }
 
 pub async fn renote(token: &str, note_id: &str) -> Result<Note, ApiError> {
@@ -63,12 +66,12 @@ pub async fn renote(token: &str, note_id: &str) -> Result<Note, ApiError> {
     .await
 }
 
-pub async fn search_notes(token: Option<&str>, q: &str, limit: usize) -> Result<Vec<Note>, ApiError> {
-    let path = format!(
-        "notes/search?q={}&limit={}",
-        urlencoding_loose(q),
-        limit
-    );
+pub async fn search_notes(
+    token: Option<&str>,
+    q: &str,
+    limit: usize,
+) -> Result<Vec<Note>, ApiError> {
+    let path = format!("notes/search?q={}&limit={}", urlencoding_loose(q), limit);
     request::<Vec<Note>, ()>("GET", &path, token, None).await
 }
 

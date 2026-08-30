@@ -126,3 +126,47 @@ self.addEventListener('activate', (event) => {
     })()
   );
 });
+
+// ==================================================
+// Web Push
+// ==================================================
+self.addEventListener('push', (event) => {
+  let data = { title: 'Mithic', body: '', url: '/notifications', tag: 'mithic' };
+  try {
+    if (event.data) {
+      const parsed = event.data.json();
+      data = { ...data, ...parsed };
+    }
+  } catch (_) {
+    try {
+      data.body = event.data ? event.data.text() : '';
+    } catch (_) {}
+  }
+  event.waitUntil(
+    self.registration.showNotification(data.title || 'Mithic', {
+      body: data.body || '',
+      tag: data.tag || 'mithic',
+      data: { url: data.url || '/notifications' },
+      icon: '/icon-192.png',
+      badge: '/icon-192.png',
+    })
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || '/notifications';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      for (const c of clients) {
+        if ('focus' in c) {
+          c.navigate(url);
+          return c.focus();
+        }
+      }
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(url);
+      }
+    })
+  );
+});

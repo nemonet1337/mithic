@@ -40,7 +40,13 @@ impl ApiError {
 
 impl std::fmt::Display for ApiError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "[{}] {}: {}", self.status, self.code, self.user_message())
+        write!(
+            f,
+            "[{}] {}: {}",
+            self.status,
+            self.code,
+            self.user_message()
+        )
     }
 }
 

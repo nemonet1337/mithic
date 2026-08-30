@@ -6,4 +6,4 @@ pub mod rate_limit;
 pub use auth::{auth_middleware, resolve_bearer};
 pub use cors::cors_layer;
 pub use http_signature::verify_http_signature;
-pub use rate_limit::{RateLimitConfig, RateLimiter, rate_limit_middleware};
+pub use rate_limit::{RateLimitConfig, rate_limit_middleware};

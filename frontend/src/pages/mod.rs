@@ -1,4 +1,3 @@
-use gloo_storage::{LocalStorage, Storage};
 use icondata as id;
 use leptos::prelude::*;
 use leptos_icons::Icon;
@@ -10,7 +9,11 @@ use crate::components::{
     ToastStore, TopBar,
 };
 use crate::models::{Note, NotificationType};
-use crate::store::{AuthStore, NotificationStore, stream::connect_stream};
+use crate::store::{AuthStore, NotificationStore, StreamStore};
+use crate::time::clock_hm;
+
+mod settings;
+pub use settings::SettingsPage;
 
 mod drive;
 pub use drive::DrivePage;
@@ -40,7 +43,7 @@ pub fn GlobalTimelinePage() -> impl IntoView {
 #[component]
 fn TimelinePage(kind: TimelineKind) -> impl IntoView {
     let auth = expect_context::<AuthStore>();
-    let notifications = expect_context::<NotificationStore>();
+    let stream = expect_context::<StreamStore>();
     let notes = RwSignal::<Vec<Note>>::new(vec![]);
     let is_loading = RwSignal::new(false);
     let has_more = RwSignal::new(true);
@@ -59,7 +62,12 @@ fn TimelinePage(kind: TimelineKind) -> impl IntoView {
     let tabs = vec![
         (id::FiHome, "ホーム", "/", active_path == "/"),
         (id::FiUsers, "ローカル", "/local", active_path == "/local"),
-        (id::FiGlobe, "グローバル", "/global", active_path == "/global"),
+        (
+            id::FiGlobe,
+            "グローバル",
+            "/global",
+            active_path == "/global",
+        ),
     ];
 
     // タイムライン読み込み
@@ -82,10 +90,13 @@ fn TimelinePage(kind: TimelineKind) -> impl IntoView {
         }
     });
 
-    // WebSocket でリアルタイム先頭へ挿入
     Effect::new(move |_| {
-        if let Some(token) = auth.token.get() {
-            connect_stream(token, notes, notifications);
+        if let Some(note) = stream.latest_note.get() {
+            notes.update(|items| {
+                if !items.iter().any(|n| n.id == note.id) {
+                    items.insert(0, note);
+                }
+            });
         }
     });
 
@@ -114,13 +125,37 @@ fn TimelinePage(kind: TimelineKind) -> impl IntoView {
 
     view! {
         <Shell active="home">
-            <TopBar tabs=tabs />
+            <div class="flex items-end justify-between px-5 pt-3 pb-1">
+                <h1 class="wf-title" style="font-size:26px;">"タイムライン"</h1>
+                <span class="wf-pill">{move || format!("live · {}", notes.get().len())}</span>
+            </div>
+            <div class="wf-seg-tl">
+                {tabs.into_iter().enumerate().map(|(i, (_icon, label, href, active))| {
+                    view! {
+                        <A href=href attr:class=if active { "seg on" } else { "seg" }>
+                            <span class="wf-entry-meta">{format!("{:02}", i + 1)}</span>
+                            <span>{label}</span>
+                        </A>
+                    }
+                }).collect_view()}
+            </div>
             <section class="wf-scroll">
+                <div class="wf-tl-wrap px-4">
                 <For
-                    each=move || notes.get()
+                    each=move || stream.visible(notes.get())
                     key=|note| note.id.clone()
-                    children=|note| view! { <PostCard note=note /> }
+                    children=|note| {
+                        let hm = clock_hm(&note.created_at);
+                        view! {
+                            <div class="wf-tl-item">
+                                <span class="wf-tl-time">{hm}</span>
+                                <span class="wf-tl-dot"></span>
+                                <PostCard note=note />
+                            </div>
+                        }
+                    }
                 />
+                </div>
                 <Show when=move || is_loading.get()>
                     <div class="flex items-center justify-center gap-2 py-4">
                         <span class="wf-spinner" style="width:18px;height:18px;" />
@@ -139,6 +174,7 @@ fn TimelinePage(kind: TimelineKind) -> impl IntoView {
 pub fn StatusDetailPage() -> impl IntoView {
     let params = use_params_map();
     let auth = expect_context::<AuthStore>();
+    let stream = expect_context::<StreamStore>();
     let note = RwSignal::<Option<Note>>::new(None);
     let replies = RwSignal::<Vec<Note>>::new(Vec::new());
     let error = RwSignal::<Option<String>>::new(None);
@@ -175,8 +211,11 @@ pub fn StatusDetailPage() -> impl IntoView {
 
     view! {
         <Shell active="home">
-            <TopBar title="投稿詳細" />
-            <div class="flex flex-col gap-4 p-4 wf-scroll">
+            <div class="flex items-center gap-2 px-4 pt-3">
+                <A href="/" attr:class="wf-btn wf-btn-ghost wf-btn-sm">"← Esc"</A>
+                <span class="wf-entry-meta ml-auto">{move || format!("POST · /{}", params.read().get("id").unwrap_or_default())}</span>
+            </div>
+            <div class="wf-scroll">
                 <Show when=move || loading.get()>
                     <div class="flex items-center justify-center gap-2 py-8">
                         <span class="wf-spinner" style="width:18px;height:18px;" />
@@ -184,49 +223,54 @@ pub fn StatusDetailPage() -> impl IntoView {
                     </div>
                 </Show>
                 <Show when=move || error.get().is_some()>
-                    <div class="wf-alert error">
+                    <div class="wf-alert error m-4">
                         <span>{move || error.get().unwrap_or_default()}</span>
                     </div>
                 </Show>
-                {move || note.get().map(|current| {
-                    let reaction_row = if current.reactions.is_empty() {
-                        ().into_any()
-                    } else {
-                        view! {
-                            <section class="wf-card">
-                                <span class="wf-entry-meta">"リアクション"</span>
-                                <div class="flex flex-wrap gap-2 mt-2">
-                                    {current
-                                        .reactions
-                                        .iter()
-                                        .map(|r| {
-                                            let label = format!("{} {}", r.emoji, r.count);
-                                            view! { <span class="wf-pill">{label}</span> }
-                                        })
-                                        .collect_view()}
-                                </div>
-                            </section>
-                        }
-                        .into_any()
-                    };
-                    view! {
-                        <section class="flex flex-col gap-4">
-                            <PostCard note=current flat=true />
-                            {reaction_row}
-                            <span class="wf-entry-meta">"返信"</span>
-                            <Show when=move || replies.get().is_empty()>
-                                <div class="wf-dashed p-6 text-center">
-                                    <span class="wf-entry-meta">"まだ返信はありません"</span>
-                                </div>
-                            </Show>
-                            <For
-                                each=move || replies.get()
-                                key=|n| n.id.clone()
-                                children=|n| view! { <PostCard note=n /> }
-                            />
-                        </section>
+                {move || {
+                    let deleted = note.get().is_some_and(|n| stream.deleted_ids.get().contains(&n.id));
+                    if deleted {
+                        return view! {
+                            <div class="wf-empty m-4">
+                                <span>"この投稿は削除されました"</span>
+                            </div>
+                        }.into_any();
                     }
-                })}
+                    note.get().map(|current| {
+                    let reactions = current.reactions.clone();
+                    view! {
+                        <div class="wf-detail-split">
+                            <div class="flex flex-col gap-3">
+                                <PostCard note=current.clone() />
+                                <span class="wf-entry-meta">"[ 返信 / REPLIES ]"</span>
+                                <Show when=move || replies.get().is_empty()>
+                                    <div class="wf-dashed p-6 text-center">
+                                        <span class="wf-entry-meta">"まだ返信はありません"</span>
+                                    </div>
+                                </Show>
+                                <For
+                                    each=move || stream.visible(replies.get())
+                                    key=|n| n.id.clone()
+                                    children=|n| view! { <PostCard note=n /> }
+                                />
+                            </div>
+                            <aside class="wf-card h-fit">
+                                <span class="wf-entry-meta">"[ リアクション ]"</span>
+                                <div class="flex flex-wrap gap-2 mt-3">
+                                    {if reactions.is_empty() {
+                                        view! { <span class="wf-entry-meta">"まだありません"</span> }.into_any()
+                                    } else {
+                                        reactions.iter().map(|r| {
+                                            let label = format!("{} {}", r.emoji, r.count);
+                                            view! { <span class=if r.reacted_by_me { "wf-pill on" } else { "wf-pill" }>{label}</span> }
+                                        }).collect_view().into_any()
+                                    }}
+                                </div>
+                            </aside>
+                        </div>
+                    }
+                    }).into_any()
+                }}
             </div>
         </Shell>
     }
@@ -598,6 +642,7 @@ pub fn ProfilePage() -> impl IntoView {
     let is_following = RwSignal::new(false);
     let follow_busy = RwSignal::new(false);
     let profile_tab = RwSignal::new("notes");
+    let stream = expect_context::<StreamStore>();
 
     // プロフィールと投稿一覧を実 API から取得
     Effect::new(move |_| {
@@ -628,70 +673,94 @@ pub fn ProfilePage() -> impl IntoView {
         let currently = is_following.get_untracked();
         let toast = toast;
         wasm_bindgen_futures::spawn_local(async move {
-            let result = if currently {
-                crate::api::users::unfollow(&tok, &target.id).await
-            } else {
-                crate::api::users::follow(&tok, &target.id).await
-            };
-            follow_busy.set(false);
-            match result {
-                Ok(()) => {
-                    is_following.set(!currently);
-                    toast.push(
-                        if currently {
-                            "フォローを解除しました"
-                        } else {
-                            "フォローしました"
-                        },
-                        ToastKind::Success,
-                    );
+            if currently {
+                match crate::api::users::unfollow(&tok, &target.id).await {
+                    Ok(()) => {
+                        is_following.set(false);
+                        toast.push("フォローを解除しました", ToastKind::Success);
+                    }
+                    Err(e) => toast.push(e.user_message(), ToastKind::Error),
                 }
-                Err(e) => toast.push(e.user_message(), ToastKind::Error),
+            } else {
+                match crate::api::users::follow(&tok, &target.id).await {
+                    Ok(res) => {
+                        is_following.set(true);
+                        if let Some(msg) = res.followed_message.filter(|m| !m.is_empty()) {
+                            toast.push(msg, ToastKind::Info);
+                        } else {
+                            toast.push("フォローしました", ToastKind::Success);
+                        }
+                    }
+                    Err(e) => toast.push(e.user_message(), ToastKind::Error),
+                }
             }
+            follow_busy.set(false);
         });
     });
 
     view! {
         <Shell active="profile">
-            <section class="wf-scroll">
-                <div class="relative">
-                    <div class="wf-profile-banner" />
-                    <div class="wf-profile-head">
-                        <div class="wf-profile-av">
-                            {move || user.get().map(|u| view! { <Avatar user=u size=AvatarSize::Xl /> })}
-                        </div>
-                        <div class="wf-profile-meta">
-                            <div class="flex items-center justify-between">
-                                <div>
-                                    <span class="wf-entry-meta">"ACTIVITYPUB  " {move || if handle().contains('@') { "REMOTE" } else { "LOCAL" }}</span>
-                                    <h1 class="wf-profile-name mt-1">{move || user.get().map(|u| u.name()).unwrap_or_default()}</h1>
-                                    <span class="wf-profile-handle">{move || format!("@{}", handle())}</span>
-                                </div>
-                                <div class="flex items-center gap-2">
-                                    <Show when=move || auth.me.get().zip(user.get()).map(|(me, u)| me.id != u.id).unwrap_or(false)>
-                                        <FollowButton
-                                            is_following=is_following
-                                            is_pending=follow_busy
-                                            on_toggle=toggle_follow
-                                        />
-                                    </Show>
-                                </div>
+            <section class="wf-scroll wf-profile-editorial">
+                <div
+                    class="wf-profile-banner"
+                    style=move || user.get().and_then(|u| u.banner_url).map(|url| format!("background-image:url('{url}');background-size:cover;background-position:center;"))
+                />
+                <div class="px-6 pt-5 pb-2">
+                    <span class="wf-entry-meta">"PROFILE"</span>
+                    <div class="flex items-start justify-between gap-4 mt-1">
+                        <div class="min-w-0">
+                            <h1 class="wf-profile-name">{move || user.get().map(|u| u.name()).unwrap_or_default()}</h1>
+                            <div class="flex flex-wrap gap-2 mt-3">
+                                <span class="wf-pill">{move || format!("@{}", handle())}</span>
+                                {move || user.get().and_then(|u| u.location).map(|loc| view! { <span class="wf-pill">{format!("📍 {loc}")}</span> })}
+                                {move || user.get().and_then(|u| u.birthday).map(|b| view! { <span class="wf-pill">{format!("🎂 {b}")}</span> })}
+                                {move || user.get().filter(|u| u.is_bot).map(|_| view! { <span class="wf-pill">"Bot"</span> })}
+                                {move || user.get().filter(|u| u.is_cat).map(|_| view! { <span class="wf-pill on">"cat"</span> })}
                             </div>
-                            <p class="text-sm mt-2">{move || user.get().and_then(|u| u.bio).unwrap_or_default()}</p>
-
-                            <div class="wf-profile-stats">
-                                <div class="wf-stat">
-                                    <span class="v">{move || user.get().map(|u| u.notes_count).unwrap_or(0).to_string()}</span>
-                                    <span class="l">"投稿"</span>
-                                </div>
-                                <div class="wf-stat">
-                                    <span class="v">{move || user.get().map(|u| u.followers_count).unwrap_or(0).to_string()}</span>
-                                    <span class="l">"フォロワー"</span>
-                                </div>
-                                <div class="wf-stat">
-                                    <span class="v">{move || user.get().map(|u| u.following_count).unwrap_or(0).to_string()}</span>
-                                    <span class="l">"フォロー"</span>
-                                </div>
+                        </div>
+                        {move || user.get().map(|u| view! { <Avatar user=u size=AvatarSize::Xl /> })}
+                    </div>
+                    <div class="flex items-center gap-2 mt-3">
+                        <Show when=move || auth.me.get().zip(user.get()).map(|(me, u)| me.id != u.id).unwrap_or(false)>
+                            <FollowButton
+                                is_following=is_following
+                                is_pending=follow_busy
+                                on_toggle=toggle_follow
+                            />
+                        </Show>
+                    </div>
+                    <div class="wf-profile-grid">
+                        <div>
+                            <span class="wf-entry-meta">"BIO"</span>
+                            <p class="text-sm mt-2 leading-relaxed">{move || user.get().and_then(|u| u.bio).unwrap_or_default()}</p>
+                        </div>
+                        <div>
+                            <span class="wf-entry-meta">"追加情報"</span>
+                            <div class="flex flex-col gap-1 mt-2">
+                                {move || {
+                                    let fields = user.get().map(|u| u.fields).unwrap_or_default();
+                                    if fields.is_empty() {
+                                        view! { <span class="wf-entry-meta">"—"</span> }.into_any()
+                                    } else {
+                                        fields.into_iter().map(|f| {
+                                            view! {
+                                                <div class="wf-spread text-sm">
+                                                    <span class="text-ink-soft">{f.name}</span>
+                                                    <span>{f.value}</span>
+                                                </div>
+                                            }
+                                        }).collect_view().into_any()
+                                    }
+                                }}
+                            </div>
+                        </div>
+                        <div>
+                            <span class="wf-entry-meta">"指標"</span>
+                            <div class="flex flex-col gap-1 mt-2 text-sm">
+                                <div class="wf-spread"><span>"投稿"</span><b class="font-mono">{move || user.get().map(|u| u.notes_count).unwrap_or(0).to_string()}</b></div>
+                                <div class="wf-spread"><span>"フォロワー"</span><b class="font-mono">{move || user.get().map(|u| u.followers_count).unwrap_or(0).to_string()}</b></div>
+                                <div class="wf-spread"><span>"フォロー"</span><b class="font-mono">{move || user.get().map(|u| u.following_count).unwrap_or(0).to_string()}</b></div>
+                                <div class="wf-spread"><span>"参加"</span><span class="font-mono text-xs">{move || user.get().and_then(|u| u.created_at).map(|c| crate::time::date_label(&c)).unwrap_or_default()}</span></div>
                             </div>
                         </div>
                     </div>
@@ -753,7 +822,7 @@ pub fn ProfilePage() -> impl IntoView {
                             } else {
                                 view! {
                                     <For
-                                        each=move || notes.get()
+                                        each=move || stream.visible(notes.get())
                                         key=|note| note.id.clone()
                                         children=|note| view! { <PostCard note=note /> }
                                     />
@@ -763,210 +832,6 @@ pub fn ProfilePage() -> impl IntoView {
                     }}
                 </div>
             </section>
-        </Shell>
-    }
-}
-
-#[component]
-pub fn SettingsPage() -> impl IntoView {
-    let auth = expect_context::<AuthStore>();
-    let toast = expect_context::<ToastStore>();
-    let token = auth.token;
-    let me = auth.me;
-
-    let params = use_params_map();
-    let section = move || -> String {
-        let raw = params
-            .read()
-            .get("section")
-            .unwrap_or_else(|| "プロフィール".into());
-        // 実装済みセクション以外はプロフィールへ寄せる（古い URL 互換）
-        match raw.as_str() {
-            "テーマ" => "テーマ".to_string(),
-            _ => "プロフィール".to_string(),
-        }
-    };
-
-    let display_name_signal = RwSignal::new(String::new());
-    let bio_signal = RwSignal::new(String::new());
-    let handle_signal = RwSignal::new(String::new());
-    let save_busy = RwSignal::new(false);
-
-    Effect::new(move |_| {
-        if let Some(user) = me.get() {
-            display_name_signal.set(user.display_name.clone().unwrap_or_default());
-            bio_signal.set(user.bio.clone().unwrap_or_default());
-            handle_signal.set(user.handle());
-        }
-    });
-
-    let on_reset = move |_| {
-        if let Some(user) = me.get_untracked() {
-            display_name_signal.set(user.display_name.clone().unwrap_or_default());
-            bio_signal.set(user.bio.clone().unwrap_or_default());
-        }
-    };
-
-    let on_save = move |_| {
-        if save_busy.get_untracked() {
-            return;
-        }
-        let Some(tok) = token.get_untracked() else {
-            return;
-        };
-        let req = crate::api::users::UpdateProfileRequest {
-            display_name: Some(display_name_signal.get_untracked()),
-            bio: Some(bio_signal.get_untracked()),
-        };
-        save_busy.set(true);
-        let toast = toast;
-        wasm_bindgen_futures::spawn_local(async move {
-            match crate::api::users::update_me(&tok, &req).await {
-                Ok(updated_user) => {
-                    auth.me.set(Some(updated_user));
-                    toast.push("プロフィールを保存しました", ToastKind::Success);
-                }
-                Err(e) => toast.push(e.user_message(), ToastKind::Error),
-            }
-            save_busy.set(false);
-        });
-    };
-
-    // 実装済み: プロフィール / テーマのみ
-    let nav_items = [("プロフィール", "アカウント"), ("テーマ", "表示")];
-
-    let theme = RwSignal::new(
-        LocalStorage::get::<String>("mithic.theme").unwrap_or_else(|_| "night".into()),
-    );
-
-    let set_theme = move |t: &'static str| {
-        let is_dark = match t {
-            "light" => false,
-            "auto" => web_sys::window()
-                .and_then(|w| w.match_media("(prefers-color-scheme: dark)").ok().flatten())
-                .map(|mql| mql.matches())
-                .unwrap_or(true),
-            // "dark" | "night" | default
-            _ => true,
-        };
-        theme.set(t.into());
-        let _ = LocalStorage::set("mithic.theme", t);
-        if let Some(html) = web_sys::window()
-            .and_then(|w| w.document())
-            .and_then(|d| d.document_element())
-        {
-            let class = html.class_name();
-            let next = if is_dark {
-                if class.split_whitespace().any(|c| c == "dark") {
-                    class
-                } else if class.is_empty() {
-                    "dark".into()
-                } else {
-                    format!("{class} dark")
-                }
-            } else {
-                class
-                    .split_whitespace()
-                    .filter(|c| *c != "dark")
-                    .collect::<Vec<_>>()
-                    .join(" ")
-            };
-            let _ = html.set_class_name(&next);
-            let _ = html.set_attribute("data-theme", if is_dark { "night" } else { "light" });
-        }
-    };
-
-    view! {
-        <Shell active="settings">
-            <div class="wf-settings-layout flex" style="height:100%;overflow:hidden;">
-                <aside class="wf-rail" style="width:220px;flex-shrink:0;">
-                    <span class="wf-title" style="font-size:18px;">"設定"</span>
-                    {nav_items.into_iter().map(|(item, group)| {
-                        let is_active = move || section() == item;
-                        view! {
-                            <div>
-                                <span class="wf-rail-tag" style="display:block;margin:8px 0 4px;">{group}</span>
-                                <A href=format!("/settings/{item}")
-                                    attr:class=move || if is_active() { "wf-pop-item active" } else { "wf-pop-item" }>
-                                    {item}
-                                </A>
-                            </div>
-                        }
-                    }).collect_view()}
-                </aside>
-                <main class="wf-scroll p-6" style="flex:1;">
-                    {move || match section().as_str() {
-                        "テーマ" => view! {
-                            <span class="wf-entry-meta">"表示 / テーマ"</span>
-                            <h1 class="wf-title mt-1 mb-6">"テーマ設定"</h1>
-                            <div class="wf-card max-w-md flex flex-row items-center justify-between">
-                                <span class="text-sm font-semibold">"テーマ"</span>
-                                <div class="flex gap-1">
-                                    <button
-                                        class=move || if theme.get() == "light" { "wf-btn wf-btn-primary wf-btn-sm" } else { "wf-btn wf-btn-ghost wf-btn-sm" }
-                                        on:click=move |_| set_theme("light")>
-                                        "ライト"
-                                    </button>
-                                    <button
-                                        class=move || if theme.get() == "dark" || theme.get() == "night" { "wf-btn wf-btn-primary wf-btn-sm" } else { "wf-btn wf-btn-ghost wf-btn-sm" }
-                                        on:click=move |_| set_theme("night")>
-                                        "ダーク"
-                                    </button>
-                                    <button
-                                        class=move || if theme.get() == "auto" { "wf-btn wf-btn-primary wf-btn-sm" } else { "wf-btn wf-btn-ghost wf-btn-sm" }
-                                        on:click=move |_| set_theme("auto")>
-                                        "自動"
-                                    </button>
-                                </div>
-                            </div>
-                        }.into_any(),
-                        _ => view! {
-                            <span class="wf-entry-meta">"アカウント / プロフィール"</span>
-                            <h1 class="wf-title mt-1 mb-6">"プロフィール設定"</h1>
-                            <div class="flex flex-col gap-4 max-w-md">
-                                {move || me.get().map(|u| view! {
-                                    <Avatar user=u size=AvatarSize::Xl />
-                                })}
-                                <label class="flex flex-col gap-1 w-full">
-                                    <span class="wf-entry-meta">"表示名"</span>
-                                    <input
-                                        class="wf-input"
-                                        prop:value=move || display_name_signal.get()
-                                        on:input=move |ev| display_name_signal.set(event_target_value(&ev))
-                                    />
-                                </label>
-                                <label class="flex flex-col gap-1 w-full">
-                                    <span class="wf-entry-meta">"ハンドル"</span>
-                                    <input
-                                        class="wf-input"
-                                        prop:value=move || handle_signal.get()
-                                        disabled=true
-                                    />
-                                </label>
-                                <label class="flex flex-col gap-1 w-full">
-                                    <span class="wf-entry-meta">"自己紹介"</span>
-                                    <textarea
-                                        class="wf-input"
-                                        style="height:96px;resize:none;"
-                                        prop:value=move || bio_signal.get()
-                                        on:input=move |ev| bio_signal.set(event_target_value(&ev))
-                                    />
-                                </label>
-                                <div class="flex items-center justify-end gap-2 mt-4">
-                                    <button class="wf-btn wf-btn-ghost" on:click=on_reset>"リセット"</button>
-                                    <button
-                                        class="wf-btn wf-btn-primary"
-                                        disabled=move || save_busy.get()
-                                        on:click=on_save
-                                    >
-                                        {move || if save_busy.get() { "保存中…" } else { "保存" }}
-                                    </button>
-                                </div>
-                            </div>
-                        }.into_any()
-                    }}
-                </main>
-            </div>
         </Shell>
     }
 }

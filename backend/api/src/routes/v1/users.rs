@@ -16,7 +16,7 @@ use mithic_db::queries::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use shared::{User, UserRelation};
+use shared::{ProfileField, User, UserRelation};
 
 use crate::dto::actor_to_user;
 use crate::routes::v1::common::{
@@ -41,6 +41,13 @@ pub async fn me(
     Ok(Json(actor_to_user(&actor)))
 }
 
+fn empty_to_none(value: Option<String>) -> Option<String> {
+    value.and_then(|s| {
+        let t = s.trim().to_string();
+        if t.is_empty() { None } else { Some(t) }
+    })
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateMeRequest {
@@ -50,6 +57,26 @@ pub struct UpdateMeRequest {
     bio: Option<String>,
     #[serde(default)]
     is_locked: Option<bool>,
+    #[serde(default)]
+    is_bot: Option<bool>,
+    #[serde(default)]
+    is_cat: Option<bool>,
+    #[serde(default)]
+    avatar_url: Option<String>,
+    #[serde(default)]
+    banner_url: Option<String>,
+    #[serde(default)]
+    location: Option<String>,
+    #[serde(default)]
+    birthday: Option<String>,
+    #[serde(default)]
+    lang: Option<String>,
+    #[serde(default)]
+    fields: Option<Vec<ProfileField>>,
+    #[serde(default)]
+    followed_message: Option<String>,
+    #[serde(default)]
+    reaction_acceptance: Option<String>,
 }
 
 pub async fn update_me(
@@ -57,6 +84,29 @@ pub async fn update_me(
     Extension(auth): Extension<AuthUser>,
     Json(request): Json<UpdateMeRequest>,
 ) -> Result<Json<User>> {
+    let fields = request.fields.map(|rows| {
+        rows.into_iter()
+            .map(|f| ProfileField {
+                name: f.name.trim().to_string(),
+                value: f.value.trim().to_string(),
+            })
+            .filter(|f| !f.name.is_empty() && !f.value.is_empty())
+            .take(16)
+            .collect::<Vec<_>>()
+    });
+    let accept_set = request.reaction_acceptance.is_some();
+    let reaction_acceptance = request.reaction_acceptance.and_then(|s| {
+        let t = s.trim().to_string();
+        match t.as_str() {
+            "" | "all" => None,
+            "likeOnly"
+            | "likeOnlyForRemote"
+            | "nonSensitiveOnly"
+            | "nonSensitiveOnlyForLocalLikeOnlyForRemote" => Some(t),
+            _ => None,
+        }
+    });
+
     state
         .surreal()
         .query(
@@ -64,13 +114,40 @@ pub async fn update_me(
                 name = IF $name != None THEN $name ELSE name END,
                 bio = IF $bio != None THEN $bio ELSE bio END,
                 is_locked = IF $is_locked != None THEN $is_locked ELSE is_locked END,
+                is_bot = IF $is_bot != None THEN $is_bot ELSE is_bot END,
+                is_cat = IF $is_cat != None THEN $is_cat ELSE is_cat END,
+                avatar_url = IF $avatar_set THEN $avatar_url ELSE avatar_url END,
+                banner_url = IF $banner_set THEN $banner_url ELSE banner_url END,
+                location = IF $location_set THEN $location ELSE location END,
+                birthday = IF $birthday_set THEN $birthday ELSE birthday END,
+                lang = IF $lang_set THEN $lang ELSE lang END,
+                fields = IF $fields != None THEN $fields ELSE fields END,
+                followed_message = IF $followed_set THEN $followed_message ELSE followed_message END,
+                reaction_acceptance = IF $accept_set THEN $reaction_acceptance ELSE reaction_acceptance END,
                 updated_at = time::now()
              WHERE id = type::record('user', $id);",
         )
         .bind(("id", auth.user_id.to_string()))
-        .bind(("name", request.display_name))
-        .bind(("bio", request.bio))
+        .bind(("name", empty_to_none(request.display_name)))
+        .bind(("bio", request.bio.clone().map(|s| s.trim().to_string())))
         .bind(("is_locked", request.is_locked))
+        .bind(("is_bot", request.is_bot))
+        .bind(("is_cat", request.is_cat))
+        .bind(("avatar_set", request.avatar_url.is_some()))
+        .bind(("avatar_url", empty_to_none(request.avatar_url)))
+        .bind(("banner_set", request.banner_url.is_some()))
+        .bind(("banner_url", empty_to_none(request.banner_url)))
+        .bind(("location_set", request.location.is_some()))
+        .bind(("location", empty_to_none(request.location)))
+        .bind(("birthday_set", request.birthday.is_some()))
+        .bind(("birthday", empty_to_none(request.birthday)))
+        .bind(("lang_set", request.lang.is_some()))
+        .bind(("lang", empty_to_none(request.lang)))
+        .bind(("fields", fields))
+        .bind(("followed_set", request.followed_message.is_some()))
+        .bind(("followed_message", empty_to_none(request.followed_message)))
+        .bind(("accept_set", accept_set))
+        .bind(("reaction_acceptance", reaction_acceptance))
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
@@ -303,7 +380,12 @@ pub async fn follow_user(
         let notif = Notification::follow(target_id, auth.user_id);
         publish_notification(&state, &notif, sender.as_ref(), None).await;
     }
-    Ok(ok_null())
+    let followed_message = get_actor_by_id(state.surreal(), &target_id)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|a| a.followed_message);
+    Ok(Json(serde_json::json!({ "followedMessage": followed_message })))
 }
 
 pub async fn unfollow_user(

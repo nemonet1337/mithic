@@ -100,7 +100,14 @@ pub async fn init_schema(client: &DbClient) -> anyhow::Result<()> {
         DEFINE FIELD IF NOT EXISTS is_suspended ON user TYPE bool DEFAULT false;
         DEFINE FIELD IF NOT EXISTS is_locked ON user TYPE bool DEFAULT false;
         DEFINE FIELD IF NOT EXISTS is_bot ON user TYPE bool DEFAULT false;
+        DEFINE FIELD IF NOT EXISTS is_cat ON user TYPE bool DEFAULT false;
         DEFINE FIELD IF NOT EXISTS is_admin ON user TYPE bool DEFAULT false;
+        DEFINE FIELD IF NOT EXISTS location ON user TYPE option<string>;
+        DEFINE FIELD IF NOT EXISTS birthday ON user TYPE option<string>;
+        DEFINE FIELD IF NOT EXISTS lang ON user TYPE option<string>;
+        DEFINE FIELD IF NOT EXISTS fields ON user TYPE array FLEXIBLE DEFAULT [];
+        DEFINE FIELD IF NOT EXISTS followed_message ON user TYPE option<string>;
+        DEFINE FIELD IF NOT EXISTS reaction_acceptance ON user TYPE option<string>;
         DEFINE FIELD IF NOT EXISTS host ON user TYPE option<string>;
         DEFINE FIELD IF NOT EXISTS token ON user TYPE option<string>;
         DEFINE FIELD IF NOT EXISTS inbox ON user TYPE option<string>;
@@ -313,6 +320,22 @@ pub async fn init_schema(client: &DbClient) -> anyhow::Result<()> {
         DEFINE INDEX IF NOT EXISTS idx_note_reaction_note ON note_reaction COLUMNS note_id;
         DEFINE INDEX IF NOT EXISTS idx_note_reaction_actor ON note_reaction COLUMNS actor_id;
         DEFINE INDEX IF NOT EXISTS idx_note_reaction_unique ON note_reaction COLUMNS note_id, actor_id UNIQUE;
+    ",
+        )
+        .await?;
+
+    client
+        .query(
+            "
+        DEFINE TABLE IF NOT EXISTS push_subscription SCHEMAFULL;
+        DEFINE FIELD IF NOT EXISTS id ON push_subscription TYPE string;
+        DEFINE FIELD IF NOT EXISTS user_id ON push_subscription TYPE record<user>;
+        DEFINE FIELD IF NOT EXISTS endpoint ON push_subscription TYPE string;
+        DEFINE FIELD IF NOT EXISTS p256dh ON push_subscription TYPE string;
+        DEFINE FIELD IF NOT EXISTS auth ON push_subscription TYPE string;
+        DEFINE FIELD IF NOT EXISTS created_at ON push_subscription TYPE datetime;
+        DEFINE INDEX IF NOT EXISTS idx_push_user ON push_subscription COLUMNS user_id;
+        DEFINE INDEX IF NOT EXISTS idx_push_endpoint ON push_subscription COLUMNS endpoint UNIQUE;
     ",
         )
         .await?;

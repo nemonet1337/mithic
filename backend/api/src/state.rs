@@ -2,14 +2,16 @@ use object_store::ObjectStore;
 use std::sync::Arc;
 
 use apalis_redis::RedisStorage;
+use base64::Engine;
 use mithic_config::AppConfig;
 use mithic_db::{DragonflyClient, SurrealClient};
 use mithic_federation::{ActivityDelivery, FederationService};
+use tracing::info;
+use web_push::{IsahcWebPushClient, VapidSignatureBuilder};
 
 use crate::events::{StreamBroadcast, StreamReceiver, StreamSender};
-use crate::middleware::RateLimiter;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct AppState {
     inner: Arc<AppStateInner>,
 }
@@ -20,9 +22,11 @@ struct AppStateInner {
     pub config: AppConfig,
     pub http_client: reqwest::Client,
     pub federation_service: FederationService,
-    pub rate_limiter: RateLimiter,
     pub stream_tx: StreamSender,
     pub storage: Arc<dyn ObjectStore>,
+    /// URL-safe base64 public key for browser PushManager.subscribe
+    pub vapid_public_key: Option<String>,
+    pub web_push_client: Option<IsahcWebPushClient>,
 }
 
 impl std::fmt::Debug for AppStateInner {
@@ -31,12 +35,21 @@ impl std::fmt::Debug for AppStateInner {
             .field("surreal", &self.surreal)
             .field("dragonfly", &self.dragonfly)
             .field("config", &self.config)
-            .field("http_client", &self.http_client)
-            .field("federation_service", &self.federation_service)
-            .field("rate_limiter", &self.rate_limiter)
-            .field("stream_tx", &self.stream_tx)
+            .field("vapid_public_key", &self.vapid_public_key)
             .finish_non_exhaustive()
     }
+}
+
+impl std::fmt::Debug for AppState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.inner.fmt(f)
+    }
+}
+
+fn derive_vapid_public_key(private_b64: &str) -> Option<String> {
+    let builder = VapidSignatureBuilder::from_base64_no_sub(private_b64).ok()?;
+    let bytes = builder.get_public_key();
+    Some(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes))
 }
 
 impl AppState {
@@ -58,10 +71,25 @@ impl AppState {
             http_client.clone(),
             config.instance_url.clone(),
         );
-        // 鍵キャッシュ / ホストセマフォの定期クリア (3.5)
         federation_service.spawn_cache_janitor();
 
-        let rate_limiter = RateLimiter::new();
+        let (vapid_public_key, web_push_client) = if let Some(ref pk) = config.vapid_private_key {
+            match derive_vapid_public_key(pk) {
+                Some(pub_key) => {
+                    let client = IsahcWebPushClient::new()
+                        .map_err(|e| anyhow::anyhow!("Web push client: {e}"))?;
+                    info!("Web Push enabled (VAPID public key derived)");
+                    (Some(pub_key), Some(client))
+                }
+                None => {
+                    tracing::warn!("VAPID_PRIVATE_KEY set but invalid; Web Push disabled");
+                    (None, None)
+                }
+            }
+        } else {
+            (None, None)
+        };
+
         let stream_tx = crate::events::channel();
         let object_storage = mithic_db::create_storage_client(&config)?;
 
@@ -72,9 +100,10 @@ impl AppState {
                 config,
                 http_client,
                 federation_service,
-                rate_limiter,
                 stream_tx,
                 storage: object_storage,
+                vapid_public_key,
+                web_push_client,
             }),
         })
     }
@@ -94,19 +123,20 @@ impl AppState {
     pub fn federation_service(&self) -> &FederationService {
         &self.inner.federation_service
     }
-    pub fn rate_limiter(&self) -> &RateLimiter {
-        &self.inner.rate_limiter
-    }
     pub fn storage(&self) -> &Arc<dyn ObjectStore> {
         &self.inner.storage
     }
+    pub fn vapid_public_key(&self) -> Option<&str> {
+        self.inner.vapid_public_key.as_deref()
+    }
+    pub fn web_push_client(&self) -> Option<&IsahcWebPushClient> {
+        self.inner.web_push_client.as_ref()
+    }
 
-    /// ストリームイベントを購読する
     pub fn subscribe_stream(&self) -> StreamReceiver {
         self.inner.stream_tx.subscribe()
     }
 
-    /// ストリームイベントを発行する (購読者ゼロは無視)
     pub fn publish_stream(&self, event: StreamBroadcast) {
         let _ = self.inner.stream_tx.send(event);
     }

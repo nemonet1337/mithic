@@ -2,10 +2,10 @@ use mithic_core::models::actor::Actor;
 use mithic_core::models::file::FileId;
 use mithic_core::models::note::{Note, NoteVisibility as CoreVisibility};
 use mithic_core::models::notification::NotificationType;
-use mithic_db::queries::{get_actor_by_id, get_drive_file, get_note_by_id};
+use mithic_db::queries::{get_actor_by_id, get_drive_file, get_note_by_id, get_reaction_by_actor};
 use shared::{
     MediaAttachment, Note as NoteDto, NoteVisibility, NotificationType as NotifTypeDto,
-    ReactionSummary, User,
+    ProfileField, ReactionSummary, User,
 };
 
 use crate::state::AppState;
@@ -39,7 +39,53 @@ pub fn actor_to_user(actor: &Actor) -> User {
         notes_count: actor.notes_count.max(0) as u64,
         is_locked: actor.is_locked,
         is_bot: actor.is_bot,
+        is_cat: actor.is_cat,
+        location: actor.location.clone(),
+        birthday: actor.birthday.clone(),
+        lang: actor.lang.clone(),
+        fields: actor
+            .fields
+            .iter()
+            .map(|f| ProfileField {
+                name: f.name.clone(),
+                value: f.value.clone(),
+            })
+            .collect(),
+        followed_message: actor.followed_message.clone(),
+        reaction_acceptance: actor.reaction_acceptance.clone(),
+        created_at: Some(actor.created_at.to_rfc3339()),
     }
+}
+
+pub fn apply_my_reactions(summaries: &mut [ReactionSummary], mine: Option<&str>) {
+    for r in summaries.iter_mut() {
+        r.reacted_by_me = mine.is_some_and(|m| m == r.emoji);
+    }
+}
+
+pub async fn apply_viewer_reaction(state: &AppState, dto: &mut NoteDto, viewer_id: &str) {
+    let mine = get_reaction_by_actor(state.surreal(), &dto.id, viewer_id)
+        .await
+        .ok()
+        .flatten();
+    apply_my_reactions(&mut dto.reactions, mine.as_deref());
+}
+
+pub fn reaction_summaries_from_map(
+    reactions: &std::collections::HashMap<String, i32>,
+    mine: Option<&str>,
+) -> Vec<ReactionSummary> {
+    let mut list: Vec<ReactionSummary> = reactions
+        .iter()
+        .filter(|(_, count)| **count > 0)
+        .map(|(emoji, count)| ReactionSummary {
+            emoji: emoji.clone(),
+            count: (*count).max(0) as u64,
+            reacted_by_me: mine.is_some_and(|m| m == emoji),
+        })
+        .collect();
+    list.sort_by(|a, b| b.count.cmp(&a.count).then(a.emoji.cmp(&b.emoji)));
+    list
 }
 
 fn map_visibility(visibility: CoreVisibility) -> NoteVisibility {

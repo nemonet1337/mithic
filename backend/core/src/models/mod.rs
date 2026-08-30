@@ -6,7 +6,7 @@ pub mod notification;
 pub mod relay;
 
 pub use activity::{Activity, ActivityId};
-pub use actor::{Actor, ActorId, ActorType, UpdateProfileRequest};
+pub use actor::{Actor, ActorId, ActorType, ProfileField, UpdateProfileRequest};
 pub use file::{DriveFile, DriveFolder, FileId, FileType};
 pub use note::{Note, NoteId, NoteVisibility};
 pub use notification::{Notification, NotificationId, NotificationType};

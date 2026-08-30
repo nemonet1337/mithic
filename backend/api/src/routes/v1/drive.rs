@@ -63,6 +63,40 @@ fn is_inline_mime(mime: &str) -> bool {
     mime.starts_with("image/") || mime.starts_with("video/") || mime.starts_with("audio/")
 }
 
+fn public_url(state: &AppState, object_key: &str) -> String {
+    match state.config().storage_type.as_str() {
+        "s3" | "minio" | "r2" => {
+            if let Some(ref public_url) = state.config().storage_s3_public_url {
+                format!("{public_url}/{object_key}")
+            } else {
+                format!("{}/uploads/{object_key}", state.config().instance_url)
+            }
+        }
+        "gcs" => {
+            if let Some(ref public_url) = state.config().storage_gcs_public_url {
+                format!("{public_url}/{object_key}")
+            } else {
+                format!("{}/uploads/{object_key}", state.config().instance_url)
+            }
+        }
+        _ => format!("{}/uploads/{object_key}", state.config().instance_url),
+    }
+}
+
+/// Resize to max 400px and encode as WebP. Returns (bytes, original_w, original_h).
+fn make_thumbnail_webp(data: &[u8]) -> Option<(Vec<u8>, i32, i32)> {
+    use std::io::Cursor;
+
+    let img = image::load_from_memory(data).ok()?;
+    let (w, h) = (img.width() as i32, img.height() as i32);
+    let thumb = img.thumbnail(400, 400);
+    let mut buf = Cursor::new(Vec::new());
+    thumb
+        .write_to(&mut buf, image::ImageFormat::WebP)
+        .ok()?;
+    Some((buf.into_inner(), w, h))
+}
+
 async fn store_file(
     state: &AppState,
     owner_id: mithic_core::models::actor::ActorId,
@@ -72,39 +106,52 @@ async fn store_file(
 ) -> Result<DriveFile> {
     let size = data.len() as i64;
     let hash = hex::encode(sha2::Sha256::digest(&data));
+    let file_url = public_url(state, &hash);
 
-    let file_url = match state.config().storage_type.as_str() {
-        "s3" | "minio" | "r2" => {
-            if let Some(ref public_url) = state.config().storage_s3_public_url {
-                format!("{public_url}/{hash}")
-            } else {
-                format!("{}/uploads/{hash}", state.config().instance_url)
-            }
-        }
-        "gcs" => {
-            if let Some(ref public_url) = state.config().storage_gcs_public_url {
-                format!("{public_url}/{hash}")
-            } else {
-                format!("{}/uploads/{hash}", state.config().instance_url)
-            }
-        }
-        _ => format!("{}/uploads/{hash}", state.config().instance_url),
-    };
-
-    let mut drive_file = DriveFile::new(name, mime_type, size, owner_id, hash.clone(), hash);
+    let mut drive_file = DriveFile::new(
+        name,
+        mime_type.clone(),
+        size,
+        owner_id,
+        hash.clone(),
+        hash.clone(),
+    );
     drive_file.url = Some(file_url.clone());
     drive_file.thumbnail_url = Some(file_url);
 
-    create_drive_file(state.surreal(), &drive_file)
-        .await
-        .map_err(|e| AppError::Internal(e.to_string()))?;
+    // Generate thumbnail before DB write so URLs match what is stored
+    let mut thumb_store: Option<(String, Vec<u8>)> = None;
+    if mime_type.starts_with("image/") {
+        if let Some((bytes, w, h)) = make_thumbnail_webp(&data) {
+            let thumb_key = format!("{hash}.thumb");
+            drive_file.width = Some(w);
+            drive_file.height = Some(h);
+            drive_file.thumbnail_path = Some(thumb_key.clone());
+            drive_file.thumbnail_url = Some(public_url(state, &thumb_key));
+            thumb_store = Some((thumb_key, bytes));
+        }
+    }
 
-    let object_path = ObjectPath::from(drive_file.path.as_str());
+    // Persist original first
+    let object_path = ObjectPath::from(hash.as_str());
     state
         .storage()
         .put(&object_path, data.into())
         .await
         .map_err(|e| AppError::Internal(format!("Failed to save file: {e}")))?;
+
+    if let Some((thumb_key, bytes)) = thumb_store {
+        let thumb_path = ObjectPath::from(thumb_key.as_str());
+        if let Err(e) = state.storage().put(&thumb_path, bytes.into()).await {
+            tracing::warn!("Failed to save thumbnail {thumb_key}: {e}");
+            drive_file.thumbnail_path = None;
+            drive_file.thumbnail_url = drive_file.url.clone();
+        }
+    }
+
+    create_drive_file(state.surreal(), &drive_file)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
 
     Ok(drive_file)
 }
@@ -311,13 +358,19 @@ pub async fn serve_upload(
     State(state): State<AppState>,
     Path(hash): Path<String>,
 ) -> Result<impl axum::response::IntoResponse> {
-    let file_meta = get_drive_file_by_hash(state.surreal(), &hash)
-        .await
-        .map_err(|e| AppError::Internal(e.to_string()))?;
-
-    let mime = file_meta
-        .map(|f| f.mime_type)
-        .unwrap_or_else(|| "application/octet-stream".to_string());
+    // `{sha256}.thumb` is a generated WebP preview; originals use bare sha256 hex.
+    let is_thumb = hash.ends_with(".thumb");
+    let mime = if is_thumb {
+        "image/webp".to_string()
+    } else {
+        let base = hash.strip_suffix(".thumb").unwrap_or(&hash);
+        let file_meta = get_drive_file_by_hash(state.surreal(), base)
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+        file_meta
+            .map(|f| f.mime_type)
+            .unwrap_or_else(|| "application/octet-stream".to_string())
+    };
 
     let object_path = ObjectPath::from(hash.as_str());
     let get_result = state

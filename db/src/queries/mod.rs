@@ -7,6 +7,7 @@ pub mod hashtags;
 pub mod notes;
 pub mod notifications;
 pub mod polls;
+pub mod push;
 pub mod reactions;
 pub mod relay;
 pub mod timeline;
@@ -32,7 +33,13 @@ pub use notifications::{
     mark_notification_as_read,
 };
 pub use polls::vote_poll;
-pub use reactions::{add_reaction, remove_all_reactions_by_actor, remove_reaction};
+pub use push::{
+    PushSubscription, delete_push_subscription_by_endpoint, delete_push_subscriptions_for_user,
+    list_push_subscriptions, upsert_push_subscription,
+};
+pub use reactions::{
+    add_reaction, get_reaction_by_actor, remove_all_reactions_by_actor, remove_reaction,
+};
 pub use relay::{
     create_relay, delete_relay, get_accepted_relays, get_relay_by_id, get_relay_by_inbox,
     list_relays, update_relay_status,

@@ -1,13 +1,13 @@
 use leptos::prelude::*;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum NoteMenuAction {
     CopyLink,
-    Delete,
-    Report,
+    Pin,
     Mute,
     Block,
-    Pin,
+    Report,
+    Delete,
 }
 
 #[component]
@@ -24,43 +24,28 @@ pub fn NoteMenu(
 
     view! {
         <Show when=move || is_open.get()>
-            <div class="wf-pop" style="right:0;width:200px;">
-                <button
-                    class="wf-pop-item"
-                    on:click=move |_| do_action(NoteMenuAction::CopyLink)
-                >
-                    "リンクをコピー"
+            <div class="wf-pop" style="right:0;width:220px;">
+                <div class="wf-entry-meta px-2.5 pt-1">"[ この投稿 ]"</div>
+                <button class="wf-pop-item" on:click=move |_| do_action(NoteMenuAction::CopyLink)>
+                    "URLをコピー"
                 </button>
-                <button
-                    class="wf-pop-item"
-                    on:click=move |_| do_action(NoteMenuAction::Pin)
-                >
-                    "ピン留め"
+                <button class="wf-pop-item" on:click=move |_| do_action(NoteMenuAction::Pin)>
+                    "プロフィールに固定"
                 </button>
-                <button
-                    class="wf-pop-item"
-                    on:click=move |_| do_action(NoteMenuAction::Mute)
-                >
+                <hr class="wf-spine-rule" style="margin:4px 6px;" />
+                <div class="wf-entry-meta px-2.5 pt-1">"[ このユーザー ]"</div>
+                <button class="wf-pop-item" on:click=move |_| do_action(NoteMenuAction::Mute)>
                     "ミュート"
                 </button>
-                <button
-                    class="wf-pop-item"
-                    on:click=move |_| do_action(NoteMenuAction::Block)
-                >
+                <button class="wf-pop-item" on:click=move |_| do_action(NoteMenuAction::Block)>
                     "ブロック"
                 </button>
-                <button
-                    class="wf-pop-item"
-                    on:click=move |_| do_action(NoteMenuAction::Report)
-                >
-                    "通報"
+                <hr class="wf-spine-rule" style="margin:4px 6px;" />
+                <button class="wf-pop-item danger" on:click=move |_| do_action(NoteMenuAction::Report)>
+                    "通報する"
                 </button>
                 <Show when=move || is_own_note.get()>
-                    <hr class="wf-spine-rule" style="margin:4px 0;" />
-                    <button
-                        class="wf-pop-item danger"
-                        on:click=move |_| do_action(NoteMenuAction::Delete)
-                    >
+                    <button class="wf-pop-item danger" on:click=move |_| do_action(NoteMenuAction::Delete)>
                         "削除"
                     </button>
                 </Show>

@@ -1,5 +1,6 @@
 mod avatar;
 mod compose;
+mod confirm_dialog;
 mod follow_button;
 mod load_more;
 mod markdown;

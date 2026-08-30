@@ -13,24 +13,17 @@ fn profile_path(me: Option<&User>) -> String {
 }
 
 fn badge_label(n: u32) -> String {
-    if n > 99 {
-        "99+".into()
-    } else {
-        n.to_string()
-    }
+    if n > 99 { "99+".into() } else { n.to_string() }
 }
 
 // ===========================================================
 // Shell — full-bleed timeline canvas + floating chrome
 // ===========================================================
 #[component]
-pub fn Shell(
-    #[prop(into)] active: String,
-    children: Children,
-) -> impl IntoView {
+pub fn Shell(#[prop(into)] active: String, children: Children) -> impl IntoView {
     view! {
         <div class="app-root wf-shell" id="app-root">
-            // タイムラインが全面。クロームは浮遊オーバーレイ。
+            <Spine active=active.clone() />
             <main class="wf-main">
                 <div class="wf-main-inner">
                     {children()}
@@ -39,6 +32,78 @@ pub fn Shell(
             <AppChrome active=active.clone() />
             <MobileDock active=active />
         </div>
+    }
+}
+
+#[component]
+fn Spine(#[prop(into)] active: String) -> impl IntoView {
+    let compose = expect_context::<ComposeStore>();
+    let notifications = expect_context::<NotificationStore>();
+    let auth = expect_context::<AuthStore>();
+    let me = auth.me;
+    let items = [
+        ("home", "/", "01", "ホーム", id::FiHome),
+        ("search", "/search", "02", "検索", id::FiSearch),
+        ("notif", "/notifications", "03", "通知", id::FiBell),
+        ("dm", "/dm", "04", "メッセージ", id::FiMail),
+        ("profile", "", "05", "プロフィール", id::FiUser),
+        ("settings", "/settings", "06", "設定", id::FiSettings),
+    ];
+
+    view! {
+        <aside class="wf-spine compact" aria-label="メインナビ">
+            <A href="/" attr:class="wf-mark wf-spine-brand" attr:aria-label="ホーム">
+                <span class="wf-mark-bracket">"["</span>
+                <span class="wf-mark-glyph">"m"</span>
+                <span class="wf-mark-bracket">"]"</span>
+            </A>
+            <div class="wf-spine-rule" />
+            <nav class="wf-spine-nav">
+                {items.into_iter().map(|(id, href, num, label, icon)| {
+                    let active = active.clone();
+                    view! {
+                        {move || {
+                            let href = if id == "profile" {
+                                profile_path(me.get().as_ref())
+                            } else {
+                                href.to_string()
+                            };
+                            let on = active == id;
+                            view! {
+                                <A href=href
+                                    attr:class=if on { "wf-spine-icon on" } else { "wf-spine-icon" }
+                                    attr:title=label
+                                    attr:aria-label=label
+                                >
+                                    <span class="wf-spine-num">{num}</span>
+                                    <Icon icon=icon width="16" height="16" />
+                                    <Show when=move || { id == "notif" && notifications.unread_notifications.get() > 0 }>
+                                        <span class="wf-badge wf-badge-dot" />
+                                    </Show>
+                                </A>
+                            }
+                        }}
+                    }
+                }).collect_view()}
+            </nav>
+            <div style="flex:1;" />
+            <button
+                class="wf-stamp-btn compact"
+                on:click=move |_| compose.open()
+                title="新しい投稿"
+            >
+                "+"
+            </button>
+            {move || me.get().map(|u| {
+                let handle = u.handle();
+                let href = profile_path(Some(&u));
+                view! {
+                    <A href=href attr:class="wf-spine-foot-av" attr:title=handle>
+                        <Avatar user=u size=AvatarSize::Sm />
+                    </A>
+                }
+            })}
+        </aside>
     }
 }
 

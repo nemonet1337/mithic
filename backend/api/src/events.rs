@@ -15,6 +15,8 @@ pub enum StreamBroadcast {
         user_id: String,
         notification: Box<shared::Notification>,
     },
+    /// ノート削除。全接続へ配信。
+    NoteDeleted { id: String },
 }
 
 pub type StreamSender = broadcast::Sender<StreamBroadcast>;

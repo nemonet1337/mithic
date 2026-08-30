@@ -36,6 +36,11 @@ pub struct AppConfig {
 
     pub instance_url: String,
     pub instance_name: String,
+
+    /// VAPID private key (URL-safe base64, raw 32-byte EC key). When set, Web Push is enabled.
+    pub vapid_private_key: Option<String>,
+    /// Contact for VAPID `sub` claim (mailto: or https:)
+    pub vapid_contact: String,
 }
 
 impl AppConfig {
@@ -107,6 +112,13 @@ impl AppConfig {
 
             instance_url,
             instance_name: env::var("INSTANCE_NAME").unwrap_or_else(|_| "Mithic".to_string()),
+
+            vapid_private_key: env::var("VAPID_PRIVATE_KEY")
+                .ok()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty()),
+            vapid_contact: env::var("VAPID_CONTACT")
+                .unwrap_or_else(|_| "mailto:admin@localhost".to_string()),
         })
     }
 }

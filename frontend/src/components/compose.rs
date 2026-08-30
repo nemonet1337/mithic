@@ -1,6 +1,6 @@
 use leptos::prelude::*;
 use wasm_bindgen::JsCast;
-use web_sys::{HtmlInputElement, File};
+use web_sys::{File, HtmlInputElement};
 
 use crate::models::{CreateNoteRequest, NoteVisibility};
 use crate::store::{AuthStore, ComposeStore};
@@ -136,8 +136,8 @@ pub fn ComposeModal() -> impl IntoView {
                 >
                     <div class="wf-modal-head">
                         <div>
-                            <p class="font-mono text-[10px] opacity-40 uppercase">"New Note"</p>
-                            <h2 class="wf-modal-title">"投稿を書く"</h2>
+                            <p class="font-mono text-[10px] opacity-40 uppercase">"[ COMPOSE ]"</p>
+                            <h2 class="wf-modal-title">"新しい投稿"</h2>
                         </div>
                         <button
                             class="wf-btn wf-btn-ghost wf-btn-sm wf-btn-circle"
@@ -414,7 +414,5 @@ pub fn ComposeModal() -> impl IntoView {
 }
 
 fn event_target<T: JsCast>(ev: &web_sys::Event) -> T {
-    ev.target()
-        .expect("event target")
-        .unchecked_into::<T>()
+    ev.target().expect("event target").unchecked_into::<T>()
 }

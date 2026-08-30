@@ -30,6 +30,8 @@ base64            = { workspace = true }
 rsa               = { workspace = true }
 rand              = "0.10"
 tokio             = { workspace = true }
+web-push          = { workspace = true }
+image             = { workspace = true }
 ulid              = { workspace = true }
 uuid              = { workspace = true }
 validator         = { workspace = true }

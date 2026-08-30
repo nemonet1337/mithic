@@ -17,7 +17,7 @@ use shared::{Hashtag, Note as NoteDto};
 
 use crate::dto::note_to_dto_full;
 use crate::http_cache::{CC_TIMELINE, CC_TRENDING, json_with_cache};
-use crate::routes::v1::common::{parse_optional_note_id, rows_to_dtos, PagingQuery};
+use crate::routes::v1::common::{parse_optional_note_id, rows_to_dtos, rows_to_dtos_for, PagingQuery};
 use crate::state::AppState;
 
 /// home は認証必須 (個人タイムラインのため JSON キャッシュしない / 短命 ID キャッシュは利用)
@@ -44,7 +44,9 @@ pub async fn timeline_home(
     }
     .map_err(|e| AppError::Internal(e.to_string()))?;
 
-    Ok(axum::Json(rows_to_dtos(&state, rows).await))
+    Ok(axum::Json(
+        rows_to_dtos_for(&state, rows, Some(&auth.user_id.to_string())).await,
+    ))
 }
 
 pub async fn timeline_local(

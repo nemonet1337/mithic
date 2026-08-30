@@ -38,7 +38,9 @@ pub fn DrivePage() -> impl IntoView {
 
     let delete_file = move |file_id: String| {
         let token = auth.token.get_untracked();
-        let Some(tok) = token else { return; };
+        let Some(tok) = token else {
+            return;
+        };
         wasm_bindgen_futures::spawn_local(async move {
             if crate::api::drive::delete(&tok, &file_id).await.is_ok() {
                 files.update(|v| v.retain(|f| f.id != file_id));

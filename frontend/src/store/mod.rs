@@ -6,3 +6,4 @@ pub mod stream;
 pub use auth::AuthStore;
 pub use compose::ComposeStore;
 pub use notifications::NotificationStore;
+pub use stream::StreamStore;

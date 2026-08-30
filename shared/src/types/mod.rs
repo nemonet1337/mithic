@@ -16,4 +16,4 @@ pub use note::{
 };
 pub use notification::{Notification, NotificationType};
 pub use stream::StreamEvent;
-pub use user::{User, UserRelation};
+pub use user::{ProfileField, User, UserRelation};

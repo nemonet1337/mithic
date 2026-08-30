@@ -2,18 +2,15 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use apalis::prelude::*;
-use base64::prelude::*;
 use dashmap::DashMap;
 use reqwest::Client;
 use rsa::RsaPrivateKey;
 use rsa::pkcs1::DecodeRsaPrivateKey;
-use rsa::pkcs1v15::SigningKey;
 use rsa::pkcs8::DecodePrivateKey;
-use rsa::sha2::Sha256 as RsaSha256;
-use rsa::signature::{SignatureEncoding, Signer};
-use sha2::Digest;
 use tokio::sync::{RwLock, Semaphore};
 use tracing::{error, info, warn};
+
+use crate::http_sig;
 
 use mithic_core::models::Actor;
 use mithic_db::{DragonflyClient, SurrealClient};
@@ -147,36 +144,17 @@ impl FederationService {
         let semaphore = self.get_host_semaphore(&host);
         let _permit = semaphore.acquire().await;
 
-        // HTTP-date 形式 (RFC 7231)
-        let date = chrono::Utc::now()
-            .format("%a, %d %b %Y %H:%M:%S GMT")
-            .to_string();
-        let digest = format!(
-            "SHA-256={}",
-            BASE64_STANDARD.encode(sha2::Sha256::digest(&body))
-        );
-
-        // RSA-SHA256 で署名 (TODO Phase F2: placeholder 置換済み)
-        let signing_string =
-            format!("(request-target): post {path}\nhost: {host}\ndate: {date}\ndigest: {digest}");
         let private_key = self.signing_key_for(actor).await?;
-        let signing_key = SigningKey::<RsaSha256>::new((*private_key).clone());
-        let signature = signing_key.sign(signing_string.as_bytes());
-        let signature_b64 = BASE64_STANDARD.encode(signature.to_bytes());
-
-        let signature_header = format!(
-            "keyId=\"{}\",algorithm=\"rsa-sha256\",headers=\"(request-target) host date digest\",signature=\"{}\"",
-            key_id, signature_b64
-        );
+        let signed = http_sig::sign_post(&private_key, &key_id, &path, &host, &body);
 
         let response = self
             .http_client
             .post(inbox_url)
             .header("Content-Type", "application/activity+json")
             .header("Accept", "application/activity+json")
-            .header("Date", date)
-            .header("Digest", digest)
-            .header("Signature", signature_header)
+            .header("Date", signed.date)
+            .header("Digest", signed.digest)
+            .header("Signature", signed.signature_header)
             .header("Host", host)
             .body(body)
             .send()
@@ -690,6 +668,34 @@ pub fn parse_remote_actor(data: &serde_json::Value) -> Option<Actor> {
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
     actor.is_bot = data.get("type").and_then(|v| v.as_str()) == Some("Service");
+    actor.is_cat = data.get("isCat").and_then(|v| v.as_bool()).unwrap_or(false);
+    actor.followed_message = data
+        .get("_misskey_followedMessage")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+    actor.birthday = data
+        .get("vcard:bday")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+    actor.location = data.get("location").and_then(|l| {
+        l.as_str()
+            .map(String::from)
+            .or_else(|| l.get("name").and_then(|n| n.as_str()).map(String::from))
+    });
+    if let Some(arr) = data.get("attachment").and_then(|a| a.as_array()) {
+        actor.fields = arr
+            .iter()
+            .filter(|t| t.get("type").and_then(|x| x.as_str()) == Some("PropertyValue"))
+            .filter_map(|t| {
+                Some(mithic_core::models::actor::ProfileField {
+                    name: t.get("name")?.as_str()?.to_string(),
+                    value: t.get("value")?.as_str()?.to_string(),
+                })
+            })
+            .filter(|f| !f.name.is_empty())
+            .take(16)
+            .collect();
+    }
 
     Some(actor)
 }

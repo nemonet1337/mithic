@@ -12,18 +12,6 @@ use crate::state::AppState;
 pub fn create_router(state: AppState) -> Router {
     let cors = cors_layer(&state.config().cors_allowed_origins);
 
-    // レート制限バケットの定期クリーンアップ
-    {
-        let limiter = state.rate_limiter().clone();
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(std::time::Duration::from_secs(600));
-            loop {
-                interval.tick().await;
-                limiter.cleanup().await;
-            }
-        });
-    }
-
     Router::new()
         .merge(v1::router(state.clone()))
         .merge(activitypub::router(state.clone()))

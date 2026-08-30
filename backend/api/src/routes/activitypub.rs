@@ -1,6 +1,6 @@
 //! ActivityPub 受信基盤
 //!
-//! WebFinger / Actor / NodeInfo と inbox (Follow / Like / Create / Announce / Undo 等)。
+//! WebFinger / Actor / NodeInfo と inbox (Follow / Undo / Like / Create / Announce / Delete / Update / Accept / Reject / Block)。
 //! Misskey 拡張: 絵文字リアクション (`_misskey_reaction` / content)、引用 (`quoteUrl`)。
 
 use axum::{
@@ -15,13 +15,15 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use tracing::{info, warn};
 
-use mithic_core::models::actor::Actor;
+use mithic_core::models::actor::{Actor, ProfileField};
+use crate::events::StreamBroadcast;
 use mithic_core::models::note::{Note, NoteVisibility};
 use mithic_core::models::notification::Notification;
 use mithic_core::{AppError, Result};
+use mithic_db::cache;
 use mithic_db::queries::{
-    add_reaction, create_actor, create_note, get_actor_by_username, get_note_by_id, get_note_by_uri,
-    remove_all_reactions_by_actor, unfollow_user,
+    add_reaction, create_actor, create_note, delete_note, get_actor_by_username, get_note_by_id,
+    get_note_by_uri, is_following, remove_all_reactions_by_actor, unfollow_user,
 };
 
 use crate::middleware::verify_http_signature;
@@ -227,7 +229,97 @@ fn build_actor_document(actor: &Actor, instance_url: &str) -> Value {
         },
         "icon": actor.avatar_url.as_ref().map(|url| json!({ "type": "Image", "url": url })),
         "published": actor.created_at.to_rfc3339()
-    })
+    });
+    if let Some(obj) = doc.as_object_mut() {
+        if let Some(ctx) = obj.get_mut("@context").and_then(|c| c.as_array_mut()) {
+            if let Some(ext) = ctx.iter_mut().find(|v| v.is_object()) {
+                if let Some(map) = ext.as_object_mut() {
+                    map.insert("isCat".into(), json!("misskey:isCat"));
+                    map.insert(
+                        "_misskey_followedMessage".into(),
+                        json!("misskey:_misskey_followedMessage"),
+                    );
+                    map.insert("vcard".into(), json!("http://www.w3.org/2006/vcard/ns#"));
+                    map.insert("schema".into(), json!("http://schema.org#"));
+                    map.insert("PropertyValue".into(), json!("schema:PropertyValue"));
+                }
+            }
+        }
+        if let Some(url) = &actor.banner_url {
+            obj.insert(
+                "image".into(),
+                json!({ "type": "Image", "url": url }),
+            );
+        }
+        if actor.is_cat {
+            obj.insert("isCat".into(), json!(true));
+        }
+        if let Some(msg) = &actor.followed_message {
+            obj.insert("_misskey_followedMessage".into(), json!(msg));
+        }
+        if let Some(loc) = &actor.location {
+            obj.insert(
+                "location".into(),
+                json!({ "type": "Place", "name": loc }),
+            );
+        }
+        if let Some(bday) = &actor.birthday {
+            obj.insert("vcard:bday".into(), json!(bday));
+        }
+        let attachments: Vec<Value> = actor
+            .fields
+            .iter()
+            .filter(|f| !f.name.is_empty())
+            .map(|f| {
+                json!({
+                    "type": "PropertyValue",
+                    "name": f.name,
+                    "value": f.value
+                })
+            })
+            .collect();
+        if !attachments.is_empty() {
+            obj.insert("attachment".into(), json!(attachments));
+        }
+    }
+    doc
+}
+
+fn profile_fields_from_ap(object: &Value) -> Vec<ProfileField> {
+    object
+        .get("attachment")
+        .and_then(|a| a.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter(|t| t.get("type").and_then(|x| x.as_str()) == Some("PropertyValue"))
+                .filter_map(|t| {
+                    Some(ProfileField {
+                        name: t.get("name")?.as_str()?.to_string(),
+                        value: t.get("value")?.as_str()?.to_string(),
+                    })
+                })
+                .filter(|f| !f.name.is_empty())
+                .take(16)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn ap_location_name(object: &Value) -> Option<String> {
+    object
+        .get("location")
+        .and_then(|l| {
+            l.as_str()
+                .map(String::from)
+                .or_else(|| l.get("name").and_then(|n| n.as_str()).map(String::from))
+        })
+        .or_else(|| {
+            object
+                .get("vcard:Address")
+                .and_then(|a| a.get("vcard:locality"))
+                .and_then(|v| v.as_str())
+                .map(String::from)
+        })
 }
 
 async fn actor_document(
@@ -399,10 +491,11 @@ async fn process_activity(
         "Like" => handle_like(state, &remote_actor_uri, &activity).await,
         "Create" => handle_create(state, &remote_actor_uri, &activity).await,
         "Announce" => handle_announce(state, &remote_actor_uri, &activity).await,
-        "Delete" | "Update" | "Accept" | "Reject" | "Block" => {
-            // 受理のみ (永続化は後続)
-            Ok(StatusCode::ACCEPTED)
-        }
+        "Delete" => handle_delete(state, &remote_actor_uri, &activity).await,
+        "Update" => handle_update(state, &remote_actor_uri, &activity).await,
+        "Accept" => handle_accept(state, &remote_actor_uri, &activity).await,
+        "Reject" => handle_reject(state, &remote_actor_uri, &activity).await,
+        "Block" => handle_block(state, &remote_actor_uri, &activity).await,
         _ => {
             warn!("Unhandled activity type: {activity_type}");
             Ok(StatusCode::ACCEPTED)
@@ -435,6 +528,38 @@ fn object_id(value: &Value) -> Option<&str> {
         Value::Object(_) => value.get("id").and_then(|v| v.as_str()),
         _ => None,
     }
+}
+
+fn object_type(value: &Value) -> &str {
+    value.get("type").and_then(|v| v.as_str()).unwrap_or_default()
+}
+
+fn object_text(object: &Value) -> Option<String> {
+    object
+        .get("source")
+        .and_then(|s| s.get("content"))
+        .and_then(|v| v.as_str())
+        .or_else(|| object.get("content").and_then(|v| v.as_str()))
+        .map(str::to_string)
+}
+
+fn ap_url(value: Option<&Value>) -> Option<String> {
+    let value = value?;
+    match value {
+        Value::String(s) => Some(s.clone()),
+        Value::Object(_) => value.get("url").and_then(|v| v.as_str()).map(String::from),
+        _ => None,
+    }
+}
+
+/// Accept / Reject の object から Follow の (follower_uri, followee_uri)
+fn follow_uris(object: &Value) -> Option<(String, String)> {
+    if object_type(object) != "Follow" {
+        return None;
+    }
+    let follower = object.get("actor").and_then(|v| v.as_str())?.to_string();
+    let followee = object.get("object").and_then(object_id)?.to_string();
+    Some((follower, followee))
 }
 
 /// Like からリアクション文字列を抽出 (Misskey content / `_misskey_reaction` / デフォルト)
@@ -1065,5 +1190,332 @@ async fn handle_undo(
             warn!("Unhandled Undo object type: {other}");
             Ok(StatusCode::ACCEPTED)
         }
+    }
+}
+
+async fn handle_delete(
+    state: &AppState,
+    remote_actor_uri: &str,
+    activity: &Value,
+) -> Result<StatusCode> {
+    let object = activity
+        .get("object")
+        .ok_or_else(|| AppError::Validation("Delete missing object".to_string()))?;
+    let Some(object_uri) = object_id(object) else {
+        return Ok(StatusCode::ACCEPTED);
+    };
+
+    let remote_actor = resolve_remote_actor(state, remote_actor_uri).await?;
+
+    if let Some(note) = resolve_note(state, object_uri).await? {
+        if note.actor_id == remote_actor.id {
+            delete_note(state.surreal(), &note.id)
+                .await
+                .map_err(|e| AppError::Internal(e.to_string()))?;
+            let _ = cache::delete(state.dragonfly(), &format!("note:{}", note.id)).await;
+            state.publish_stream(StreamBroadcast::NoteDeleted {
+                id: note.id.to_string(),
+            });
+            let _ = state
+                .surreal()
+                .query(
+                    "UPDATE user SET notes_count = <int>(notes_count OR 1) - 1 WHERE id = type::record('user', $id);",
+                )
+                .bind(("id", remote_actor.id.to_string()))
+                .await;
+        }
+        return Ok(StatusCode::ACCEPTED);
+    }
+
+    if object_uri == remote_actor_uri || remote_actor.uri.as_deref() == Some(object_uri) {
+        let _ = state
+            .surreal()
+            .query(
+                "
+                DELETE note WHERE actor_id = type::record('user', $id);
+                UPDATE user SET notes_count = 0, is_suspended = true, updated_at = time::now()
+                WHERE id = type::record('user', $id) AND host != None;
+                ",
+            )
+            .bind(("id", remote_actor.id.to_string()))
+            .await;
+    }
+
+    Ok(StatusCode::ACCEPTED)
+}
+
+async fn handle_update(
+    state: &AppState,
+    remote_actor_uri: &str,
+    activity: &Value,
+) -> Result<StatusCode> {
+    let object = activity
+        .get("object")
+        .ok_or_else(|| AppError::Validation("Update missing object".to_string()))?;
+    if object.is_string() {
+        return Ok(StatusCode::ACCEPTED);
+    }
+
+    let remote_actor = resolve_remote_actor(state, remote_actor_uri).await?;
+    match object_type(object) {
+        "Note" | "Question" => {
+            let Some(note_uri) = object.get("id").and_then(|v| v.as_str()) else {
+                return Ok(StatusCode::ACCEPTED);
+            };
+            let Some(note) = resolve_note(state, note_uri).await? else {
+                return Ok(StatusCode::ACCEPTED);
+            };
+            if note.actor_id != remote_actor.id {
+                return Ok(StatusCode::ACCEPTED);
+            }
+            let text = object_text(object);
+            let cw = object
+                .get("summary")
+                .and_then(|v| v.as_str())
+                .map(String::from);
+            let tags: Vec<String> = object
+                .get("tag")
+                .and_then(|t| t.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter(|t| t.get("type").and_then(|x| x.as_str()) == Some("Hashtag"))
+                        .filter_map(|t| {
+                            t.get("name")
+                                .and_then(|n| n.as_str())
+                                .map(|s| s.trim_start_matches('#').to_string())
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            let emojis: Vec<String> = object
+                .get("tag")
+                .and_then(|t| t.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter(|t| t.get("type").and_then(|x| x.as_str()) == Some("Emoji"))
+                        .filter_map(|t| t.get("name").and_then(|n| n.as_str()).map(String::from))
+                        .collect()
+                })
+                .unwrap_or_default();
+            if let Some(tags) = object.get("tag") {
+                cache_emoji_tags(state, tags, remote_actor.host.as_deref()).await;
+            }
+            let _ = state
+                .surreal()
+                .query(
+                    "UPDATE note SET text = $text, cw = $cw, tags = $tags, emojis = $emojis WHERE id = type::record('note', $id);",
+                )
+                .bind(("id", note.id.to_string()))
+                .bind(("text", text))
+                .bind(("cw", cw))
+                .bind(("tags", tags))
+                .bind(("emojis", emojis))
+                .await;
+            let _ = cache::delete(state.dragonfly(), &format!("note:{}", note.id)).await;
+        }
+        "Person" | "Service" | "Application" => {
+            let Some(id) = object.get("id").and_then(|v| v.as_str()) else {
+                return Ok(StatusCode::ACCEPTED);
+            };
+            if id != remote_actor_uri && remote_actor.uri.as_deref() != Some(id) {
+                return Ok(StatusCode::ACCEPTED);
+            }
+            let name = object.get("name").and_then(|v| v.as_str()).map(String::from);
+            let bio = object
+                .get("summary")
+                .and_then(|v| v.as_str())
+                .map(String::from);
+            let avatar_url = ap_url(object.get("icon"));
+            let banner_url = ap_url(object.get("image"));
+            let inbox = object.get("inbox").and_then(|v| v.as_str()).map(String::from);
+            let shared_inbox = object
+                .get("endpoints")
+                .and_then(|e| e.get("sharedInbox"))
+                .and_then(|v| v.as_str())
+                .map(String::from);
+            let public_key = object
+                .get("publicKey")
+                .and_then(|k| k.get("publicKeyPem"))
+                .and_then(|v| v.as_str())
+                .map(String::from);
+            let is_locked = object
+                .get("manuallyApprovesFollowers")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let is_bot = object_type(object) == "Service";
+            let is_cat = object
+                .get("isCat")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let location = ap_location_name(object);
+            let birthday = object
+                .get("vcard:bday")
+                .and_then(|v| v.as_str())
+                .map(String::from);
+            let followed_message = object
+                .get("_misskey_followedMessage")
+                .and_then(|v| v.as_str())
+                .map(String::from);
+            let fields = profile_fields_from_ap(object);
+            let _ = state
+                .surreal()
+                .query(
+                    "
+                    UPDATE user SET
+                        name = $name,
+                        bio = $bio,
+                        avatar_url = $avatar_url,
+                        banner_url = $banner_url,
+                        inbox = $inbox,
+                        shared_inbox = $shared_inbox,
+                        public_key = $public_key,
+                        is_locked = $is_locked,
+                        is_bot = $is_bot,
+                        is_cat = $is_cat,
+                        location = $location,
+                        birthday = $birthday,
+                        followed_message = $followed_message,
+                        fields = $fields,
+                        updated_at = time::now()
+                    WHERE id = type::record('user', $id) AND host != None;
+                    ",
+                )
+                .bind(("id", remote_actor.id.to_string()))
+                .bind(("name", name))
+                .bind(("bio", bio))
+                .bind(("avatar_url", avatar_url))
+                .bind(("banner_url", banner_url))
+                .bind(("inbox", inbox))
+                .bind(("shared_inbox", shared_inbox))
+                .bind(("public_key", public_key))
+                .bind(("is_locked", is_locked))
+                .bind(("is_bot", is_bot))
+                .bind(("is_cat", is_cat))
+                .bind(("location", location))
+                .bind(("birthday", birthday))
+                .bind(("followed_message", followed_message))
+                .bind(("fields", fields))
+                .await;
+        }
+        other => warn!("Unhandled Update object type: {other}"),
+    }
+    Ok(StatusCode::ACCEPTED)
+}
+
+async fn handle_accept(
+    state: &AppState,
+    remote_actor_uri: &str,
+    activity: &Value,
+) -> Result<StatusCode> {
+    let Some((follower_uri, followee_uri)) = activity.get("object").and_then(follow_uris) else {
+        return Ok(StatusCode::ACCEPTED);
+    };
+    if followee_uri != remote_actor_uri {
+        return Ok(StatusCode::ACCEPTED);
+    }
+    let Ok(local) = resolve_local_object(state, &follower_uri).await else {
+        return Ok(StatusCode::ACCEPTED);
+    };
+    let remote_actor = resolve_remote_actor(state, remote_actor_uri).await?;
+    if !is_following(state.surreal(), &local.id, &remote_actor.id)
+        .await
+        .unwrap_or(false)
+    {
+        if let Err(e) = relationship::follow(state.surreal(), &local.id, &remote_actor.id).await {
+            warn!("Accept Follow: create follow failed: {e}");
+            return Ok(StatusCode::ACCEPTED);
+        }
+    }
+    let _ = state
+        .surreal()
+        .query(
+            "UPDATE follow SET is_accepted = true WHERE in = type::record('user', $from) AND out = type::record('user', $to);",
+        )
+        .bind(("from", local.id.to_string()))
+        .bind(("to", remote_actor.id.to_string()))
+        .await;
+    Ok(StatusCode::ACCEPTED)
+}
+
+async fn handle_reject(
+    state: &AppState,
+    remote_actor_uri: &str,
+    activity: &Value,
+) -> Result<StatusCode> {
+    let Some((follower_uri, followee_uri)) = activity.get("object").and_then(follow_uris) else {
+        return Ok(StatusCode::ACCEPTED);
+    };
+    if followee_uri != remote_actor_uri {
+        return Ok(StatusCode::ACCEPTED);
+    }
+    let Ok(local) = resolve_local_object(state, &follower_uri).await else {
+        return Ok(StatusCode::ACCEPTED);
+    };
+    let remote_actor = resolve_remote_actor(state, remote_actor_uri).await?;
+    if is_following(state.surreal(), &local.id, &remote_actor.id)
+        .await
+        .unwrap_or(false)
+    {
+        if let Err(e) = relationship::unfollow(state.surreal(), &local.id, &remote_actor.id).await {
+            warn!("Reject Follow: unfollow failed: {e}");
+        }
+    }
+    Ok(StatusCode::ACCEPTED)
+}
+
+async fn handle_block(
+    state: &AppState,
+    remote_actor_uri: &str,
+    activity: &Value,
+) -> Result<StatusCode> {
+    let Some(object_uri) = activity.get("object").and_then(object_id) else {
+        return Ok(StatusCode::ACCEPTED);
+    };
+    let Ok(local) = resolve_local_object(state, object_uri).await else {
+        return Ok(StatusCode::ACCEPTED);
+    };
+    let remote_actor = resolve_remote_actor(state, remote_actor_uri).await?;
+    let _ = relationship::unfollow(state.surreal(), &local.id, &remote_actor.id).await;
+    let _ = relationship::unfollow(state.surreal(), &remote_actor.id, &local.id).await;
+    if let Err(e) = relationship::block(state.surreal(), &remote_actor.id, &local.id).await {
+        warn!("Remote Block failed: {e}");
+    }
+    Ok(StatusCode::ACCEPTED)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn follow_uris_from_accept_object() {
+        let object = json!({
+            "type": "Follow",
+            "actor": "https://local.example/users/alice",
+            "object": "https://remote.example/users/bob"
+        });
+        assert_eq!(
+            follow_uris(&object),
+            Some((
+                "https://local.example/users/alice".into(),
+                "https://remote.example/users/bob".into()
+            ))
+        );
+    }
+
+    #[test]
+    fn follow_uris_ignores_string_and_other_types() {
+        assert_eq!(follow_uris(&json!("https://example/activities/1")), None);
+        assert_eq!(follow_uris(&json!({"type": "Note", "actor": "a", "object": "b"})), None);
+    }
+
+    #[test]
+    fn object_id_accepts_string_or_embedded() {
+        assert_eq!(object_id(&json!("https://x/notes/1")), Some("https://x/notes/1"));
+        assert_eq!(
+            object_id(&json!({"id": "https://x/notes/1", "type": "Tombstone"})),
+            Some("https://x/notes/1")
+        );
     }
 }

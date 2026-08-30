@@ -4,6 +4,7 @@ mod components;
 mod models;
 mod pages;
 mod store;
+mod time;
 
 use app::App;
 

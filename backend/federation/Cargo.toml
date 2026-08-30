@@ -27,3 +27,6 @@ tokio       = { workspace = true }
 apalis      = { workspace = true }
 apalis-redis = { workspace = true }
 dashmap     = "6"
+
+[dev-dependencies]
+rand        = "0.8"

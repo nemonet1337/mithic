@@ -47,7 +47,26 @@ pub struct Actor {
     #[serde(default)]
     pub is_bot: bool,
     #[serde(default)]
+    pub is_cat: bool,
+    #[serde(default)]
     pub is_admin: bool,
+    #[validate(length(max = 128))]
+    #[serde(default)]
+    pub location: Option<String>,
+    #[validate(length(max = 32))]
+    #[serde(default)]
+    pub birthday: Option<String>,
+    #[validate(length(max = 32))]
+    #[serde(default)]
+    pub lang: Option<String>,
+    #[serde(default)]
+    pub fields: Vec<ProfileField>,
+    #[validate(length(max = 200))]
+    #[serde(default)]
+    pub followed_message: Option<String>,
+    #[validate(length(max = 64))]
+    #[serde(default)]
+    pub reaction_acceptance: Option<String>,
     #[validate(length(max = 128))]
     #[serde(default)]
     pub host: Option<String>,
@@ -99,7 +118,14 @@ impl Actor {
             is_suspended: false,
             is_locked: false,
             is_bot: false,
+            is_cat: false,
             is_admin: false,
+            location: None,
+            birthday: None,
+            lang: None,
+            fields: Vec::new(),
+            followed_message: None,
+            reaction_acceptance: None,
             host: None,
             inbox: None,
             shared_inbox: None,
@@ -151,6 +177,14 @@ impl Actor {
 
 pub type LocalActor = Actor;
 pub type RemoteActor = Actor;
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ProfileField {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub value: String,
+}
 
 #[derive(Debug, Clone, Deserialize, Validate)]
 #[serde(rename_all = "camelCase")]

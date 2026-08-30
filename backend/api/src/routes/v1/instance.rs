@@ -35,14 +35,20 @@ pub struct InstanceInfo {
     pub description: String,
     pub version: String,
     pub emojis: Vec<CustomEmoji>,
+    /// URL-safe base64 VAPID public key when Web Push is configured
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vapid_public_key: Option<String>,
 }
 
 pub async fn get_instance(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Response> {
-    if let Some(info) = cache::get_json::<InstanceInfo>(state.dragonfly(), INSTANCE_CACHE_KEY).await
+    if let Some(mut info) =
+        cache::get_json::<InstanceInfo>(state.dragonfly(), INSTANCE_CACHE_KEY).await
     {
+        // VAPID is process config, not in DB — always overlay from live state
+        info.vapid_public_key = state.vapid_public_key().map(|s| s.to_string());
         return Ok(json_with_cache(&headers, info, CC_INSTANCE));
     }
 
@@ -53,6 +59,7 @@ pub async fn get_instance(
         description: String::new(),
         version: env!("CARGO_PKG_VERSION").to_string(),
         emojis,
+        vapid_public_key: state.vapid_public_key().map(|s| s.to_string()),
     };
     let _ = cache::set_json(state.dragonfly(), INSTANCE_CACHE_KEY, &info, INSTANCE_CACHE_TTL)
         .await;

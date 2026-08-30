@@ -72,6 +72,16 @@ async fn handle_socket(mut socket: WebSocket, state: AppState, user_id: ActorId)
                             break;
                         }
                     }
+                    Ok(StreamBroadcast::NoteDeleted { id }) => {
+                        let Ok(payload) =
+                            serde_json::to_string(&StreamEvent::NoteDeleted { id })
+                        else {
+                            continue;
+                        };
+                        if socket.send(Message::Text(payload.into())).await.is_err() {
+                            break;
+                        }
+                    }
                     Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
                         warn!("Stream bus lagged by {n} messages for {user_id_str}");
                     }

@@ -1,7 +1,10 @@
-//! Web Push subscription
+//! Web Push subscription CRUD
 
 use axum::{Extension, Json, extract::State, http::StatusCode};
-use mithic_core::{AuthUser, Result};
+use mithic_core::{AppError, AuthUser, Result};
+use mithic_db::queries::{
+    delete_push_subscriptions_for_user, list_push_subscriptions, upsert_push_subscription,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::state::AppState;
@@ -29,28 +32,70 @@ pub struct PushSubscriptionResponse {
 }
 
 pub async fn subscribe(
-    Extension(_auth): Extension<AuthUser>,
-    State(_state): State<AppState>,
+    Extension(auth): Extension<AuthUser>,
+    State(state): State<AppState>,
     Json(request): Json<PushSubscriptionRequest>,
 ) -> Result<Json<PushSubscriptionResponse>> {
-    // ponytail: web-push 配送は未実装。登録レスポンスのみ返す
+    if request.endpoint.is_empty() || request.keys.p256dh.is_empty() || request.keys.auth.is_empty()
+    {
+        return Err(AppError::Validation(
+            "endpoint, keys.p256dh and keys.auth are required".to_string(),
+        ));
+    }
+    if !(request.endpoint.starts_with("https://") || request.endpoint.starts_with("http://")) {
+        return Err(AppError::Validation(
+            "endpoint must be an http(s) URL".to_string(),
+        ));
+    }
+
+    let sub = upsert_push_subscription(
+        state.surreal(),
+        &auth.user_id,
+        &request.endpoint,
+        &request.keys.p256dh,
+        &request.keys.auth,
+    )
+    .await
+    .map_err(|e| AppError::Internal(e.to_string()))?;
+
     Ok(Json(PushSubscriptionResponse {
-        endpoint: request.endpoint,
-        keys: request.keys,
-        created_at: chrono::Utc::now().to_rfc3339(),
+        endpoint: sub.endpoint,
+        keys: PushKeys {
+            p256dh: sub.p256dh,
+            auth: sub.auth,
+        },
+        created_at: sub.created_at.to_rfc3339(),
     }))
 }
 
 pub async fn get_subscription(
-    Extension(_auth): Extension<AuthUser>,
-    State(_state): State<AppState>,
-) -> Result<StatusCode> {
-    Ok(StatusCode::NO_CONTENT)
+    Extension(auth): Extension<AuthUser>,
+    State(state): State<AppState>,
+) -> Result<Json<Vec<PushSubscriptionResponse>>> {
+    let subs = list_push_subscriptions(state.surreal(), &auth.user_id)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+    Ok(Json(
+        subs.into_iter()
+            .map(|s| PushSubscriptionResponse {
+                endpoint: s.endpoint,
+                keys: PushKeys {
+                    p256dh: s.p256dh,
+                    auth: s.auth,
+                },
+                created_at: s.created_at.to_rfc3339(),
+            })
+            .collect(),
+    ))
 }
 
 pub async fn unsubscribe(
-    Extension(_auth): Extension<AuthUser>,
-    State(_state): State<AppState>,
+    Extension(auth): Extension<AuthUser>,
+    State(state): State<AppState>,
 ) -> Result<StatusCode> {
+    delete_push_subscriptions_for_user(state.surreal(), &auth.user_id)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
     Ok(StatusCode::NO_CONTENT)
 }

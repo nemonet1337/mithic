@@ -1,12 +1,11 @@
 use leptos::prelude::*;
 use std::sync::Arc;
-use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::JsValue;
+use wasm_bindgen::closure::Closure;
 
 #[component]
-pub fn LoadMore(on_visible: Arc<dyn Fn() + Send + Sync>) -> impl IntoView
-{
+pub fn LoadMore(on_visible: Arc<dyn Fn() + Send + Sync>) -> impl IntoView {
     let root_ref = NodeRef::<leptos::html::Div>::new();
     let (fired, set_fired) = signal(false);
     let callback = Arc::clone(&on_visible);
@@ -21,18 +20,15 @@ pub fn LoadMore(on_visible: Arc<dyn Fn() + Send + Sync>) -> impl IntoView
         set_fired.set(true);
 
         let cb = Arc::clone(&callback);
-        let handler = Closure::<dyn FnMut(js_sys::Array)>::new(
-            move |entries: js_sys::Array| {
-                let entry: JsValue = entries.get(0);
-                if !entry.is_undefined() {
-                    let entry: web_sys::IntersectionObserverEntry =
-                        entry.dyn_into().unwrap();
-                    if entry.is_intersecting() {
-                        cb();
-                    }
+        let handler = Closure::<dyn FnMut(js_sys::Array)>::new(move |entries: js_sys::Array| {
+            let entry: JsValue = entries.get(0);
+            if !entry.is_undefined() {
+                let entry: web_sys::IntersectionObserverEntry = entry.dyn_into().unwrap();
+                if entry.is_intersecting() {
+                    cb();
                 }
-            },
-        );
+            }
+        });
         let observer = match web_sys::IntersectionObserver::new(handler.as_ref().unchecked_ref()) {
             Ok(o) => o,
             Err(_) => return,

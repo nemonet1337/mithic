@@ -1,5 +1,32 @@
 use crate::SurrealClient;
 
+pub async fn get_reaction_by_actor(
+    client: &SurrealClient,
+    note_id: &str,
+    actor_id: &str,
+) -> anyhow::Result<Option<String>> {
+    let mut response = client
+        .query(
+            "
+            SELECT reaction FROM note_reaction
+            WHERE note_id = type::record('note', $note_id)
+              AND actor_id = type::record('user', $actor_id)
+            LIMIT 1;
+            ",
+        )
+        .bind(("note_id", note_id.to_string()))
+        .bind(("actor_id", actor_id.to_string()))
+        .await?;
+    let rows: Vec<surrealdb::types::Value> = response.take(0).unwrap_or_default();
+    for row in rows {
+        let json = row.into_json_value();
+        if let Some(r) = json.get("reaction").and_then(|v| v.as_str()) {
+            return Ok(Some(r.to_string()));
+        }
+    }
+    Ok(None)
+}
+
 pub async fn add_reaction(
     client: &SurrealClient,
     note_id: &str,

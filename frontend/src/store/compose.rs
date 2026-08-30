@@ -37,6 +37,11 @@ impl ComposeStore {
         self.is_open.set(true);
     }
 
+    pub fn open_reply(&self, note_id: String) {
+        self.reply_id.set(Some(note_id));
+        self.is_open.set(true);
+    }
+
     pub fn close(&self) {
         self.is_open.set(false);
     }

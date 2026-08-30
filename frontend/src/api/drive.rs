@@ -3,7 +3,7 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{FormData, Headers, Request, RequestInit, RequestMode, Response};
 
-use super::client::{api_base, ApiError, request, urlencoding_loose};
+use super::client::{ApiError, api_base, request, urlencoding_loose};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

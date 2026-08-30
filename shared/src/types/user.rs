@@ -1,5 +1,14 @@
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileField {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub value: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct User {
@@ -15,6 +24,22 @@ pub struct User {
     pub notes_count: u64,
     pub is_locked: bool,
     pub is_bot: bool,
+    #[serde(default)]
+    pub is_cat: bool,
+    #[serde(default)]
+    pub location: Option<String>,
+    #[serde(default)]
+    pub birthday: Option<String>,
+    #[serde(default)]
+    pub lang: Option<String>,
+    #[serde(default)]
+    pub fields: Vec<ProfileField>,
+    #[serde(default)]
+    pub followed_message: Option<String>,
+    #[serde(default)]
+    pub reaction_acceptance: Option<String>,
+    #[serde(default)]
+    pub created_at: Option<String>,
 }
 
 impl User {
@@ -33,6 +58,14 @@ impl User {
             notes_count: 0,
             is_locked: false,
             is_bot: false,
+            is_cat: false,
+            location: None,
+            birthday: None,
+            lang: None,
+            fields: Vec::new(),
+            followed_message: None,
+            reaction_acceptance: None,
+            created_at: None,
         }
     }
 

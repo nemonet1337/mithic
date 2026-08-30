@@ -275,7 +275,14 @@ pub async fn publish_notification(
 
     state.publish_stream(StreamBroadcast::Notification {
         user_id: notif.recipient_id.to_string(),
-        notification: Box::new(dto),
+        notification: Box::new(dto.clone()),
+    });
+
+    // Web Push (background; optional if VAPID configured)
+    let state = state.clone();
+    let recipient = notif.recipient_id;
+    tokio::spawn(async move {
+        crate::services::push::deliver_web_push(&state, recipient, &dto).await;
     });
 }
 
