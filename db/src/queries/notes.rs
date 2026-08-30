@@ -23,8 +23,9 @@ pub async fn create_note(client: &SurrealClient, note: &Note) -> anyhow::Result<
         .iter()
         .map(|id| id.to_string())
         .collect();
+    let tags: Vec<String> = note.tags.iter().map(|t| t.to_lowercase()).collect();
 
-    let _response = client
+    let mut response = client
         .query(
             "
             INSERT INTO note {
@@ -43,11 +44,17 @@ pub async fn create_note(client: &SurrealClient, note: &Note) -> anyhow::Result<
                 tags: $tags,
                 has_poll: $has_poll,
                 uri: $uri,
-                actor_host: $actor_host,
+                host: $host,
                 emojis: $emojis,
                 mentions: $mentions.map(|$id| type::record('user', $id)),
                 visible_user_ids: $visible_user_ids.map(|$id| type::record('user', $id))
             };
+            SELECT
+                *,
+                actor_id.id AS actor_id,
+                reply_id.id AS reply_id,
+                renote_id.id AS renote_id
+            FROM type::record('note', $id);
         ",
         )
         .bind(("id", id_str))
@@ -62,17 +69,19 @@ pub async fn create_note(client: &SurrealClient, note: &Note) -> anyhow::Result<
         .bind(("reply_id", reply_id_str))
         .bind(("renote_id", renote_id_str))
         .bind(("file_ids", note.file_ids.clone()))
-        .bind(("tags", note.tags.clone()))
+        .bind(("tags", tags))
         .bind(("has_poll", note.has_poll))
         .bind(("uri", note.uri.clone()))
-        .bind(("actor_host", note.actor_host.clone()))
+        .bind(("host", note.host.clone()))
         .bind(("emojis", note.emojis.clone()))
         .bind(("mentions", mentions_strs))
         .bind(("visible_user_ids", visible_user_ids_strs))
         .await?;
 
-    get_note_by_id(client, &note.id)
-        .await?
+    let rows: Vec<surrealdb::types::Value> = response.take(1)?;
+    rows_to::<Note>(rows)?
+        .into_iter()
+        .next()
         .ok_or_else(|| anyhow!("Failed to retrieve created note"))
 }
 
@@ -86,9 +95,7 @@ pub async fn get_note_by_id(client: &SurrealClient, id: &NoteId) -> anyhow::Resu
                 actor_id.id AS actor_id,
                 reply_id.id AS reply_id,
                 renote_id.id AS renote_id
-            FROM note 
-            WHERE id = type::record('note', $id)
-            LIMIT 1;
+            FROM type::record('note', $id);
         ",
         )
         .bind(("id", id_str))

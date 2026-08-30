@@ -1,35 +1,33 @@
 use crate::SurrealClient;
 use crate::queries::rows_to;
+use crate::queries::timeline::NOTE_WITH_AUTHOR_FIELDS;
+use crate::queries::timeline::NoteWithAuthor;
 use anyhow::Result;
-use mithic_core::models::note::Note;
 
 pub async fn get_notes_by_tag(
     client: &SurrealClient,
     tag: &str,
     limit: usize,
-) -> Result<Vec<Note>> {
+) -> Result<Vec<NoteWithAuthor>> {
     let tag_str = tag.to_lowercase();
+    let limit = limit.min(100);
 
     let mut response = client
-        .query(
+        .query(format!(
             "
-            SELECT 
-                *,
-                actor_id.id AS actor_id,
-                reply_id.id AS reply_id,
-                renote_id.id AS renote_id
+            SELECT {NOTE_WITH_AUTHOR_FIELDS}
             FROM note
-            WHERE type::array(tags).map(|$t| string::lowercase($t)).includes($tag)
+            WHERE tags CONTAINS $tag
             ORDER BY id DESC
             LIMIT $limit;
-            ",
-        )
+            "
+        ))
         .bind(("tag", tag_str))
         .bind(("limit", limit))
         .await?;
 
     let rows: Vec<surrealdb::types::Value> = response.take(0)?;
-    rows_to::<Note>(rows)
+    rows_to::<NoteWithAuthor>(rows)
 }
 
 /// (tag, count) — count は使用回数

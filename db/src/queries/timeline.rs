@@ -1,6 +1,5 @@
-use crate::cache::timeline_range;
+use crate::SurrealClient;
 use crate::queries::rows_to;
-use crate::{DragonflyClient, SurrealClient};
 use mithic_core::models::actor::Actor;
 use mithic_core::models::note::{Note, NoteId};
 use serde::Deserialize;
@@ -13,15 +12,13 @@ pub struct NoteWithAuthor {
     pub author: Actor,
 }
 
-const NOTE_WITH_AUTHOR_FIELDS: &str = "
+pub(crate) const NOTE_WITH_AUTHOR_FIELDS: &str = "
     *,
     actor_id.id AS actor_id,
     reply_id.id AS reply_id,
     renote_id.id AS renote_id,
     actor_id.* AS author
 ";
-
-const TIMELINE_CACHE_KEY: &str = "home_timeline";
 
 async fn fetch_notes(
     client: &SurrealClient,
@@ -60,40 +57,6 @@ async fn fetch_notes(
     rows_to::<NoteWithAuthor>(rows)
 }
 
-/// キャッシュファーストのホームタイムライン取得
-pub async fn get_home_timeline_cached(
-    dragonfly: &DragonflyClient,
-    surreal: &SurrealClient,
-    user_id: String,
-    limit: usize,
-) -> anyhow::Result<Vec<NoteWithAuthor>> {
-    let key = format!("{}:{}", TIMELINE_CACHE_KEY, user_id);
-    let cloned_dragonfly = dragonfly.clone();
-    let cloned_key = key.clone();
-    let cached_ids: Vec<String> = timeline_range(&cloned_dragonfly, &cloned_key, limit as isize)
-        .await
-        .unwrap_or_default();
-
-    if cached_ids.is_empty() {
-        let actor_id: mithic_core::models::actor::ActorId = user_id
-            .parse()
-            .map_err(|_| anyhow::anyhow!("Invalid actor id"))?;
-        return get_home_timeline(surreal, &actor_id, limit, None, None).await;
-    }
-
-    let id_records: Vec<String> = cached_ids.iter().map(|id| format!("note:{}", id)).collect();
-
-    let mut response = surreal
-        .query(format!(
-            "SELECT {NOTE_WITH_AUTHOR_FIELDS} FROM note WHERE id IN $ids ORDER BY id DESC;"
-        ))
-        .bind(("ids", id_records))
-        .await?;
-
-    let rows: Vec<surrealdb::types::Value> = response.take(0)?;
-    rows_to::<NoteWithAuthor>(rows)
-}
-
 pub async fn get_local_timeline(
     client: &SurrealClient,
     limit: usize,
@@ -102,7 +65,7 @@ pub async fn get_local_timeline(
 ) -> anyhow::Result<Vec<NoteWithAuthor>> {
     fetch_notes(
         client,
-        "visibility = 'public' AND actor_id.host = None",
+        "visibility = 'public' AND host = NONE",
         None,
         limit,
         since_id,
@@ -138,7 +101,7 @@ pub async fn get_home_timeline(
     fetch_notes(
         client,
         "(actor_id = type::record('user', $user_id)
-           OR actor_id IN (SELECT VALUE out FROM follow WHERE in = type::record('user', $user_id)))",
+           OR actor_id IN (SELECT VALUE out FROM follow WHERE in = type::record('user', $user_id) AND is_accepted = true))",
         Some(user_id.to_string()),
         limit,
         since_id,
@@ -206,11 +169,20 @@ pub async fn get_note_quotes(
     rows_to::<NoteWithAuthor>(rows)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn timeline_keys_format() {
-        assert_eq!(format!("{}:u1", TIMELINE_CACHE_KEY), "home_timeline:u1");
+pub async fn get_notes_with_authors_by_ids(
+    client: &SurrealClient,
+    ids: &[String],
+) -> anyhow::Result<Vec<NoteWithAuthor>> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
     }
+    let id_records: Vec<String> = ids.iter().map(|id| format!("note:{id}")).collect();
+    let mut response = client
+        .query(format!(
+            "SELECT {NOTE_WITH_AUTHOR_FIELDS} FROM note WHERE id IN $ids;"
+        ))
+        .bind(("ids", id_records))
+        .await?;
+    let rows: Vec<surrealdb::types::Value> = response.take(0)?;
+    rows_to::<NoteWithAuthor>(rows)
 }

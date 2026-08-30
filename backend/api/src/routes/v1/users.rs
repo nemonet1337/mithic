@@ -299,21 +299,18 @@ async fn build_relation(
     my_id: ActorId,
     target_id: ActorId,
 ) -> Result<UserRelation> {
-    let is_following_val = is_following(state.surreal(), &my_id, &target_id)
-        .await
-        .map_err(|e| AppError::Internal(e.to_string()))?;
-    let is_followed_val = is_following(state.surreal(), &target_id, &my_id)
-        .await
-        .map_err(|e| AppError::Internal(e.to_string()))?;
-    let is_blocking_val = check_blocking_cached(state, &my_id, &target_id)
-        .await
-        .map_err(|e| AppError::Internal(e.to_string()))?;
-    let is_blocked_val = check_blocking_cached(state, &target_id, &my_id)
-        .await
-        .map_err(|e| AppError::Internal(e.to_string()))?;
-    let is_muted_val = check_muting_cached(state, &my_id, &target_id)
-        .await
-        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let (is_following_val, is_followed_val, is_blocking_val, is_blocked_val, is_muted_val) = tokio::join!(
+        is_following(state.surreal(), &my_id, &target_id),
+        is_following(state.surreal(), &target_id, &my_id),
+        check_blocking_cached(state, &my_id, &target_id),
+        check_blocking_cached(state, &target_id, &my_id),
+        check_muting_cached(state, &my_id, &target_id),
+    );
+    let is_following_val = is_following_val.map_err(|e| AppError::Internal(e.to_string()))?;
+    let is_followed_val = is_followed_val.map_err(|e| AppError::Internal(e.to_string()))?;
+    let is_blocking_val = is_blocking_val.map_err(|e| AppError::Internal(e.to_string()))?;
+    let is_blocked_val = is_blocked_val.map_err(|e| AppError::Internal(e.to_string()))?;
+    let is_muted_val = is_muted_val.map_err(|e| AppError::Internal(e.to_string()))?;
 
     Ok(UserRelation {
         id: target_id.to_string(),

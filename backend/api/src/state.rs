@@ -141,5 +141,3 @@ impl AppState {
         let _ = self.inner.stream_tx.send(event);
     }
 }
-
-pub use mithic_core::AuthUser as ApiAuthUser;

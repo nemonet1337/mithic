@@ -8,7 +8,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use shared::Note as NoteDto;
 
-use crate::dto::{actor_to_user, apply_viewer_reaction, note_to_dto_full};
+use crate::dto::notes_to_dtos;
 use crate::state::AppState;
 
 /// フロントの `request::<(), _>` は JSON `null` を期待する
@@ -52,15 +52,7 @@ pub async fn rows_to_dtos_for(
     rows: Vec<NoteWithAuthor>,
     viewer_id: Option<&str>,
 ) -> Vec<NoteDto> {
-    let mut out = Vec::with_capacity(rows.len());
-    for row in rows {
-        let mut dto = note_to_dto_full(state, &row.note, actor_to_user(&row.author)).await;
-        if let Some(vid) = viewer_id {
-            apply_viewer_reaction(state, &mut dto, vid).await;
-        }
-        out.push(dto);
-    }
-    out
+    notes_to_dtos(state, &rows, viewer_id).await
 }
 
 pub fn normalize_handle(handle: &str) -> String {

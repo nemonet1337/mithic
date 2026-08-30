@@ -120,7 +120,12 @@ async fn store_file(
     // Generate thumbnail before DB write so URLs match what is stored
     let mut thumb_store: Option<(String, Vec<u8>)> = None;
     if mime_type.starts_with("image/") {
-        if let Some((bytes, w, h)) = make_thumbnail_webp(&data) {
+        let thumb_data = data.clone();
+        let thumb = tokio::task::spawn_blocking(move || make_thumbnail_webp(&thumb_data))
+            .await
+            .ok()
+            .flatten();
+        if let Some((bytes, w, h)) = thumb {
             let thumb_key = format!("{hash}.thumb");
             drive_file.width = Some(w);
             drive_file.height = Some(h);

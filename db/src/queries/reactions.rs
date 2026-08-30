@@ -27,13 +27,53 @@ pub async fn get_reaction_by_actor(
     Ok(None)
 }
 
+/// 閲覧者のリアクションをノート ID の集合に対して一括取得する (note_id → emoji)
+pub async fn get_reactions_by_actor_for_notes(
+    client: &SurrealClient,
+    actor_id: &str,
+    note_ids: &[String],
+) -> anyhow::Result<std::collections::HashMap<String, String>> {
+    if note_ids.is_empty() {
+        return Ok(std::collections::HashMap::new());
+    }
+    let id_records: Vec<String> = note_ids.iter().map(|id| format!("note:{id}")).collect();
+    let mut response = client
+        .query(
+            "
+            SELECT note_id.id AS note_id, reaction FROM note_reaction
+            WHERE actor_id = type::record('user', $actor_id)
+              AND note_id IN $note_ids;
+            ",
+        )
+        .bind(("actor_id", actor_id.to_string()))
+        .bind(("note_ids", id_records))
+        .await?;
+    let rows: Vec<surrealdb::types::Value> = response.take(0).unwrap_or_default();
+    let mut out = std::collections::HashMap::with_capacity(rows.len());
+    for row in rows {
+        let json = row.into_json_value();
+        let Some(note_id) = json.get("note_id").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let Some(reaction) = json.get("reaction").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let note_id = note_id
+            .rsplit_once(':')
+            .map(|(_, id)| id)
+            .unwrap_or(note_id);
+        out.insert(note_id.to_string(), reaction.to_string());
+    }
+    Ok(out)
+}
+
 pub async fn add_reaction(
     client: &SurrealClient,
     note_id: &str,
     actor_id: &str,
     reaction: &str,
 ) -> anyhow::Result<()> {
-    let id_str = ulid::Ulid::new().to_string();
+    let id_str = ulid::Ulid::generate().to_string();
     let created_at = chrono::Utc::now();
 
     client

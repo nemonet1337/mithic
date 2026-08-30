@@ -1,6 +1,6 @@
 # Mithic TODO
 
-最終更新: 2026-08-25（リノート確認 / リアクション1件 / 削除ストリーム / プロフィール項目 / UI密度）
+最終更新: 2026-08-30（DTO enrich バッチ / i18n 7キー / YAGNI 掃除）
 
 凡例:
 
@@ -24,6 +24,11 @@
 - [x] HTTP Signature **sign/verify 共通化** (`mithic_federation::http_sig`)
 - [x] プロセス内ストリーム (`events` broadcast) + `/api/v1/streaming`
 - [x] YAGNI 掃除: 未配線 middleware、Misskey 風 stream クレート、推測モデル群、未使用 deps
+- [x] TL DTO enrich の N+1 解消（添付/リノート/閲覧者リアクションをバッチ）
+- [x] バックエンド i18n FTL を実際に使う error キーのみに縮小
+- [x] DB: 未使用テーブル削除 (`word_mute` / `chart` / `meta` / `hashtag`)、重複インデックス削減
+- [x] DB: ホーム TL の壊れた Sorted Set fan-out を削除。ホームは SQL、公開 TL は JSON キャッシュ
+- [x] DB: `note.host` に合わせてローカル TL をインデックス可能に。ユーザーは `(username_lower, host)` UNIQUE。`follow`/`block`/`mute` は `(in, out)` UNIQUE + `is_accepted`
 
 ### REST API (`/api/v1/*`)
 
@@ -84,7 +89,7 @@
 | **TOTP (2FA)** | core に generate/verify、DB にフィールド | **API ルートなし・設定 UI なし** |
 | **フロント i18n** | なし（ハードコード日本語寄り） | leptos_i18n 等未導入 |
 | **バックエンド locale middleware** | 削除済み | エラーは `DEFAULT_LOCALE` 固定。`Accept-Language` 未使用 |
-| **DTO enrich** | renote / 添付は動く | N+1（`dto.rs` に ponytail コメント）。TL 負荷時にバッチ化が必要 |
+| **DTO enrich** | 添付 `IN` / リノート著者 JOIN / 閲覧者リアクション一括。通知一覧も sender+note バッチ | 公開 TL JSON キャッシュと併用。マルチインスタンスは未着手 |
 | **ストリーミング規模** | 全接続へ broadcast | 接続増時の per-user チャネル未着手 |
 | **Web Push 実機検証** | 実装済み | 本環境での E2E（VAPID 発行〜ブラウザ通知）は未確認 |
 | **サムネ実機検証** | 実装済み | 壊れた画像・巨大画像・透過・アニメ GIF の挙動は未確認 |

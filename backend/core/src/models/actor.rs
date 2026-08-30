@@ -1,31 +1,20 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use ulid::Ulid;
-use validator::Validate;
 
 pub type ActorId = Ulid;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum ActorType {
-    Local,
-    Remote,
-}
-
 // DB の snake_case フィールドと一致させるため rename しない
-#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Actor {
     pub id: ActorId,
     pub created_at: DateTime<Utc>,
     #[serde(default)]
     pub updated_at: Option<DateTime<Utc>>,
-    #[validate(length(min = 1, max = 128))]
     pub username: String,
     pub username_lower: String,
-    #[validate(length(min = 1, max = 128))]
     #[serde(default)]
     pub name: Option<String>,
-    #[validate(length(max = 4096))]
     #[serde(default)]
     pub bio: Option<String>,
     #[serde(default)]
@@ -34,10 +23,8 @@ pub struct Actor {
     pub following_count: i32,
     #[serde(default)]
     pub notes_count: i32,
-    #[validate(length(max = 512))]
     #[serde(default)]
     pub avatar_url: Option<String>,
-    #[validate(length(max = 512))]
     #[serde(default)]
     pub banner_url: Option<String>,
     #[serde(default)]
@@ -50,36 +37,26 @@ pub struct Actor {
     pub is_cat: bool,
     #[serde(default)]
     pub is_admin: bool,
-    #[validate(length(max = 128))]
     #[serde(default)]
     pub location: Option<String>,
-    #[validate(length(max = 32))]
     #[serde(default)]
     pub birthday: Option<String>,
-    #[validate(length(max = 32))]
     #[serde(default)]
     pub lang: Option<String>,
     #[serde(default)]
     pub fields: Vec<ProfileField>,
-    #[validate(length(max = 200))]
     #[serde(default)]
     pub followed_message: Option<String>,
-    #[validate(length(max = 64))]
     #[serde(default)]
     pub reaction_acceptance: Option<String>,
-    #[validate(length(max = 128))]
     #[serde(default)]
     pub host: Option<String>,
-    #[validate(length(max = 512))]
     #[serde(default)]
     pub inbox: Option<String>,
-    #[validate(length(max = 512))]
     #[serde(default)]
     pub shared_inbox: Option<String>,
-    #[validate(length(max = 512))]
     #[serde(default)]
     pub featured: Option<String>,
-    #[validate(length(max = 512))]
     #[serde(default)]
     pub uri: Option<String>,
     #[serde(default)]
@@ -103,7 +80,7 @@ impl Actor {
         let now = Utc::now();
         let username_lower = username.to_lowercase();
         Self {
-            id: ActorId::new(),
+            id: ActorId::generate(),
             created_at: now,
             updated_at: None,
             username,
@@ -175,9 +152,6 @@ impl Actor {
     }
 }
 
-pub type LocalActor = Actor;
-pub type RemoteActor = Actor;
-
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ProfileField {
     #[serde(default)]
@@ -186,12 +160,10 @@ pub struct ProfileField {
     pub value: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Validate)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateProfileRequest {
-    #[validate(length(min = 1, max = 128))]
     pub display_name: Option<String>,
-    #[validate(length(max = 4096))]
     pub bio: Option<String>,
     pub avatar_id: Option<Ulid>,
     pub header_id: Option<Ulid>,

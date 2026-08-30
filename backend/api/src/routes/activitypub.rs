@@ -598,7 +598,7 @@ async fn cache_emoji_tags(state: &AppState, tags: &Value, host: Option<&str>) {
         if name.is_empty() || url.is_empty() {
             continue;
         }
-        let id = ulid::Ulid::new().to_string();
+        let id = ulid::Ulid::generate().to_string();
         let _ = state
             .surreal()
             .query(
@@ -824,7 +824,7 @@ async fn handle_create(
     note.cw = cw;
     note.reply_id = reply_id;
     note.renote_id = renote_id;
-    note.actor_host = remote_actor
+    note.host = remote_actor
         .host
         .clone()
         .or_else(|| host_from_uri(remote_actor_uri));
@@ -917,7 +917,7 @@ async fn handle_announce(
     let mut renote = Note::new(remote_actor.id, None, NoteVisibility::Public);
     renote.renote_id = Some(target.id);
     renote.uri = activity_id;
-    renote.actor_host = remote_actor.host.clone();
+    renote.host = remote_actor.host.clone();
 
     let created = create_note(state.surreal(), &renote)
         .await
@@ -970,7 +970,7 @@ async fn handle_question_create(
     let mut note = Note::new(remote_actor.id, content, NoteVisibility::Public);
     note.uri = Some(note_uri.to_string());
     note.has_poll = true;
-    note.actor_host = remote_actor.host.clone();
+    note.host = remote_actor.host.clone();
 
     // 選択肢を poll テーブルへ (oneOf / anyOf)
     let choices: Vec<String> = object
@@ -993,7 +993,7 @@ async fn handle_question_create(
             .into_iter()
             .map(|name| json!({ "text": name, "votes": 0 }))
             .collect();
-        let poll_id = ulid::Ulid::new().to_string();
+        let poll_id = ulid::Ulid::generate().to_string();
         let _ = state
             .surreal()
             .query(

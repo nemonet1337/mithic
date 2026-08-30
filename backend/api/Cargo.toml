@@ -28,13 +28,11 @@ redis             = { workspace = true }
 sha2              = { workspace = true }
 base64            = { workspace = true }
 rsa               = { workspace = true }
-rand              = "0.10"
+rand              = "0.8"
 tokio             = { workspace = true }
 web-push          = { workspace = true }
 image             = { workspace = true }
 ulid              = { workspace = true }
-uuid              = { workspace = true }
-validator         = { workspace = true }
 hex               = { workspace = true }
 surrealdb         = { workspace = true }
 url               = { workspace = true }

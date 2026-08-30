@@ -15,9 +15,6 @@ use crate::http_sig;
 use mithic_core::models::Actor;
 use mithic_db::{DragonflyClient, SurrealClient};
 
-/// apalis-redis で使用されるキー名
-const QUEUE_KEY: &str = "apalis:job:mithic::ActivityDelivery:pending";
-const SCHEDULED_KEY: &str = "apalis:job:mithic::ActivityDelivery:processing";
 /// 最終的に断念した配送 (LPUSH 先)
 pub const DLQ_KEY: &str = "federation:dlq";
 
@@ -351,7 +348,7 @@ impl FederationService {
 
         let accept_activity = serde_json::json!({
             "@context": "https://www.w3.org/ns/activitystreams",
-            "id": format!("{}#accepts/{}", local_actor_uri, uuid::Uuid::new_v4()),
+            "id": format!("{}#accepts/{}", local_actor_uri, ulid::Ulid::generate()),
             "type": "Accept",
             "actor": local_actor_uri,
             "object": {
@@ -380,7 +377,7 @@ impl FederationService {
 
         let reject_activity = serde_json::json!({
             "@context": "https://www.w3.org/ns/activitystreams",
-            "id": format!("{}#rejects/{}", local_actor_uri, uuid::Uuid::new_v4()),
+            "id": format!("{}#rejects/{}", local_actor_uri, ulid::Ulid::generate()),
             "type": "Reject",
             "actor": local_actor_uri,
             "object": {
@@ -392,61 +389,6 @@ impl FederationService {
 
         self.deliver_signed(follower_inbox, &reject_activity, local_actor)
             .await
-    }
-
-    pub async fn get_queue_stats(&self) -> anyhow::Result<QueueStats> {
-        let mut conn = self.dragonfly.manager();
-        let queue_length: usize = redis::cmd("LLEN")
-            .arg(QUEUE_KEY)
-            .query_async::<usize>(&mut conn)
-            .await
-            .unwrap_or(0);
-
-        let scheduled: usize = redis::cmd("ZCARD")
-            .arg(SCHEDULED_KEY)
-            .query_async::<usize>(&mut conn)
-            .await
-            .unwrap_or(0);
-
-        Ok(QueueStats {
-            total: queue_length + scheduled,
-            processing: scheduled,
-            pending: queue_length,
-        })
-    }
-
-    pub async fn get_queue_jobs(&self, limit: usize) -> anyhow::Result<Vec<QueueJob>> {
-        let mut conn = self.dragonfly.manager();
-        let jobs: Vec<String> = redis::cmd("LRANGE")
-            .arg(QUEUE_KEY)
-            .arg(0i64)
-            .arg((limit.saturating_sub(1)) as i64)
-            .query_async::<Vec<String>>(&mut conn)
-            .await
-            .unwrap_or_default();
-
-        let mut result = Vec::new();
-        for (i, job_str) in jobs.iter().enumerate() {
-            if let Ok(job_value) = serde_json::from_str::<serde_json::Value>(job_str) {
-                result.push(QueueJob {
-                    id: i.to_string(),
-                    inbox_url: job_value
-                        .get("inbox_url")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string(),
-                    activity: job_value
-                        .get("activity")
-                        .cloned()
-                        .unwrap_or(serde_json::Value::Null),
-                    attempts: job_value
-                        .get("attempts")
-                        .and_then(|v| v.as_i64())
-                        .unwrap_or(0),
-                });
-            }
-        }
-        Ok(result)
     }
 
     /// リモートアクターを取得し JSON-LD を `Actor` へ変換する (TODO Phase F3)
@@ -698,21 +640,6 @@ pub fn parse_remote_actor(data: &serde_json::Value) -> Option<Actor> {
     }
 
     Some(actor)
-}
-
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct QueueStats {
-    pub total: usize,
-    pub processing: usize,
-    pub pending: usize,
-}
-
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct QueueJob {
-    pub id: String,
-    pub inbox_url: String,
-    pub activity: serde_json::Value,
-    pub attempts: i64,
 }
 
 #[cfg(test)]

@@ -1,5 +1,12 @@
 use crate::SurrealClient;
+use crate::queries::rows_to;
 use mithic_core::models::actor::{Actor, ActorId};
+use serde::Deserialize;
+
+#[derive(Deserialize)]
+struct ActorEdge {
+    actor: Actor,
+}
 
 pub async fn follow_user(
     client: &SurrealClient,
@@ -15,6 +22,8 @@ pub async fn follow_user(
             "
             RELATE (type::record('user', $follower)) -> follow -> (type::record('user', $followee))
             SET created_at = $created_at;
+            UPDATE user SET following_count += 1 WHERE id = type::record('user', $follower);
+            UPDATE user SET followers_count += 1 WHERE id = type::record('user', $followee);
             ",
         )
         .bind(("follower", follower_str))
@@ -37,6 +46,8 @@ pub async fn unfollow_user(
         .query(
             "
             DELETE follow WHERE in = type::record('user', $follower) AND out = type::record('user', $followee);
+            UPDATE user SET following_count = <int>(following_count OR 1) - 1 WHERE id = type::record('user', $follower);
+            UPDATE user SET followers_count = <int>(followers_count OR 1) - 1 WHERE id = type::record('user', $followee);
             ",
         )
         .bind(("follower", follower_str))
@@ -136,15 +147,6 @@ pub async fn unmute_user(
     Ok(())
 }
 
-pub async fn count_followers(client: &SurrealClient, actor_id: &ActorId) -> anyhow::Result<usize> {
-    let mut response = client
-        .query("SELECT VALUE count() FROM follow WHERE out = type::record('user', $actor_id)")
-        .bind(("actor_id", actor_id.to_string()))
-        .await?;
-    let counts: Vec<usize> = response.take(0)?;
-    Ok(counts.into_iter().next().unwrap_or(0))
-}
-
 pub async fn is_following(
     client: &SurrealClient,
     follower_id: &ActorId,
@@ -156,7 +158,7 @@ pub async fn is_following(
     let mut response = client
         .query(
             "
-            SELECT VALUE count() FROM follow WHERE in = type::record('user', $follower) AND out = type::record('user', $followee);
+            SELECT VALUE count() FROM follow WHERE in = type::record('user', $follower) AND out = type::record('user', $followee) AND is_accepted = true;
             ",
         )
         .bind(("follower", follower_str))
@@ -219,29 +221,17 @@ pub async fn get_following(
     let mut response = client
         .query(
             "
-            SELECT out.* AS actor FROM follow WHERE in = type::record('user', $user);
+            SELECT out.* AS actor FROM follow WHERE in = type::record('user', $user) AND is_accepted = true;
             ",
         )
         .bind(("user", user_str))
         .await?;
 
     let rows: Vec<surrealdb::types::Value> = response.take(0)?;
-    let actors: Vec<serde_json::Value> = rows
+    Ok(rows_to::<ActorEdge>(rows)?
         .into_iter()
-        .filter_map(|val| {
-            let mut json = val.into_json_value();
-            crate::queries::strip_record_prefixes(&mut json);
-            json.get("actor").cloned()
-        })
-        .collect();
-
-    let mut parsed_actors = Vec::new();
-    for actor_val in actors {
-        if let Ok(actor) = serde_json::from_value::<Actor>(actor_val) {
-            parsed_actors.push(actor);
-        }
-    }
-    Ok(parsed_actors)
+        .map(|row| row.actor)
+        .collect())
 }
 
 pub async fn get_followers(
@@ -252,27 +242,15 @@ pub async fn get_followers(
     let mut response = client
         .query(
             "
-            SELECT in.* AS actor FROM follow WHERE out = type::record('user', $user);
+            SELECT in.* AS actor FROM follow WHERE out = type::record('user', $user) AND is_accepted = true;
             ",
         )
         .bind(("user", user_str))
         .await?;
 
     let rows: Vec<surrealdb::types::Value> = response.take(0)?;
-    let actors: Vec<serde_json::Value> = rows
+    Ok(rows_to::<ActorEdge>(rows)?
         .into_iter()
-        .filter_map(|val| {
-            let mut json = val.into_json_value();
-            crate::queries::strip_record_prefixes(&mut json);
-            json.get("actor").cloned()
-        })
-        .collect();
-
-    let mut parsed_actors = Vec::new();
-    for actor_val in actors {
-        if let Ok(actor) = serde_json::from_value::<Actor>(actor_val) {
-            parsed_actors.push(actor);
-        }
-    }
-    Ok(parsed_actors)
+        .map(|row| row.actor)
+        .collect())
 }

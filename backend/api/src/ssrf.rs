@@ -89,24 +89,31 @@ fn is_blocked_ip(ip: IpAddr) -> bool {
 
 /// Content-Length があれば上限チェック。無ければストリーム読みで上限を適用。
 pub async fn read_body_limited(response: reqwest::Response, max_bytes: usize) -> Result<Vec<u8>> {
-    if let Some(len) = response.content_length() {
-        if len as usize > max_bytes {
-            return Err(AppError::Validation(format!(
-                "Remote content too large (max {max_bytes} bytes)"
-            )));
-        }
-    }
-
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|e| AppError::Internal(format!("Failed to read response: {e}")))?;
-
-    if bytes.len() > max_bytes {
+    if let Some(len) = response.content_length()
+        && len as usize > max_bytes
+    {
         return Err(AppError::Validation(format!(
             "Remote content too large (max {max_bytes} bytes)"
         )));
     }
 
-    Ok(bytes.to_vec())
+    let mut out = Vec::new();
+    let mut response = response;
+    loop {
+        match response.chunk().await {
+            Ok(Some(chunk)) => {
+                if out.len() + chunk.len() > max_bytes {
+                    return Err(AppError::Validation(format!(
+                        "Remote content too large (max {max_bytes} bytes)"
+                    )));
+                }
+                out.extend_from_slice(&chunk);
+            }
+            Ok(None) => break,
+            Err(e) => {
+                return Err(AppError::Internal(format!("Failed to read response: {e}")));
+            }
+        }
+    }
+    Ok(out)
 }

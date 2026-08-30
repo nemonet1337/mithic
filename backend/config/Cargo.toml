@@ -9,5 +9,4 @@ rust-version.workspace = true
 [dependencies]
 serde = { workspace = true }
 dotenvy = { workspace = true }
-secrecy = { workspace = true }
 anyhow = { workspace = true }

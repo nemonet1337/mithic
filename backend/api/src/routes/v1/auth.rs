@@ -69,7 +69,7 @@ pub async fn login(
         username: normalize_handle(&request.handle),
         password: request.password,
     };
-    let (_token, actor) = authenticate_user(state.surreal(), signin, state.config()).await?;
+    let actor = authenticate_user(state.surreal(), signin).await?;
     Ok(Json(token_pair(&state, &actor).await?))
 }
 

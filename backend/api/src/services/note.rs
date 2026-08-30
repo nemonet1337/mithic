@@ -9,9 +9,7 @@ use mithic_core::models::actor::{Actor, ActorId};
 use mithic_core::models::note::{Note, NoteVisibility};
 use mithic_core::models::notification::{Notification, NotificationType};
 use mithic_core::{AppError, Result};
-use mithic_db::queries::{
-    count_followers, create_note, create_notification, get_actor_by_id, get_note_by_id,
-};
+use mithic_db::queries::{create_note, create_notification, get_actor_by_id, get_note_by_id};
 use shared::{CreateNoteRequest, Note as NoteDto, Notification as NotifDto};
 
 use crate::dto::{actor_to_user, note_to_dto_full, notif_type_to_dto, visibility_from_dto};
@@ -98,73 +96,10 @@ pub async fn create_note_service(
         state.publish_stream(StreamBroadcast::Note(Box::new(dto.clone())));
     }
 
-    // タイムラインへの fan-out (Push モデル、ハイブリッド閾値 10,000)
     if created.visibility == NoteVisibility::Public {
-        let score = created.created_at.timestamp_millis() as f64;
-        let author_id_for_fanout = author_id;
-        let created_id = created.id;
         let dragonfly = state.dragonfly().clone();
-        let surreal = state.surreal().clone();
-
         tokio::spawn(async move {
-            let follower_count = match count_followers(&surreal, &author_id_for_fanout).await {
-                Ok(c) => c,
-                Err(e) => {
-                    tracing::warn!("Failed to count followers for fan-out: {}", e);
-                    return;
-                }
-            };
-
-            const FANOUT_THRESHOLD: usize = 10_000;
-            if follower_count < FANOUT_THRESHOLD {
-                let followers = match mithic_db::queries::get_followers(
-                    &surreal,
-                    &author_id_for_fanout,
-                )
-                .await
-                {
-                    Ok(f) => f,
-                    Err(e) => {
-                        tracing::warn!("Failed to get followers for fan-out: {}", e);
-                        return;
-                    }
-                };
-
-                for follower in followers {
-                    let key = format!("home_timeline:{}", follower.id);
-                    let _ = mithic_db::cache::timeline_push(
-                        &dragonfly,
-                        &key,
-                        &created_id.to_string(),
-                        score,
-                    )
-                    .await;
-                }
-                let _ = mithic_db::cache::timeline_push(
-                    &dragonfly,
-                    "local_timeline",
-                    &created_id.to_string(),
-                    score,
-                )
-                .await;
-                let _ = mithic_db::cache::timeline_push(
-                    &dragonfly,
-                    "global_timeline",
-                    &created_id.to_string(),
-                    score,
-                )
-                .await;
-                // 公開 TL の JSON キャッシュを無効化
-                mithic_db::cache::invalidate_public_timelines(&dragonfly).await;
-            } else {
-                // fan-out スキップ時も JSON キャッシュは消す
-                mithic_db::cache::invalidate_public_timelines(&dragonfly).await;
-                tracing::debug!(
-                    "Follower count {} >= threshold {}, skipping dragonfly fan-out (Pull model)",
-                    follower_count,
-                    FANOUT_THRESHOLD
-                );
-            }
+            mithic_db::cache::invalidate_public_timelines(&dragonfly).await;
         });
     }
 
@@ -375,7 +310,7 @@ pub fn build_like_activity(
     reaction: &str,
     custom_emoji_url: Option<&str>,
 ) -> serde_json::Value {
-    let activity_id = format!("{instance_url}/likes/{}", ulid::Ulid::new());
+    let activity_id = format!("{instance_url}/likes/{}", ulid::Ulid::generate());
     let mut activity = serde_json::json!({
         "@context": ap_context(),
         "id": activity_id,
@@ -414,7 +349,7 @@ pub fn build_undo_like_activity(
         .to_string();
     serde_json::json!({
         "@context": ap_context(),
-        "id": format!("{instance_url}/undo/{}", ulid::Ulid::new()),
+        "id": format!("{instance_url}/undo/{}", ulid::Ulid::generate()),
         "type": "Undo",
         "actor": actor_uri,
         "object": {

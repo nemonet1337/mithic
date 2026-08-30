@@ -22,7 +22,7 @@ impl Activity {
         note_id: Option<String>,
     ) -> Self {
         Self {
-            id: ActivityId::new(),
+            id: ActivityId::generate(),
             uri,
             activity_type,
             actor_id,

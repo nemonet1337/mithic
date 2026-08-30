@@ -57,7 +57,6 @@ fn map_row_to_file(val: serde_json::Value) -> Option<DriveFile> {
         duration: None,
         hash,
         is_public: true,
-        folder_id: None,
         comment: None,
     })
 }
@@ -115,9 +114,7 @@ pub async fn get_drive_file(
                 md5 AS hash,
                 url,
                 thumbnail_url
-            FROM drive_file
-            WHERE id = type::record('drive_file', $id)
-            LIMIT 1;
+            FROM type::record('drive_file', $id);
             ",
         )
         .bind(("id", id_str))
@@ -129,6 +126,38 @@ pub async fn get_drive_file(
     } else {
         Ok(None)
     }
+}
+
+pub async fn get_drive_files_by_ids(
+    client: &SurrealClient,
+    ids: &[String],
+) -> anyhow::Result<Vec<DriveFile>> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let id_records: Vec<String> = ids.iter().map(|id| format!("drive_file:{id}")).collect();
+    let mut response = client
+        .query(
+            "
+            SELECT
+                id,
+                created_at,
+                name,
+                mime_type,
+                size,
+                user_id.id AS owner_id,
+                md5 AS hash,
+                url,
+                thumbnail_url
+            FROM drive_file
+            WHERE id IN $ids;
+            ",
+        )
+        .bind(("ids", id_records))
+        .await?;
+
+    let rows: Vec<serde_json::Value> = response.take(0)?;
+    Ok(rows.into_iter().filter_map(map_row_to_file).collect())
 }
 
 pub async fn get_user_drive_files(

@@ -10,9 +10,18 @@ pub async fn create_activity(
 ) -> anyhow::Result<()> {
     client
         .query(
-            "INSERT INTO activity { id: $id, uri: $uri, activity_type: $type, actor_id: $actor, note_id: $note, created_at: time::now() };"
+            "
+            INSERT INTO activity {
+                id: $id,
+                uri: $uri,
+                activity_type: $type,
+                actor_id: if $actor != None { type::record('user', $actor) } else { None },
+                note_id: if $note != None { type::record('note', $note) } else { None },
+                created_at: time::now()
+            };
+            ",
         )
-        .bind(("id", ActivityId::new().to_string()))
+        .bind(("id", ActivityId::generate().to_string()))
         .bind(("uri", uri.to_string()))
         .bind(("type", activity_type.to_string()))
         .bind(("actor", actor_id.map(|s| s.to_string())))

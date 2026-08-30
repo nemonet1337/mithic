@@ -15,16 +15,16 @@ pub mod timeline;
 pub use activity::{create_activity, get_activity_by_uri};
 pub use actors::{
     create_actor, enable_totp, get_actor_by_id, get_actor_by_username,
-    get_actor_by_username_or_email, update_actor_token,
+    get_actor_by_username_or_email, get_actors_by_ids, update_actor_token,
 };
 pub use drive::{
     create_drive_file, delete_drive_file, get_drive_file, get_drive_file_by_hash,
-    get_user_drive_files,
+    get_drive_files_by_ids, get_user_drive_files,
 };
 pub use favorites::{add_favorite, is_favorited, remove_favorite};
 pub use follows::{
-    block_user, count_followers, follow_user, get_followers, get_following, is_blocking,
-    is_following, is_muting, mute_user, unblock_user, unfollow_user, unmute_user,
+    block_user, follow_user, get_followers, get_following, is_blocking, is_following, is_muting,
+    mute_user, unblock_user, unfollow_user, unmute_user,
 };
 pub use hashtags::{get_notes_by_tag, get_trending_tags};
 pub use notes::{create_note, delete_note, get_note_by_id, get_note_by_uri};
@@ -38,15 +38,16 @@ pub use push::{
     list_push_subscriptions, upsert_push_subscription,
 };
 pub use reactions::{
-    add_reaction, get_reaction_by_actor, remove_all_reactions_by_actor, remove_reaction,
+    add_reaction, get_reaction_by_actor, get_reactions_by_actor_for_notes,
+    remove_all_reactions_by_actor, remove_reaction,
 };
 pub use relay::{
     create_relay, delete_relay, get_accepted_relays, get_relay_by_id, get_relay_by_inbox,
     list_relays, update_relay_status,
 };
 pub use timeline::{
-    NoteWithAuthor, get_global_timeline, get_home_timeline, get_home_timeline_cached,
-    get_local_timeline, get_note_quotes, get_note_replies, get_user_notes,
+    NoteWithAuthor, get_global_timeline, get_home_timeline, get_local_timeline, get_note_quotes,
+    get_note_replies, get_notes_with_authors_by_ids, get_user_notes,
 };
 
 use serde::de::DeserializeOwned;

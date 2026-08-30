@@ -1,8 +1,13 @@
+use std::collections::HashMap;
+
 use mithic_core::models::actor::Actor;
-use mithic_core::models::file::FileId;
+use mithic_core::models::file::DriveFile;
 use mithic_core::models::note::{Note, NoteVisibility as CoreVisibility};
 use mithic_core::models::notification::NotificationType;
-use mithic_db::queries::{get_actor_by_id, get_drive_file, get_note_by_id, get_reaction_by_actor};
+use mithic_db::queries::{
+    NoteWithAuthor, get_drive_files_by_ids, get_notes_with_authors_by_ids,
+    get_reaction_by_actor, get_reactions_by_actor_for_notes,
+};
 use shared::{
     MediaAttachment, Note as NoteDto, NoteVisibility, NotificationType as NotifTypeDto,
     ProfileField, ReactionSummary, User,
@@ -69,6 +74,86 @@ pub async fn apply_viewer_reaction(state: &AppState, dto: &mut NoteDto, viewer_i
         .ok()
         .flatten();
     apply_my_reactions(&mut dto.reactions, mine.as_deref());
+}
+
+fn attachments_for(file_ids: &[String], files: &HashMap<String, DriveFile>) -> Vec<MediaAttachment> {
+    file_ids
+        .iter()
+        .filter_map(|id| files.get(id).map(drive_file_to_attachment))
+        .collect()
+}
+
+async fn load_files_map(state: &AppState, file_ids: &[String]) -> HashMap<String, DriveFile> {
+    if file_ids.is_empty() {
+        return HashMap::new();
+    }
+    let files = get_drive_files_by_ids(state.surreal(), file_ids)
+        .await
+        .unwrap_or_default();
+    files
+        .into_iter()
+        .map(|f| (f.id.to_string(), f))
+        .collect()
+}
+
+/// 複数ノートを添付・リノート・閲覧者リアクション込みで DTO 化する (バッチ)
+pub async fn notes_to_dtos(
+    state: &AppState,
+    rows: &[NoteWithAuthor],
+    viewer_id: Option<&str>,
+) -> Vec<NoteDto> {
+    if rows.is_empty() {
+        return Vec::new();
+    }
+
+    let renote_ids: Vec<String> = rows
+        .iter()
+        .filter_map(|r| r.note.renote_id.map(|id| id.to_string()))
+        .collect();
+    let renotes = get_notes_with_authors_by_ids(state.surreal(), &renote_ids)
+        .await
+        .unwrap_or_default();
+    let renote_map: HashMap<String, NoteWithAuthor> = renotes
+        .into_iter()
+        .map(|row| (row.note.id.to_string(), row))
+        .collect();
+
+    let mut file_ids: Vec<String> = rows
+        .iter()
+        .flat_map(|r| r.note.file_ids.iter().cloned())
+        .collect();
+    for target in renote_map.values() {
+        file_ids.extend(target.note.file_ids.iter().cloned());
+    }
+    file_ids.sort();
+    file_ids.dedup();
+    let files = load_files_map(state, &file_ids).await;
+
+    let note_ids: Vec<String> = rows.iter().map(|r| r.note.id.to_string()).collect();
+    let mine = match viewer_id {
+        Some(vid) => get_reactions_by_actor_for_notes(state.surreal(), vid, &note_ids)
+            .await
+            .unwrap_or_default(),
+        None => HashMap::new(),
+    };
+
+    rows.iter()
+        .map(|row| {
+            let mut dto = note_to_dto(&row.note, actor_to_user(&row.author));
+            dto.attachments = attachments_for(&row.note.file_ids, &files);
+            if let Some(rid) = row.note.renote_id {
+                if let Some(target) = renote_map.get(&rid.to_string()) {
+                    let mut nested = note_to_dto(&target.note, actor_to_user(&target.author));
+                    nested.attachments = attachments_for(&target.note.file_ids, &files);
+                    dto.renote = Some(Box::new(nested));
+                }
+            }
+            if let Some(emoji) = mine.get(&dto.id) {
+                apply_my_reactions(&mut dto.reactions, Some(emoji));
+            }
+            dto
+        })
+        .collect()
 }
 
 pub fn reaction_summaries_from_map(
@@ -148,44 +233,28 @@ pub fn note_to_dto(note: &Note, author: User) -> NoteDto {
     }
 }
 
-async fn load_attachments(state: &AppState, file_ids: &[String]) -> Vec<MediaAttachment> {
-    let mut out = Vec::with_capacity(file_ids.len());
-    for raw in file_ids {
-        let Ok(fid) = raw.parse::<FileId>() else {
-            continue;
-        };
-        if let Ok(Some(file)) = get_drive_file(state.surreal(), &fid).await {
-            out.push(drive_file_to_attachment(&file));
-        }
-    }
-    out
-}
-
-/// Fill attachments + one-level renote.
-/// ponytail: N+1; batch/join later if TL is slow.
-pub async fn enrich_note_dto(state: &AppState, note: &Note, mut dto: NoteDto) -> NoteDto {
-    if !note.file_ids.is_empty() {
-        dto.attachments = load_attachments(state, &note.file_ids).await;
-    }
-
-    if let Some(renote_id) = note.renote_id {
-        if let Ok(Some(target)) = get_note_by_id(state.surreal(), &renote_id).await {
-            if let Ok(Some(target_author)) =
-                get_actor_by_id(state.surreal(), &target.actor_id).await
-            {
-                let mut nested = note_to_dto(&target, actor_to_user(&target_author));
-                if !target.file_ids.is_empty() {
-                    nested.attachments = load_attachments(state, &target.file_ids).await;
-                }
-                dto.renote = Some(Box::new(nested));
-            }
-        }
-    }
-
-    dto
-}
-
 pub async fn note_to_dto_full(state: &AppState, note: &Note, author: User) -> NoteDto {
-    let dto = note_to_dto(note, author);
-    enrich_note_dto(state, note, dto).await
+    let mut files: Vec<String> = note.file_ids.clone();
+    let renotes = if let Some(rid) = note.renote_id {
+        get_notes_with_authors_by_ids(state.surreal(), &[rid.to_string()])
+            .await
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    if let Some(target) = renotes.first() {
+        files.extend(target.note.file_ids.iter().cloned());
+    }
+    files.sort();
+    files.dedup();
+    let file_map = load_files_map(state, &files).await;
+
+    let mut dto = note_to_dto(note, author);
+    dto.attachments = attachments_for(&note.file_ids, &file_map);
+    if let Some(target) = renotes.first() {
+        let mut nested = note_to_dto(&target.note, actor_to_user(&target.author));
+        nested.attachments = attachments_for(&target.note.file_ids, &file_map);
+        dto.renote = Some(Box::new(nested));
+    }
+    dto
 }

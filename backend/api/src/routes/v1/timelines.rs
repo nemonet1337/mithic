@@ -9,20 +9,18 @@ use axum::{
 use mithic_core::{AppError, AuthUser, Result};
 use mithic_db::cache;
 use mithic_db::queries::{
-    get_global_timeline, get_home_timeline, get_home_timeline_cached, get_local_timeline,
-    get_notes_by_tag, get_trending_tags,
+    get_global_timeline, get_home_timeline, get_local_timeline, get_notes_by_tag, get_trending_tags,
 };
 use serde::Deserialize;
 use shared::{Hashtag, Note as NoteDto};
 
-use crate::dto::note_to_dto_full;
 use crate::http_cache::{CC_TIMELINE, CC_TRENDING, json_with_cache};
 use crate::routes::v1::common::{
     PagingQuery, parse_optional_note_id, rows_to_dtos, rows_to_dtos_for,
 };
 use crate::state::AppState;
 
-/// home は認証必須 (個人タイムラインのため JSON キャッシュしない / 短命 ID キャッシュは利用)
+/// home は認証必須 (個人タイムラインのため JSON キャッシュしない)
 pub async fn timeline_home(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthUser>,
@@ -32,19 +30,9 @@ pub async fn timeline_home(
     let since_id = parse_optional_note_id(&paging.since_id)?;
     let until_id = parse_optional_note_id(&paging.until_id)?;
 
-    // カーソル無し先頭ページは Dragonfly Sorted Set を優先
-    let rows = if since_id.is_none() && until_id.is_none() {
-        get_home_timeline_cached(
-            state.dragonfly(),
-            state.surreal(),
-            auth.user_id.to_string(),
-            limit,
-        )
+    let rows = get_home_timeline(state.surreal(), &auth.user_id, limit, since_id, until_id)
         .await
-    } else {
-        get_home_timeline(state.surreal(), &auth.user_id, limit, since_id, until_id).await
-    }
-    .map_err(|e| AppError::Internal(e.to_string()))?;
+        .map_err(|e| AppError::Internal(e.to_string()))?;
 
     Ok(axum::Json(
         rows_to_dtos_for(&state, rows, Some(&auth.user_id.to_string())).await,
@@ -129,19 +117,10 @@ pub async fn timeline_hashtag(
 ) -> Result<axum::Json<Vec<NoteDto>>> {
     let limit = paging.limit.unwrap_or(20).min(100);
     let tag = tag.trim_start_matches('#').to_string();
-    let notes = get_notes_by_tag(state.surreal(), &tag, limit)
+    let rows = get_notes_by_tag(state.surreal(), &tag, limit)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
-
-    let mut dtos = Vec::new();
-    for note in notes {
-        if let Ok(Some(author)) =
-            mithic_db::queries::get_actor_by_id(state.surreal(), &note.actor_id).await
-        {
-            dtos.push(note_to_dto_full(&state, &note, crate::dto::actor_to_user(&author)).await);
-        }
-    }
-    Ok(axum::Json(dtos))
+    Ok(axum::Json(rows_to_dtos(&state, rows).await))
 }
 
 #[derive(Debug, Deserialize)]

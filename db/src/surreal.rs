@@ -75,6 +75,39 @@ pub async fn create_pool(
 
 /// Table initialization (schema definition)
 pub async fn init_schema(client: &DbClient) -> anyhow::Result<()> {
+    // Drop speculative / superseded objects. IF EXISTS keeps a fresh DB quiet.
+    client
+        .query(
+            "
+        REMOVE TABLE IF EXISTS word_mute;
+        REMOVE TABLE IF EXISTS chart;
+        REMOVE TABLE IF EXISTS meta;
+        REMOVE TABLE IF EXISTS hashtag;
+        REMOVE INDEX IF EXISTS idx_username_lower ON TABLE user;
+        REMOVE INDEX IF EXISTS idx_note_created_at ON TABLE note;
+        REMOVE INDEX IF EXISTS idx_note_visibility_created ON TABLE note;
+        REMOVE INDEX IF EXISTS idx_note_host ON TABLE note;
+        REMOVE INDEX IF EXISTS idx_follow_in ON TABLE follow;
+        REMOVE INDEX IF EXISTS idx_follow_out ON TABLE follow;
+        REMOVE FIELD IF EXISTS inbox ON TABLE follow;
+        REMOVE FIELD IF EXISTS shared_inbox ON TABLE follow;
+        REMOVE INDEX IF EXISTS idx_notification_user ON TABLE notification;
+        REMOVE INDEX IF EXISTS idx_poll_expires ON TABLE poll;
+        REMOVE INDEX IF EXISTS idx_block_in ON TABLE block;
+        REMOVE INDEX IF EXISTS idx_block_out ON TABLE block;
+        REMOVE INDEX IF EXISTS idx_mute_in ON TABLE mute;
+        REMOVE INDEX IF EXISTS idx_mute_out ON TABLE mute;
+        REMOVE INDEX IF EXISTS idx_note_reaction_note ON TABLE note_reaction;
+        REMOVE INDEX IF EXISTS idx_note_reaction_actor ON TABLE note_reaction;
+        REMOVE INDEX IF EXISTS idx_bookmark_user ON TABLE bookmark;
+        REMOVE INDEX IF EXISTS idx_bookmark_note ON TABLE bookmark;
+        REMOVE INDEX IF EXISTS idx_activity_type ON TABLE activity;
+        REMOVE INDEX IF EXISTS idx_user_note_pining_user ON TABLE user_note_pining;
+        REMOVE INDEX IF EXISTS idx_user_note_pining_note ON TABLE user_note_pining;
+        ",
+        )
+        .await?;
+
     client
         .query(
             "
@@ -114,8 +147,10 @@ pub async fn init_schema(client: &DbClient) -> anyhow::Result<()> {
         DEFINE FIELD IF NOT EXISTS shared_inbox ON user TYPE option<string>;
         DEFINE FIELD IF NOT EXISTS public_key ON user TYPE option<string>;
         DEFINE FIELD IF NOT EXISTS private_key ON user TYPE option<string>;
-        DEFINE INDEX IF NOT EXISTS idx_username_lower ON user COLUMNS username_lower UNIQUE;
-        DEFINE INDEX IF NOT EXISTS idx_host ON user COLUMNS host;
+        DEFINE INDEX IF NOT EXISTS idx_username_host ON user FIELDS username_lower, host UNIQUE;
+        DEFINE INDEX IF NOT EXISTS idx_host ON user FIELDS host;
+        DEFINE INDEX IF NOT EXISTS idx_user_uri ON user FIELDS uri UNIQUE;
+        DEFINE INDEX IF NOT EXISTS idx_email ON user FIELDS email;
     ",
         )
         .await?;
@@ -143,13 +178,12 @@ pub async fn init_schema(client: &DbClient) -> anyhow::Result<()> {
         DEFINE FIELD IF NOT EXISTS mentions ON note TYPE array<string> DEFAULT [];
         DEFINE FIELD IF NOT EXISTS emojis ON note TYPE array<string> DEFAULT [];
         DEFINE FIELD IF NOT EXISTS visible_user_ids ON note TYPE array<string> DEFAULT [];
-        DEFINE INDEX IF NOT EXISTS idx_note_actor_id ON note COLUMNS actor_id;
-        DEFINE INDEX IF NOT EXISTS idx_note_created_at ON note COLUMNS created_at;
-        DEFINE INDEX IF NOT EXISTS idx_note_visibility_created ON note COLUMNS visibility, created_at;
-        DEFINE INDEX IF NOT EXISTS idx_note_host ON note COLUMNS host;
-        DEFINE INDEX IF NOT EXISTS idx_note_visibility_host_id ON note COLUMNS visibility, host, id;
-        DEFINE INDEX IF NOT EXISTS idx_note_renote_id ON note COLUMNS renote_id;
-        DEFINE INDEX IF NOT EXISTS idx_note_reply_id ON note COLUMNS reply_id;
+        DEFINE INDEX IF NOT EXISTS idx_note_actor_id ON note FIELDS actor_id;
+        DEFINE INDEX IF NOT EXISTS idx_note_visibility_host_id ON note FIELDS visibility, host, id;
+        DEFINE INDEX IF NOT EXISTS idx_note_renote_id ON note FIELDS renote_id;
+        DEFINE INDEX IF NOT EXISTS idx_note_reply_id ON note FIELDS reply_id;
+        DEFINE INDEX IF NOT EXISTS idx_note_uri ON note FIELDS uri;
+        DEFINE INDEX IF NOT EXISTS idx_note_tags ON note FIELDS tags.*;
     ",
         )
         .await?;
@@ -157,14 +191,11 @@ pub async fn init_schema(client: &DbClient) -> anyhow::Result<()> {
     client
         .query(
             "
-        DEFINE TABLE IF NOT EXISTS follow TYPE RELATION;
+        DEFINE TABLE IF NOT EXISTS follow TYPE RELATION IN user OUT user;
         DEFINE FIELD IF NOT EXISTS created_at ON follow TYPE datetime;
-        DEFINE FIELD IF NOT EXISTS inbox ON follow TYPE option<string>;
-        DEFINE FIELD IF NOT EXISTS shared_inbox ON follow TYPE option<string>;
-        DEFINE INDEX IF NOT EXISTS idx_follow_in ON follow COLUMNS in;
-        DEFINE INDEX IF NOT EXISTS idx_follow_out ON follow COLUMNS out;
-        DEFINE INDEX IF NOT EXISTS idx_follow_out_in ON follow COLUMNS out, in;
-        DEFINE INDEX IF NOT EXISTS idx_follow_in_out ON follow COLUMNS in, out;
+        DEFINE FIELD IF NOT EXISTS is_accepted ON follow TYPE bool DEFAULT true;
+        DEFINE INDEX IF NOT EXISTS idx_follow_in_out ON follow FIELDS in, out UNIQUE;
+        DEFINE INDEX IF NOT EXISTS idx_follow_out_in ON follow FIELDS out, in;
     ",
         )
         .await?;
@@ -185,6 +216,8 @@ pub async fn init_schema(client: &DbClient) -> anyhow::Result<()> {
         DEFINE FIELD IF NOT EXISTS thumbnail_url ON drive_file TYPE option<string>;
         DEFINE FIELD IF NOT EXISTS is_sensitive ON drive_file TYPE bool DEFAULT false;
         DEFINE FIELD IF NOT EXISTS created_at ON drive_file TYPE datetime;
+        DEFINE INDEX IF NOT EXISTS idx_drive_user_created ON drive_file FIELDS user_id, created_at;
+        DEFINE INDEX IF NOT EXISTS idx_drive_md5 ON drive_file FIELDS md5;
     ",
         )
         .await?;
@@ -201,9 +234,8 @@ pub async fn init_schema(client: &DbClient) -> anyhow::Result<()> {
         DEFINE FIELD IF NOT EXISTS note_id ON notification TYPE option<record<note>>;
         DEFINE FIELD IF NOT EXISTS reaction ON notification TYPE option<string>;
         DEFINE FIELD IF NOT EXISTS is_read ON notification TYPE bool DEFAULT false;
-        DEFINE INDEX IF NOT EXISTS idx_notification_user ON notification COLUMNS user_id;
-        DEFINE INDEX IF NOT EXISTS idx_notification_read ON notification COLUMNS user_id, is_read;
-        DEFINE INDEX IF NOT EXISTS idx_notification_user_created ON notification COLUMNS user_id, created_at;
+        DEFINE INDEX IF NOT EXISTS idx_notification_read ON notification FIELDS user_id, is_read;
+        DEFINE INDEX IF NOT EXISTS idx_notification_user_created ON notification FIELDS user_id, created_at;
     ",
         )
         .await?;
@@ -219,8 +251,7 @@ pub async fn init_schema(client: &DbClient) -> anyhow::Result<()> {
         DEFINE FIELD IF NOT EXISTS multiple ON poll TYPE bool DEFAULT false;
         DEFINE FIELD IF NOT EXISTS is_archived ON poll TYPE bool DEFAULT false;
         DEFINE FIELD IF NOT EXISTS choices ON poll TYPE array<object>;
-        DEFINE INDEX IF NOT EXISTS idx_poll_note_id ON poll COLUMNS note_id;
-        DEFINE INDEX IF NOT EXISTS idx_poll_expires ON poll COLUMNS expires_at;
+        DEFINE INDEX IF NOT EXISTS idx_poll_note_id ON poll FIELDS note_id;
     ",
         )
         .await?;
@@ -234,9 +265,7 @@ pub async fn init_schema(client: &DbClient) -> anyhow::Result<()> {
         DEFINE FIELD IF NOT EXISTS actor_id ON poll_vote TYPE record<user>;
         DEFINE FIELD IF NOT EXISTS choice_index ON poll_vote TYPE int;
         DEFINE FIELD IF NOT EXISTS created_at ON poll_vote TYPE datetime;
-        DEFINE INDEX IF NOT EXISTS idx_poll_vote_poll ON poll_vote COLUMNS poll_id;
-        DEFINE INDEX IF NOT EXISTS idx_poll_vote_actor ON poll_vote COLUMNS actor_id;
-        DEFINE INDEX IF NOT EXISTS idx_poll_vote_unique ON poll_vote COLUMNS poll_id, actor_id, choice_index UNIQUE;
+        DEFINE INDEX IF NOT EXISTS idx_poll_vote_unique ON poll_vote FIELDS poll_id, actor_id, choice_index UNIQUE;
     ",
         )
         .await?;
@@ -246,8 +275,7 @@ pub async fn init_schema(client: &DbClient) -> anyhow::Result<()> {
             "
         DEFINE TABLE IF NOT EXISTS block TYPE RELATION IN user OUT user;
         DEFINE FIELD IF NOT EXISTS created_at ON block TYPE datetime;
-        DEFINE INDEX IF NOT EXISTS idx_block_in ON block COLUMNS in;
-        DEFINE INDEX IF NOT EXISTS idx_block_out ON block COLUMNS out;
+        DEFINE INDEX IF NOT EXISTS idx_block_in_out ON block FIELDS in, out UNIQUE;
     ",
         )
         .await?;
@@ -258,50 +286,7 @@ pub async fn init_schema(client: &DbClient) -> anyhow::Result<()> {
         DEFINE TABLE IF NOT EXISTS mute TYPE RELATION IN user OUT user;
         DEFINE FIELD IF NOT EXISTS created_at ON mute TYPE datetime;
         DEFINE FIELD IF NOT EXISTS expires_at ON mute TYPE option<datetime>;
-        DEFINE INDEX IF NOT EXISTS idx_mute_in ON mute COLUMNS in;
-        DEFINE INDEX IF NOT EXISTS idx_mute_out ON mute COLUMNS out;
-    ",
-        )
-        .await?;
-
-    client
-        .query(
-            "
-        DEFINE TABLE IF NOT EXISTS hashtag SCHEMAFULL;
-        DEFINE FIELD IF NOT EXISTS id ON hashtag TYPE string;
-        DEFINE FIELD IF NOT EXISTS name ON hashtag TYPE string;
-        DEFINE FIELD IF NOT EXISTS count ON hashtag TYPE int DEFAULT 0;
-        DEFINE FIELD IF NOT EXISTS created_at ON hashtag TYPE datetime;
-        DEFINE FIELD IF NOT EXISTS updated_at ON hashtag TYPE datetime;
-        DEFINE INDEX IF NOT EXISTS idx_hashtag_name ON hashtag COLUMNS name UNIQUE;
-    ",
-        )
-        .await?;
-
-    client
-        .query(
-            "
-        DEFINE TABLE IF NOT EXISTS meta SCHEMAFULL;
-        DEFINE FIELD IF NOT EXISTS id ON meta TYPE string;
-        DEFINE FIELD IF NOT EXISTS description ON meta TYPE option<string>;
-        DEFINE FIELD IF NOT EXISTS blocked_hosts ON meta TYPE array<string> DEFAULT [];
-        DEFINE FIELD IF NOT EXISTS cache_remote_files ON meta TYPE bool DEFAULT true;
-        DEFINE FIELD IF NOT EXISTS remote_drive_capacity_mb ON meta TYPE int DEFAULT 32;
-
-        DEFINE TABLE IF NOT EXISTS word_mute SCHEMAFULL;
-        DEFINE FIELD IF NOT EXISTS id ON word_mute TYPE string;
-        DEFINE FIELD IF NOT EXISTS user_id ON word_mute TYPE record<user>;
-        DEFINE FIELD IF NOT EXISTS pattern ON word_mute TYPE string;
-        DEFINE FIELD IF NOT EXISTS created_at ON word_mute TYPE datetime;
-        DEFINE INDEX IF NOT EXISTS idx_word_mute_user ON word_mute COLUMNS user_id;
-        DEFINE INDEX IF NOT EXISTS idx_word_mute_user_pattern ON word_mute COLUMNS user_id, pattern UNIQUE;
-
-        DEFINE TABLE IF NOT EXISTS chart SCHEMAFULL;
-        DEFINE FIELD IF NOT EXISTS id ON chart TYPE string;
-        DEFINE FIELD IF NOT EXISTS kind ON chart TYPE string;
-        DEFINE FIELD IF NOT EXISTS timestamp ON chart TYPE datetime;
-        DEFINE FIELD IF NOT EXISTS value ON chart TYPE int;
-        DEFINE INDEX IF NOT EXISTS idx_chart_kind_time ON chart COLUMNS kind, timestamp;
+        DEFINE INDEX IF NOT EXISTS idx_mute_in_out ON mute FIELDS in, out UNIQUE;
     ",
         )
         .await?;
@@ -317,9 +302,7 @@ pub async fn init_schema(client: &DbClient) -> anyhow::Result<()> {
         DEFINE FIELD IF NOT EXISTS created_at ON note_reaction TYPE datetime;
         DEFINE FIELD IF NOT EXISTS is_remote ON note_reaction TYPE bool DEFAULT false;
         DEFINE FIELD IF NOT EXISTS uri ON note_reaction TYPE option<string>;
-        DEFINE INDEX IF NOT EXISTS idx_note_reaction_note ON note_reaction COLUMNS note_id;
-        DEFINE INDEX IF NOT EXISTS idx_note_reaction_actor ON note_reaction COLUMNS actor_id;
-        DEFINE INDEX IF NOT EXISTS idx_note_reaction_unique ON note_reaction COLUMNS note_id, actor_id UNIQUE;
+        DEFINE INDEX IF NOT EXISTS idx_note_reaction_unique ON note_reaction FIELDS note_id, actor_id UNIQUE;
     ",
         )
         .await?;
@@ -334,8 +317,8 @@ pub async fn init_schema(client: &DbClient) -> anyhow::Result<()> {
         DEFINE FIELD IF NOT EXISTS p256dh ON push_subscription TYPE string;
         DEFINE FIELD IF NOT EXISTS auth ON push_subscription TYPE string;
         DEFINE FIELD IF NOT EXISTS created_at ON push_subscription TYPE datetime;
-        DEFINE INDEX IF NOT EXISTS idx_push_user ON push_subscription COLUMNS user_id;
-        DEFINE INDEX IF NOT EXISTS idx_push_endpoint ON push_subscription COLUMNS endpoint UNIQUE;
+        DEFINE INDEX IF NOT EXISTS idx_push_user ON push_subscription FIELDS user_id;
+        DEFINE INDEX IF NOT EXISTS idx_push_endpoint ON push_subscription FIELDS endpoint UNIQUE;
     ",
         )
         .await?;
@@ -343,10 +326,9 @@ pub async fn init_schema(client: &DbClient) -> anyhow::Result<()> {
     client
         .query(
             "
-        DEFINE TABLE IF NOT EXISTS user_note_pining TYPE RELATION;
+        DEFINE TABLE IF NOT EXISTS user_note_pining TYPE RELATION IN user OUT note;
         DEFINE FIELD IF NOT EXISTS created_at ON user_note_pining TYPE datetime;
-        DEFINE INDEX IF NOT EXISTS idx_user_note_pining_user ON user_note_pining COLUMNS in;
-        DEFINE INDEX IF NOT EXISTS idx_user_note_pining_note ON user_note_pining COLUMNS out;
+        DEFINE INDEX IF NOT EXISTS idx_user_note_pining_unique ON user_note_pining FIELDS in, out UNIQUE;
     ",
         )
         .await?;
@@ -359,9 +341,7 @@ pub async fn init_schema(client: &DbClient) -> anyhow::Result<()> {
         DEFINE FIELD IF NOT EXISTS user_id ON bookmark TYPE record<user>;
         DEFINE FIELD IF NOT EXISTS note_id ON bookmark TYPE record<note>;
         DEFINE FIELD IF NOT EXISTS created_at ON bookmark TYPE datetime;
-        DEFINE INDEX IF NOT EXISTS idx_bookmark_user ON bookmark COLUMNS user_id;
-        DEFINE INDEX IF NOT EXISTS idx_bookmark_note ON bookmark COLUMNS note_id;
-        DEFINE INDEX IF NOT EXISTS idx_bookmark_unique ON bookmark COLUMNS user_id, note_id UNIQUE;
+        DEFINE INDEX IF NOT EXISTS idx_bookmark_unique ON bookmark FIELDS user_id, note_id UNIQUE;
     ",
         )
         .await?;
@@ -375,7 +355,7 @@ pub async fn init_schema(client: &DbClient) -> anyhow::Result<()> {
         DEFINE FIELD IF NOT EXISTS status ON relay TYPE string DEFAULT 'requesting';
         DEFINE FIELD IF NOT EXISTS created_at ON relay TYPE datetime;
         DEFINE FIELD IF NOT EXISTS updated_at ON relay TYPE option<datetime>;
-        DEFINE INDEX IF NOT EXISTS idx_relay_inbox ON relay COLUMNS inbox UNIQUE;
+        DEFINE INDEX IF NOT EXISTS idx_relay_inbox ON relay FIELDS inbox UNIQUE;
     ",
         )
         .await?;
@@ -390,8 +370,7 @@ pub async fn init_schema(client: &DbClient) -> anyhow::Result<()> {
         DEFINE FIELD IF NOT EXISTS actor_id ON activity TYPE option<record<user>>;
         DEFINE FIELD IF NOT EXISTS note_id ON activity TYPE option<record<note>>;
         DEFINE FIELD IF NOT EXISTS created_at ON activity TYPE datetime;
-        DEFINE INDEX IF NOT EXISTS idx_activity_uri ON activity COLUMNS uri UNIQUE;
-        DEFINE INDEX IF NOT EXISTS idx_activity_type ON activity COLUMNS activity_type;
+        DEFINE INDEX IF NOT EXISTS idx_activity_uri ON activity FIELDS uri UNIQUE;
     ",
         )
         .await?;
@@ -406,7 +385,7 @@ pub async fn init_schema(client: &DbClient) -> anyhow::Result<()> {
         DEFINE FIELD IF NOT EXISTS url ON remote_emoji TYPE string;
         DEFINE FIELD IF NOT EXISTS host ON remote_emoji TYPE option<string>;
         DEFINE FIELD IF NOT EXISTS created_at ON remote_emoji TYPE datetime;
-        DEFINE INDEX IF NOT EXISTS idx_remote_emoji_name_host ON remote_emoji COLUMNS name, host UNIQUE;
+        DEFINE INDEX IF NOT EXISTS idx_remote_emoji_name_host ON remote_emoji FIELDS name, host UNIQUE;
     ",
         )
         .await?;
@@ -423,9 +402,14 @@ pub async fn init_schema(client: &DbClient) -> anyhow::Result<()> {
         DEFINE FIELD IF NOT EXISTS aliases ON emoji TYPE array<string> DEFAULT [];
         DEFINE FIELD IF NOT EXISTS is_public ON emoji TYPE bool DEFAULT true;
         DEFINE FIELD IF NOT EXISTS created_at ON emoji TYPE datetime;
-        DEFINE INDEX IF NOT EXISTS idx_emoji_name ON emoji COLUMNS name UNIQUE;
+        DEFINE INDEX IF NOT EXISTS idx_emoji_name ON emoji FIELDS name UNIQUE;
     ",
         )
+        .await?;
+
+    // 既存リモートノート: SCHEMAFULL で落ちていた host を actor から一度だけ埋める
+    client
+        .query("UPDATE note SET host = actor_id.host WHERE host = NONE AND actor_id.host != NONE;")
         .await?;
 
     Ok(())

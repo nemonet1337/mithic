@@ -65,13 +65,10 @@ impl std::ops::Deref for SurrealClient {
 
 /// Dragonfly クライアントラッパー。
 ///
-/// `ConnectionManager` は切断時に自動再接続する。BRPOP のようなブロッキング
-/// コマンドは多重化コネクションを長時間占有するため、`dedicated_connection()`
-/// で専用コネクションを払い出す (TODO Phase 0)。
+/// `ConnectionManager` は切断時に自動再接続する。
 #[derive(Clone)]
 pub struct DragonflyClient {
     manager: ConnectionManager,
-    client: redis::Client,
 }
 
 impl std::fmt::Debug for DragonflyClient {
@@ -81,13 +78,8 @@ impl std::fmt::Debug for DragonflyClient {
 }
 
 impl DragonflyClient {
-    pub fn new(manager: ConnectionManager, client: redis::Client) -> Self {
-        Self { manager, client }
-    }
-
-    /// ブロッキングコマンド (BRPOP 等) 用の専用コネクションを払い出す
-    pub fn dedicated_connection(&self) -> anyhow::Result<redis::Connection> {
-        Ok(self.client.get_connection()?)
+    pub fn new(manager: ConnectionManager) -> Self {
+        Self { manager }
     }
 
     pub fn manager(&self) -> ConnectionManager {

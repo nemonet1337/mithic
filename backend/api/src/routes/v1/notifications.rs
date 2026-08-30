@@ -6,14 +6,14 @@ use axum::{
 };
 use mithic_core::{AppError, AuthUser, Result};
 use mithic_db::queries::{
-    get_actor_by_id, get_notifications, mark_all_notifications_as_read, mark_notification_as_read,
+    get_actors_by_ids, get_notes_with_authors_by_ids, get_notifications,
+    mark_all_notifications_as_read, mark_notification_as_read,
 };
 use serde_json::Value;
 use shared::Notification as NotifDto;
 
-use crate::dto::{actor_to_user, notif_type_to_dto};
+use crate::dto::{actor_to_user, notes_to_dtos, notif_type_to_dto};
 use crate::routes::v1::common::{PagingQuery, ok_null};
-use crate::routes::v1::notes::fetch_note_dto;
 use crate::state::AppState;
 
 pub async fn list_notifications(
@@ -26,34 +26,47 @@ pub async fn list_notifications(
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
-    let mut dtos = Vec::with_capacity(notifs.len());
-    for notif in notifs {
-        let sender = match notif.sender_id {
-            Some(sender_id) => get_actor_by_id(state.surreal(), &sender_id)
-                .await
-                .map_err(|e| AppError::Internal(e.to_string()))?
-                .map(|actor| actor_to_user(&actor)),
-            None => None,
-        };
+    let sender_ids: Vec<String> = notifs
+        .iter()
+        .filter_map(|n| n.sender_id.map(|id| id.to_string()))
+        .collect();
+    let senders = get_actors_by_ids(state.surreal(), &sender_ids)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let sender_map: std::collections::HashMap<_, _> = senders
+        .into_iter()
+        .map(|a| (a.id.to_string(), actor_to_user(&a)))
+        .collect();
 
-        let note = match notif.note_id {
-            Some(note_id) => fetch_note_dto(&state, &note_id)
-                .await
-                .ok()
-                .map(|(_, dto)| dto),
-            None => None,
-        };
+    let note_ids: Vec<String> = notifs
+        .iter()
+        .filter_map(|n| n.note_id.map(|id| id.to_string()))
+        .collect();
+    let note_rows = get_notes_with_authors_by_ids(state.surreal(), &note_ids)
+        .await
+        .unwrap_or_default();
+    let note_dtos = notes_to_dtos(&state, &note_rows, Some(&auth.user_id.to_string())).await;
+    let note_map: std::collections::HashMap<_, _> = note_dtos
+        .into_iter()
+        .map(|dto| (dto.id.clone(), dto))
+        .collect();
 
-        dtos.push(NotifDto {
+    let dtos = notifs
+        .into_iter()
+        .map(|notif| NotifDto {
             id: notif.id.to_string(),
             created_at: notif.created_at.to_rfc3339(),
             notification_type: notif_type_to_dto(notif.notification_type),
-            sender,
-            note,
+            sender: notif
+                .sender_id
+                .and_then(|id| sender_map.get(&id.to_string()).cloned()),
+            note: notif
+                .note_id
+                .and_then(|id| note_map.get(&id.to_string()).cloned()),
             reaction: notif.reaction,
             is_read: notif.is_read,
-        });
-    }
+        })
+        .collect();
 
     Ok(Json(dtos))
 }

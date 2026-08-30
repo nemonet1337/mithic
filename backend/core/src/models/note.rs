@@ -2,7 +2,6 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use ulid::Ulid;
-use validator::Validate;
 
 use super::actor::ActorId;
 
@@ -19,7 +18,7 @@ pub enum NoteVisibility {
 }
 
 // DB の snake_case フィールドと一致させるため rename しない
-#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Note {
     pub id: NoteId,
     pub created_at: DateTime<Utc>,
@@ -27,10 +26,8 @@ pub struct Note {
     pub reply_id: Option<NoteId>,
     #[serde(default)]
     pub renote_id: Option<NoteId>,
-    #[validate(length(max = 8192))]
     #[serde(default)]
     pub text: Option<String>,
-    #[validate(length(max = 512))]
     #[serde(default)]
     pub cw: Option<String>,
     pub actor_id: ActorId,
@@ -42,7 +39,6 @@ pub struct Note {
     pub reactions: HashMap<String, i32>,
     #[serde(default)]
     pub visibility: NoteVisibility,
-    #[validate(length(max = 512))]
     #[serde(default)]
     pub uri: Option<String>,
     #[serde(default)]
@@ -58,17 +54,13 @@ pub struct Note {
     #[serde(default)]
     pub has_poll: bool,
     #[serde(default)]
-    pub actor_host: Option<String>,
-    #[serde(default)]
-    pub reply_actor_id: Option<ActorId>,
-    #[serde(default)]
-    pub renote_actor_id: Option<ActorId>,
+    pub host: Option<String>,
 }
 
 impl Note {
     pub fn new(actor_id: ActorId, text: Option<String>, visibility: NoteVisibility) -> Self {
         Self {
-            id: NoteId::new(),
+            id: NoteId::generate(),
             created_at: Utc::now(),
             reply_id: None,
             renote_id: None,
@@ -86,25 +78,7 @@ impl Note {
             emojis: Vec::new(),
             tags: Vec::new(),
             has_poll: false,
-            actor_host: None,
-            reply_actor_id: None,
-            renote_actor_id: None,
+            host: None,
         }
-    }
-
-    pub fn is_renote(&self) -> bool {
-        self.renote_id.is_some()
-    }
-    pub fn is_reply(&self) -> bool {
-        self.reply_id.is_some()
-    }
-    pub fn has_text(&self) -> bool {
-        self.text.as_ref().map(|t| !t.is_empty()).unwrap_or(false)
-    }
-    pub fn has_files(&self) -> bool {
-        !self.file_ids.is_empty()
-    }
-    pub fn total_reactions(&self) -> i32 {
-        self.reactions.values().sum()
     }
 }

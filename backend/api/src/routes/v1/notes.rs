@@ -149,7 +149,10 @@ pub async fn delete_note_route(
     Path(id): Path<String>,
 ) -> Result<Json<Value>> {
     let note_id = parse_note_id(&id)?;
-    let (note, _) = fetch_note_dto(&state, &note_id).await?;
+    let note = get_note_by_id(state.surreal(), &note_id)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?
+        .ok_or_else(|| AppError::NotFound("Note not found".to_string()))?;
     if note.actor_id != auth.user_id {
         return Err(AppError::Forbidden(
             "You can only delete your own notes".to_string(),
@@ -317,7 +320,10 @@ pub async fn remove_reaction_route(
     Path((id, emoji)): Path<(String, String)>,
 ) -> Result<Json<Value>> {
     let note_id = parse_note_id(&id)?;
-    let (note, _) = fetch_note_dto(&state, &note_id).await?;
+    let note = get_note_by_id(state.surreal(), &note_id)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?
+        .ok_or_else(|| AppError::NotFound("Note not found".to_string()))?;
     remove_reaction(
         state.surreal(),
         &note_id.to_string(),

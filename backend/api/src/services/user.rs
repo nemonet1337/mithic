@@ -1,11 +1,8 @@
-use mithic_config::AppConfig;
 use mithic_core::models::actor::Actor;
-use mithic_core::services::auth::{generate_jwt, hash_password, verify_password};
+use mithic_core::services::auth::{hash_password, verify_password};
 use mithic_core::{AppError, Result};
 use mithic_db::SurrealClient;
-use mithic_db::queries::{
-    create_actor, get_actor_by_username, get_actor_by_username_or_email, update_actor_token,
-};
+use mithic_db::queries::{create_actor, get_actor_by_username, get_actor_by_username_or_email};
 use shared::{SigninRequest, SignupRequest};
 
 /// ActivityPub 連合用の RSA-2048 鍵ペアを生成する (PEM)
@@ -72,9 +69,8 @@ pub async fn register_user(
 pub async fn authenticate_user(
     surreal: &SurrealClient,
     request: SigninRequest,
-    config: &AppConfig,
-) -> Result<(String, Actor)> {
-    let mut actor = get_actor_by_username_or_email(surreal, &request.username)
+) -> Result<Actor> {
+    let actor = get_actor_by_username_or_email(surreal, &request.username)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?
         .ok_or_else(|| AppError::Unauthorized("Invalid username or password".to_string()))?;
@@ -94,17 +90,5 @@ pub async fn authenticate_user(
         return Err(AppError::Forbidden("Account is suspended".to_string()));
     }
 
-    let token = generate_jwt(
-        &actor.id.to_string(),
-        &config.jwt_secret,
-        config.jwt_expiry_hours,
-    )?;
-
-    update_actor_token(surreal, &actor.id, Some(token.clone()))
-        .await
-        .map_err(|e| AppError::Internal(e.to_string()))?;
-
-    actor.token = Some(token.clone());
-
-    Ok((token, actor))
+    Ok(actor)
 }

@@ -59,6 +59,20 @@ pub async fn auth_middleware(
     Ok(next.run(request).await)
 }
 
-pub fn get_auth_user(request: &Request) -> Option<&AuthUser> {
-    request.extensions().get::<AuthUser>()
+/// Bearer があれば AuthUser を載せる。不正トークンは無視して匿名のまま。
+pub async fn optional_auth_middleware(
+    State(state): State<AppState>,
+    mut request: Request,
+    next: Next,
+) -> Response {
+    if let Some(token) = request
+        .headers()
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        && let Ok(auth) = resolve_bearer(&state, token).await
+    {
+        request.extensions_mut().insert(auth);
+    }
+    next.run(request).await
 }

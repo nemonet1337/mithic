@@ -7,7 +7,7 @@ pub async fn add_favorite(
     user_id: &ActorId,
     note_id: &NoteId,
 ) -> anyhow::Result<()> {
-    let id_str = ulid::Ulid::new().to_string();
+    let id_str = ulid::Ulid::generate().to_string();
     let user_str = user_id.to_string();
     let note_str = note_id.to_string();
     let created_at = chrono::Utc::now();

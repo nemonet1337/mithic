@@ -23,7 +23,7 @@ pub struct Relay {
 impl Relay {
     pub fn new(inbox: String) -> Self {
         Self {
-            id: ulid::Ulid::new().to_string(),
+            id: ulid::Ulid::generate().to_string(),
             inbox,
             status: RelayStatus::default(),
             created_at: chrono::Utc::now().to_rfc3339(),

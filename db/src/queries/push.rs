@@ -26,19 +26,14 @@ pub async fn upsert_push_subscription(
     p256dh: &str,
     auth: &str,
 ) -> anyhow::Result<PushSubscription> {
-    let id = Ulid::new().to_string();
+    let id = Ulid::generate().to_string();
     let created_at = Utc::now();
     let user = user_id.to_string();
-
-    // Delete any existing row for this endpoint, then insert
-    client
-        .query("DELETE push_subscription WHERE endpoint = $endpoint;")
-        .bind(("endpoint", endpoint.to_string()))
-        .await?;
 
     client
         .query(
             "
+            DELETE push_subscription WHERE endpoint = $endpoint;
             INSERT INTO push_subscription {
                 id: $id,
                 user_id: type::record('user', $user),

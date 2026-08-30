@@ -120,28 +120,3 @@ impl Default for I18n {
         Self::new()
     }
 }
-
-/// 簡易翻訳マクロ
-#[macro_export]
-macro_rules! t {
-    ($key:expr) => {
-        $crate::I18N.translate($crate::DEFAULT_LOCALE, $key)
-    };
-    ($key:expr, $locale:expr) => {
-        $crate::I18N.translate($locale, $key)
-    };
-}
-
-#[macro_export]
-macro_rules! t_args {
-    ($key:expr, $($name:ident = $value:expr),*) => {{
-        let mut args = fluent::FluentArgs::new();
-        $(args.set(stringify!($name), $value);)*
-        $crate::I18N.translate_with_args($crate::DEFAULT_LOCALE, $key, Some(&args))
-    }};
-    ($key:expr, $locale:expr, $($name:ident = $value:expr),*) => {{
-        let mut args = fluent::FluentArgs::new();
-        $(args.set(stringify!($name), $value);)*
-        $crate::I18N.translate_with_args($locale, $key, Some(&args))
-    }};
-}

@@ -32,12 +32,14 @@ pub fn generate_totp_secret() -> Result<(String, String)> {
 
 /// TOTP コードを検証する
 pub fn verify_totp(secret: &str, code: &str) -> Result<bool> {
-    let totp = build_totp(Secret::Encoded(secret.to_string()))?;
+    let totp = build_totp(
+        Secret::try_from_base32(secret).map_err(|e| AppError::Internal(e.to_string()))?,
+    )?;
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|_| AppError::Internal("Time went backwards".to_string()))?
         .as_secs();
-    Ok(totp.check(code, now))
+    Ok(totp.check(code, now).is_some())
 }
 
 #[derive(Debug, Serialize, Deserialize)]

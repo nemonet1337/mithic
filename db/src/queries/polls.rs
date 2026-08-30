@@ -6,7 +6,7 @@ pub async fn vote_poll(
     actor_id: &str,
     choice_index: usize,
 ) -> anyhow::Result<()> {
-    let id_str = ulid::Ulid::new().to_string();
+    let id_str = ulid::Ulid::generate().to_string();
     let created_at = chrono::Utc::now();
 
     client

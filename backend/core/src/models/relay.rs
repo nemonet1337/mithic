@@ -27,7 +27,7 @@ pub struct Relay {
 impl Relay {
     pub fn new(inbox: String) -> Self {
         Self {
-            id: RelayId::new(),
+            id: RelayId::generate(),
             inbox,
             status: RelayStatus::Requesting,
             created_at: Utc::now(),

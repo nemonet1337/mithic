@@ -7,7 +7,6 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-mithic-config = { workspace = true }
 mithic-i18n   = { workspace = true }
 axum          = { workspace = true }
 serde         = { workspace = true }
@@ -16,17 +15,11 @@ tracing       = { workspace = true }
 anyhow        = { workspace = true }
 chrono        = { workspace = true }
 ulid          = { workspace = true }
-uuid          = { workspace = true }
 url           = { workspace = true }
-validator     = { workspace = true }
 regex         = { workspace = true }
 surrealdb     = { workspace = true }
 redis         = { workspace = true }
 argon2        = { workspace = true }
 jsonwebtoken  = { workspace = true }
-reqwest        = { workspace = true }
-bytes          = { workspace = true }
-http           = { workspace = true }
-mime           = { workspace = true }
 totp-rs        = { workspace = true }
 

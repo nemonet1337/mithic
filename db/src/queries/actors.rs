@@ -77,11 +77,27 @@ pub async fn get_actor_by_id(
 ) -> anyhow::Result<Option<Actor>> {
     let id_str = id.to_string();
     let mut response = client
-        .query("SELECT * FROM user WHERE id = type::record('user', $id) LIMIT 1;")
+        .query("SELECT * FROM type::record('user', $id);")
         .bind(("id", id_str))
         .await?;
     let rows: Vec<surrealdb::types::Value> = response.take(0)?;
     Ok(rows_to::<Actor>(rows)?.into_iter().next())
+}
+
+pub async fn get_actors_by_ids(
+    client: &SurrealClient,
+    ids: &[String],
+) -> anyhow::Result<Vec<Actor>> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let id_records: Vec<String> = ids.iter().map(|id| format!("user:{id}")).collect();
+    let mut response = client
+        .query("SELECT * FROM user WHERE id IN $ids;")
+        .bind(("ids", id_records))
+        .await?;
+    let rows: Vec<surrealdb::types::Value> = response.take(0)?;
+    rows_to::<Actor>(rows)
 }
 
 pub async fn get_actor_by_username(
@@ -90,7 +106,7 @@ pub async fn get_actor_by_username(
 ) -> anyhow::Result<Option<Actor>> {
     let username_lower = username.to_lowercase();
     let mut response = client
-        .query("SELECT * FROM user WHERE username_lower = $username_lower LIMIT 1;")
+        .query("SELECT * FROM user WHERE username_lower = $username_lower AND host = NONE LIMIT 1;")
         .bind(("username_lower", username_lower))
         .await?;
     let rows: Vec<surrealdb::types::Value> = response.take(0)?;
@@ -104,7 +120,7 @@ pub async fn get_actor_by_username_or_email(
     let identifier_lower = username_or_email.to_lowercase();
     let mut response = client
         .query(
-            "SELECT * FROM user WHERE username_lower = $identifier OR email = $identifier LIMIT 1;",
+            "SELECT * FROM user WHERE (username_lower = $identifier OR email = $identifier) AND host = NONE LIMIT 1;",
         )
         .bind(("identifier", identifier_lower))
         .await?;

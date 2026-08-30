@@ -22,7 +22,7 @@ use axum::{
 };
 use serde_json::Value;
 
-use crate::middleware::{auth_middleware, rate_limit_middleware};
+use crate::middleware::{auth_middleware, optional_auth_middleware, rate_limit_middleware};
 use crate::state::AppState;
 
 const MAX_UPLOAD_BYTES: usize = 32 * 1024 * 1024;
@@ -175,7 +175,8 @@ pub fn router(state: AppState) -> Router<AppState> {
         .route("/api/v1/notes/{id}/replies", get(notes::note_replies))
         .route("/api/v1/notes/{id}/quotes", get(notes::note_quotes))
         .route("/api/v1/streaming", get(streaming::streaming_handler))
-        .route("/uploads/{hash}", get(drive::serve_upload));
+        .route("/uploads/{hash}", get(drive::serve_upload))
+        .layer(from_fn_with_state(state.clone(), optional_auth_middleware));
 
     Router::new()
         .merge(auth_public)

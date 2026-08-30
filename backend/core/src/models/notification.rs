@@ -42,7 +42,7 @@ impl Notification {
         note_id: Option<NoteId>,
     ) -> Self {
         Self {
-            id: NotificationId::new(),
+            id: NotificationId::generate(),
             created_at: Utc::now(),
             notification_type,
             recipient_id,
