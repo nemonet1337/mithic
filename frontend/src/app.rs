@@ -27,6 +27,9 @@ pub fn App() -> impl IntoView {
 
     let last_stream_token = RwSignal::new(None::<String>);
     Effect::new(move |_| {
+        if auth_for_stream.me.get().is_none() {
+            return;
+        }
         let Some(token) = auth_for_stream.token.get() else {
             return;
         };

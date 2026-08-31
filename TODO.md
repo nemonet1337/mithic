@@ -1,6 +1,6 @@
 # Mithic TODO
 
-最終更新: 2026-08-30（クレート 9→3: backend / shared / frontend）
+最終更新: 2026-08-31（login/register 接続: CORS :3000 + SW は API 非介入 + localhost 中継）
 
 凡例:
 
@@ -17,7 +17,7 @@
 - [x] Axum サーバ + 連合配送ワーカー同一プロセス (`mithic-server`)
 - [x] SurrealDB スキーマ初期化 / Dragonfly 接続
 - [x] JWT 認証 + トークン失効（actor.token 突合）+ サスペンド拒否
-- [x] CORS / 圧縮 / Trace
+- [x] CORS / 圧縮 / Trace（許可オリジンに `localhost:3000` / `127.0.0.1:3000` / Trunk `:1420`。CorsLayer は最外層）
 - [x] レート制限: Dragonfly `INCR` + `EXPIRE`（auth 系）
 - [x] SSRF ガード（サーバー側 fetch）
 - [x] 公開 GET の ETag / Cache-Control (`http_cache`)
@@ -71,6 +71,9 @@
 - [x] 削除した投稿をタイムライン / 詳細 / プロフィールから即時除去（REST + AP Delete も broadcast）
 - [x] プロフィール設定: バナー/アバター/名前/紹介/場所/誕生日/言語/追加情報/フォロー時メッセージ/リアクション受け入れ/猫/Bot/QR
 - [x] デスクトップ spine ナビ + HomeC 時刻レール + ProfileC 編集レイアウト + SettingsC ジャンプ（ワイヤー採用案 C、投稿は A）
+- [x] Service Worker: `/api/` は intercept しない（Workbox に載せると login/register が Failed to fetch になる）
+- [x] 起動時は `/users/me` 成功まで未ログイン扱い。失効トークンで TL を叩かない
+- [x] API クライアントは `RequestMode::SameOrigin`（CORS 不一致を Failed to fetch にしない）
 
 ---
 
@@ -127,6 +130,7 @@
 - [x] Docker: `mithic-server` のコンパイル落ち修正。BuildKit cache を backend/frontend で分離、mold + cargo-chef バイナリ、コンテナ内 LTO オフで再ビルド短縮
 - [x] SurrealDB 3: `user.fields` を `array<object> FLEXIBLE` に修正（`array FLEXIBLE` はパースエラー）
 - [x] Caddy: `:3000` を `http://` + `bind 0.0.0.0` で IPv4 HTTP として listen。`/uploads/*` をバックエンドへ。hashed 以外の JS（`sw.js`）を immutable にしない。静的アセット欠落は SPA フォールバックしない
+- [x] Windows+Podman: ホストの `127.0.0.1:3000` は `scripts/localhost_proxy.py` で WSL IP へ中継しないと login/register が Failed to fetch になる
 
 ---
 

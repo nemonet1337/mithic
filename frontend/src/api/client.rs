@@ -1,5 +1,6 @@
 use gloo_net::http::{Request, Response};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use web_sys::RequestMode;
 
 pub fn api_base() -> &'static str {
     "/api/v1"
@@ -72,6 +73,9 @@ where
         "PUT" => Request::put(&url),
         other => panic!("unsupported HTTP method: {other}"),
     };
+
+    // 同一オリジン専用。CORS ヘッダ不一致で Failed to fetch になるのを防ぐ。
+    req = req.mode(RequestMode::SameOrigin);
 
     if let Some(tok) = token {
         req = req.header("Authorization", &format!("Bearer {tok}"));

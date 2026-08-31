@@ -17,8 +17,9 @@ pub fn create_router(state: AppState) -> Router {
         .merge(activitypub::router(state.clone()))
         .route("/notes/{id}", get(ogp::note_ogp))
         .route("/profile/{username}", get(ogp::profile_ogp))
-        .layer(cors)
-        .layer(TraceLayer::new_for_http())
         .layer(CompressionLayer::new())
+        .layer(TraceLayer::new_for_http())
+        // CorsLayer は最外層。プリフライトが圧縮に吸われないようにする。
+        .layer(cors)
         .with_state(state)
 }

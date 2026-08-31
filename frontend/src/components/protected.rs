@@ -10,7 +10,7 @@ pub fn Protected(children: ChildrenFn) -> impl IntoView {
     let navigate = use_navigate();
 
     Effect::new(move |_| {
-        if !auth_effect.is_authenticated() {
+        if auth_effect.ready.get() && !auth_effect.is_authenticated() {
             navigate("/login", Default::default());
         }
     });

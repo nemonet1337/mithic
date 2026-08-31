@@ -4,7 +4,7 @@
 importScripts('https://storage.googleapis.com/workbox-cdn/releases/7.0.0/workbox-sw.js');
 
 const { routing, strategies, expiration } = workbox;
-const CACHE_VERSION = 'mithic-sw-v2';
+const CACHE_VERSION = 'mithic-sw-v4';
 
 // ==================================================
 // Navigation / document: NetworkFirst（ソフトリロードで古いシェルを出さない）
@@ -27,11 +27,8 @@ routing.registerRoute(
 // Runtime Caching
 // ==================================================
 
-// API: NetworkOnly（認証・書き込みをキャッシュしない）
-routing.registerRoute(
-  ({ url }) => url.pathname.startsWith('/api/'),
-  new strategies.NetworkOnly()
-);
+// API は SW が握らない。Workbox が POST を throw すると login/register が
+// Failed to fetch になる。ブラウザの素の fetch に任せる。
 
 // 画像: CacheFirst
 routing.registerRoute(

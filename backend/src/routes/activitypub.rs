@@ -1405,7 +1405,10 @@ async fn handle_update(
                 .bind(("location", location))
                 .bind(("birthday", birthday))
                 .bind(("followed_message", followed_message))
-                .bind(("fields", serde_json::to_value(&fields).unwrap_or_else(|_| json!([]))))
+                .bind((
+                    "fields",
+                    serde_json::to_value(&fields).unwrap_or_else(|_| json!([])),
+                ))
                 .await;
         }
         other => warn!("Unhandled Update object type: {other}"),
