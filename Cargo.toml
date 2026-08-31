@@ -78,7 +78,7 @@ rsa = { version = "0.9", features = ["sha2", "pem"] }
 web-push = { version = "0.11", features = ["isahc-client"] }
 
 # Image processing (thumbnails). Pin <0.25.10 for MSRV 1.85 (0.25.10 needs 1.88).
-image = { version = "=0.25.6", default-features = false, features = ["png", "jpeg", "webp", "gif"] }
+image = { version = "=0.25.10", default-features = false, features = ["png", "jpeg", "webp", "gif"] }
 
 # Background Jobs
 apalis = { version = "0.7", features = ["retry", "limit"] }
