@@ -122,20 +122,16 @@ pub fn connect_stream(token: String, stream: StreamStore, notif_store: Notificat
                     }
                     Ok(StreamEvent::Notification(notification)) => {
                         let notification = *notification;
-                        let is_dm = notification
+                        if notification
                             .note
                             .as_ref()
-                            .map(|n| n.visibility == NoteVisibility::Specified)
-                            .unwrap_or(false);
-                        if is_dm {
-                            notif_store
-                                .unread_messages
-                                .update(|c| *c = c.saturating_add(1));
-                        } else {
-                            notif_store
-                                .unread_notifications
-                                .update(|c| *c = c.saturating_add(1));
+                            .is_some_and(|n| n.visibility == NoteVisibility::Specified)
+                        {
+                            return;
                         }
+                        notif_store
+                            .unread_notifications
+                            .update(|c| *c = c.saturating_add(1));
                     }
                     Ok(StreamEvent::NoteDeleted { id }) => {
                         stream.mark_deleted(id);

@@ -1,16 +1,12 @@
-use icondata as id;
 use leptos::prelude::*;
-use leptos_icons::Icon;
 use leptos_router::components::A;
 use leptos_router::hooks::{use_navigate, use_params_map, use_query_map};
 
 use crate::components::{
-    Avatar, AvatarSize, FollowButton, LoadMore, MarkdownText, PostCard, Shell, ToastKind,
-    ToastStore, TopBar,
+    Avatar, AvatarSize, DeckPage, FollowButton, PostCard, Shell, ToastKind, ToastStore, TopBar,
 };
-use crate::store::{AuthStore, NotificationStore, StreamStore};
-use crate::time::clock_hm;
-use shared::{Note, Notification, NotificationType, User};
+use crate::store::{AuthStore, StreamStore};
+use shared::{Note, User};
 
 mod settings;
 pub use settings::SettingsPage;
@@ -18,156 +14,19 @@ pub use settings::SettingsPage;
 mod drive;
 pub use drive::DrivePage;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum TimelineKind {
-    Home,
-    Local,
-    Global,
-}
-
 #[component]
 pub fn HomePage() -> impl IntoView {
-    view! { <TimelinePage kind=TimelineKind::Home /> }
+    view! { <DeckPage active="home" /> }
 }
 
 #[component]
 pub fn LocalTimelinePage() -> impl IntoView {
-    view! { <TimelinePage kind=TimelineKind::Local /> }
+    view! { <DeckPage active="home" /> }
 }
 
 #[component]
 pub fn GlobalTimelinePage() -> impl IntoView {
-    view! { <TimelinePage kind=TimelineKind::Global /> }
-}
-
-#[component]
-fn TimelinePage(kind: TimelineKind) -> impl IntoView {
-    let auth = expect_context::<AuthStore>();
-    let stream = expect_context::<StreamStore>();
-    let notes = RwSignal::<Vec<Note>>::new(vec![]);
-    let is_loading = RwSignal::new(false);
-    let has_more = RwSignal::new(true);
-
-    let kind_str = match kind {
-        TimelineKind::Home => "home",
-        TimelineKind::Local => "local",
-        TimelineKind::Global => "global",
-    };
-    let active_path = match kind {
-        TimelineKind::Home => "/",
-        TimelineKind::Local => "/local",
-        TimelineKind::Global => "/global",
-    };
-
-    let tabs = vec![
-        (id::FiHome, "ホーム", "/", active_path == "/"),
-        (id::FiUsers, "ローカル", "/local", active_path == "/local"),
-        (
-            id::FiGlobe,
-            "グローバル",
-            "/global",
-            active_path == "/global",
-        ),
-    ];
-
-    // タイムライン読み込み
-    Effect::new(move |_| {
-        let token = auth.token.get();
-        if let Some(tok) = token {
-            is_loading.set(true);
-            wasm_bindgen_futures::spawn_local(async move {
-                match crate::api::notes::fetch_timeline(&tok, kind_str, None).await {
-                    Ok(fetched) => {
-                        notes.set(fetched);
-                        is_loading.set(false);
-                    }
-                    Err(e) => {
-                        web_sys::console::error_1(&e.to_string().into());
-                        is_loading.set(false);
-                    }
-                }
-            });
-        }
-    });
-
-    Effect::new(move |_| {
-        if let Some(note) = stream.latest_note.get() {
-            notes.update(|items| {
-                if !items.iter().any(|n| n.id == note.id) {
-                    items.insert(0, note);
-                }
-            });
-        }
-    });
-
-    let load_more = move || {
-        let token = auth.token.get_untracked();
-        let oldest = notes.with_untracked(|v| v.last().map(|n| n.id.clone()));
-        if let (Some(tok), Some(id)) = (token, oldest) {
-            is_loading.set(true);
-            wasm_bindgen_futures::spawn_local(async move {
-                match crate::api::notes::fetch_timeline(&tok, kind_str, Some(&id)).await {
-                    Ok(mut more) => {
-                        if more.is_empty() {
-                            has_more.set(false);
-                        }
-                        notes.update(|v| v.append(&mut more));
-                        is_loading.set(false);
-                    }
-                    Err(e) => {
-                        web_sys::console::error_1(&e.to_string().into());
-                        is_loading.set(false);
-                    }
-                }
-            });
-        }
-    };
-
-    view! {
-        <Shell active="home">
-            <div class="flex items-end justify-between px-5 pt-3 pb-1">
-                <h1 class="wf-title" style="font-size:26px;">"タイムライン"</h1>
-                <span class="wf-pill">{move || format!("live · {}", notes.get().len())}</span>
-            </div>
-            <div class="wf-seg-tl">
-                {tabs.into_iter().enumerate().map(|(i, (_icon, label, href, active))| {
-                    view! {
-                        <A href=href attr:class=if active { "seg on" } else { "seg" }>
-                            <span class="wf-entry-meta">{format!("{:02}", i + 1)}</span>
-                            <span>{label}</span>
-                        </A>
-                    }
-                }).collect_view()}
-            </div>
-            <section class="wf-scroll">
-                <div class="wf-tl-wrap px-4">
-                <For
-                    each=move || stream.visible(notes.get())
-                    key=|note| note.id.clone()
-                    children=|note| {
-                        let hm = clock_hm(&note.created_at);
-                        view! {
-                            <div class="wf-tl-item">
-                                <span class="wf-tl-time">{hm}</span>
-                                <span class="wf-tl-dot"></span>
-                                <PostCard note=note />
-                            </div>
-                        }
-                    }
-                />
-                </div>
-                <Show when=move || is_loading.get()>
-                    <div class="flex items-center justify-center gap-2 py-4">
-                        <span class="wf-spinner" style="width:18px;height:18px;" />
-                        <span class="wf-entry-meta">"読み込み中…"</span>
-                    </div>
-                </Show>
-                <Show when=move || !is_loading.get() && has_more.get() && !notes.get().is_empty()>
-                    <LoadMore on_visible=std::sync::Arc::new(move || load_more()) />
-                </Show>
-            </section>
-        </Shell>
-    }
+    view! { <DeckPage active="home" /> }
 }
 
 #[component]
@@ -278,132 +137,7 @@ pub fn StatusDetailPage() -> impl IntoView {
 
 #[component]
 pub fn NotificationsPage() -> impl IntoView {
-    let notification_store = expect_context::<NotificationStore>();
-    let auth = expect_context::<AuthStore>();
-    let token = auth.token;
-    let notifications = RwSignal::<Vec<Notification>>::new(vec![]);
-    let filter = RwSignal::new("all");
-
-    // 実 API から通知一覧を取得
-    Effect::new(move |_| {
-        if let Some(tok) = token.get() {
-            wasm_bindgen_futures::spawn_local(async move {
-                match crate::api::notifications::fetch_notifications(&tok, None).await {
-                    Ok(fetched) => notifications.set(fetched),
-                    Err(e) => web_sys::console::error_1(&e.to_string().into()),
-                }
-            });
-        }
-    });
-
-    let filtered_notifications = move || {
-        let items = notifications.get();
-        let f = filter.get();
-        items
-            .into_iter()
-            .filter(|n| match f {
-                "mention" => n.notification_type == NotificationType::Reply,
-                "reaction" => n.notification_type == NotificationType::Reaction,
-                "follow" => n.notification_type == NotificationType::Follow,
-                _ => true,
-            })
-            .collect::<Vec<_>>()
-    };
-
-    let mark_all_read = move |_| {
-        notification_store.mark_notifications_read();
-        notifications.update(|items| items.iter_mut().for_each(|n| n.is_read = true));
-        if let Some(tok) = token.get_untracked() {
-            wasm_bindgen_futures::spawn_local(async move {
-                if let Err(e) = crate::api::notifications::mark_all_read(&tok).await {
-                    web_sys::console::error_1(&e.to_string().into());
-                }
-            });
-        }
-    };
-    view! {
-        <Shell active="notif">
-            <TopBar title="通知" />
-            <div class="flex items-center justify-between px-4 py-2">
-                <Show when=move || { notification_store.unread_notifications.get() > 0 }>
-                    <span class="wf-pill on">
-                        "未読 " {move || notification_store.unread_notifications.get().to_string()}
-                    </span>
-                </Show>
-                <button
-                    class="wf-btn wf-btn-ghost wf-btn-sm wf-btn-circle ml-auto"
-                    on:click=mark_all_read
-                    aria-label="すべて既読にする"
-                    title="すべて既読にする"
-                >
-                    <Icon icon=id::FiCheckCircle width="18" height="18" />
-                </button>
-            </div>
-            <div class="wf-seg px-4">
-                <span
-                    class=move || if filter.get() == "all" { "wf-seg-item active" } else { "wf-seg-item" }
-                    on:click=move |_| filter.set("all")>
-                    "すべて"
-                </span>
-                <span
-                    class=move || if filter.get() == "mention" { "wf-seg-item active" } else { "wf-seg-item" }
-                    on:click=move |_| filter.set("mention")>
-                    "返信"
-                </span>
-                <span
-                    class=move || if filter.get() == "reaction" { "wf-seg-item active" } else { "wf-seg-item" }
-                    on:click=move |_| filter.set("reaction")>
-                    "リアクション"
-                </span>
-                <span
-                    class=move || if filter.get() == "follow" { "wf-seg-item active" } else { "wf-seg-item" }
-                    on:click=move |_| filter.set("follow")>
-                    "フォロー"
-                </span>
-            </div>
-            <section class="wf-scroll">
-                <For
-                    each=filtered_notifications
-                    key=|notification| notification.id.clone()
-                    children=|notification| {
-                    let sender = notification.sender.clone();
-                    let note   = notification.note.clone();
-                    let unread_class = if notification.is_read { "wf-notif" } else { "wf-notif unread" };
-                    let kind_label = match notification.notification_type {
-                        NotificationType::Reaction => format!(
-                            "{} があなたの投稿にリアクションしました",
-                            notification.reaction.as_deref().unwrap_or("誰か")
-                        ),
-                        NotificationType::Reply => "があなたの投稿に返信しました".into(),
-                        NotificationType::Follow => "があなたをフォローしました".into(),
-                        NotificationType::Renote => "があなたの投稿をリノートしました".into(),
-                        NotificationType::Mention => "があなたをメンションしました".into(),
-                        NotificationType::Quote => "があなたの投稿を引用しました".into(),
-                        NotificationType::FollowRequest => "がフォローリクエストを送信しました".into(),
-                        NotificationType::FollowRequestAccepted => {
-                            "があなたのフォローリクエストを承認しました".into()
-                        }
-                        NotificationType::PollEnded => "のアンケートが終了しました".into(),
-                        NotificationType::UserSignup => "が登録しました".into(),
-                    };
-                    view! {
-                        <article class=unread_class>
-                            {sender.map(|user| view! { <Avatar user=user size=AvatarSize::Sm /> }).into_view()}
-                            <div class="wf-notif-text">
-                                <div class="flex items-center justify-between">
-                                    <span class="who">{kind_label}</span>
-                                    <span class="wf-notif-time">{notification.created_at}</span>
-                                </div>
-                                {note.map(|n| view! {
-                                    <blockquote class="wf-dashed mt-2 p-3 text-sm"><MarkdownText text=n.content /></blockquote>
-                                }).into_view()}
-                            </div>
-                        </article>
-                    }
-                } />
-            </section>
-        </Shell>
-    }
+    view! { <DeckPage active="notif" /> }
 }
 
 #[component]
@@ -578,50 +312,6 @@ pub fn SearchPage() -> impl IntoView {
                     }}
                 </div>
             </section>
-        </Shell>
-    }
-}
-
-#[component]
-pub fn DmPage() -> impl IntoView {
-    view! { <DmScaffold conversation_id=None /> }
-}
-
-#[component]
-pub fn DmConversationPage() -> impl IntoView {
-    let params = use_params_map();
-    let conversation_id = params.read().get("conversation");
-    view! { <DmScaffold conversation_id=conversation_id /> }
-}
-
-/// DM は API 未接続。空状態のみ（ルートは維持）。
-#[component]
-fn DmScaffold(conversation_id: Option<String>) -> impl IntoView {
-    let notifications = expect_context::<NotificationStore>();
-    Effect::new(move |_| notifications.mark_messages_read());
-    let _ = conversation_id;
-
-    view! {
-        <Shell active="dm">
-            <div class="wf-dm">
-                <aside class="wf-dm-list flex flex-col">
-                    <div class="flex items-center justify-between p-4" style="border-bottom:1px solid var(--line-soft);">
-                        <span class="wf-title">"メッセージ"</span>
-                    </div>
-                    <div class="flex-1 overflow-y-auto flex flex-col items-center justify-center p-6">
-                        <div class="wf-empty" style="padding:24px 8px;">
-                            <span>"ダイレクトメッセージは準備中です"</span>
-                        </div>
-                    </div>
-                </aside>
-                <main class="wf-dm-conv">
-                    <div class="wf-dm-msgs flex-1 flex flex-col items-center justify-center p-8">
-                        <div class="wf-empty">
-                            <span>"会話 API の接続後にここに表示されます"</span>
-                        </div>
-                    </div>
-                </main>
-            </div>
         </Shell>
     }
 }

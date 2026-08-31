@@ -1,6 +1,6 @@
 # Mithic TODO
 
-最終更新: 2026-08-31（login/register 接続: CORS :3000 + SW は API 非介入 + localhost 中継）
+最終更新: 2026-08-31（UI: Misskey 左バー廃止、Deck シェル、DM/QR/高度な設定を削除）
 
 凡例:
 
@@ -63,14 +63,14 @@
 
 ### フロント（画面はある）
 
-- [x] 15 画面 UI（ホーム / TL / 詳細 / 通知 / 検索 / DM 枠 / プロフィール / 設定 / ログイン等）
+- [x] 画面 UI（Deck ホーム / 詳細 / 検索 / プロフィール / 設定 / ログイン等）
 - [x] 認証・投稿・タイムライン・通知・一部ユーザー操作が API 接続済み
 - [x] WebSocket で note / notification / noteDeleted 受信
 - [x] リノート前の注意ダイアログ（公開範囲の拡散注意 + プレビュー）
 - [x] リアクションは投稿あたり1つ。別絵文字は置換、同じ絵文字の再押下は取り消し
 - [x] 削除した投稿をタイムライン / 詳細 / プロフィールから即時除去（REST + AP Delete も broadcast）
-- [x] プロフィール設定: バナー/アバター/名前/紹介/場所/誕生日/言語/追加情報/フォロー時メッセージ/リアクション受け入れ/猫/Bot/QR
-- [x] デスクトップ spine ナビ + HomeC 時刻レール + ProfileC 編集レイアウト + SettingsC ジャンプ（ワイヤー採用案 C、投稿は A）
+- [x] プロフィール設定: バナー/アバター/名前/紹介/場所/誕生日/言語/追加情報/フォロー時メッセージ/リアクション受け入れ
+- [x] Deck シェル: 上部バー + モバイル下部ドック。ホーム/ローカル/グローバル（+通知）を横並び。列の追加・削除・並び替えは localStorage
 - [x] Service Worker: `/api/` は intercept しない（Workbox に載せると login/register が Failed to fetch になる）
 - [x] 起動時は `/users/me` 成功まで未ログイン扱い。失効トークンで TL を叩かない
 - [x] API クライアントは `RequestMode::SameOrigin`（CORS 不一致を Failed to fetch にしない）
@@ -90,7 +90,7 @@
 | **ブロック / ミュート UI** | API + 投稿メニューから実行。設定に一覧 | 一覧からの解除ボタンは未接続 |
 | **ドライブ「添付ノート」** | `GET .../files/{id}/notes` | **常に空配列**（逆引き未実装） |
 | **Admin UI** | ルートはある | 画面は「管理機能は準備中」 |
-| **DM** | 画面プレースホルダ | **API 削除済み**。送受信・会話なし |
+| **DM** | **廃止** | ルート・ナビ・画面を削除済み。API も無し |
 | **TOTP (2FA)** | core に generate/verify、DB にフィールド | **API ルートなし・設定 UI なし** |
 | **フロント i18n** | なし（ハードコード日本語寄り） | leptos_i18n 等未導入 |
 | **バックエンド locale middleware** | 削除済み | エラーは `DEFAULT_LOCALE` 固定。`Accept-Language` 未使用 |
@@ -117,6 +117,8 @@
 - [ ] 予約投稿 (`scheduled_at` フィールドはあるが処理なし)
 - [ ] NSFW / CW の一貫したフロント表示ルール
 - [ ] フロント「設定」の残り（メール、連携アカウント、エクスポート、アカウント削除）
+- [ ] Deck: ハッシュタグ列・列幅変更・サーバ保存（現状は 4 種 + localStorage）
+- [ ] 設定 UI から外した猫 / Bot / QR（API フィールドは残っている）
 - [ ] アバターデコレーション（素材カタログが要るので未着手）
 - [ ] リノート確認からの引用フロー（CreateNoteRequest に renote_id が無い）
 
@@ -144,11 +146,9 @@
    ピン API はメニューから叩ける。プロフィール先頭への表示が残る。
 3. **Web Push / サムネの手動 E2E**  
    `VAPID_PRIVATE_KEY` 設定 → 設定画面で有効化 → 通知発火。画像 UP → `.thumb` が返るか。
-4. **DM をやるか捨てるか決める**  
-   画面だけある状態は負債。捨てるならルート・ナビから削除。
-5. **TOTP**（必要なら）API + 設定 UI。
-6. **ストリームの multi-instance**（スケールするとき）Dragonfly pub/sub 等。
-7. **AP Update/Accept の URI-only object**  
+4. **TOTP**（必要なら）API + 設定 UI。
+5. **ストリームの multi-instance**（スケールするとき）Dragonfly pub/sub 等。
+6. **AP Update/Accept の URI-only object**  
    埋め込み無しの場合は現状スキップ。必要なら fetch を足す。
 
 ---

@@ -119,11 +119,11 @@ SurrealDB / Dragonfly クライアントラッパー。クエリモジュール 
 
 ### `frontend/src/pages/` — フロントエンド画面 (UI実装済み)
 
-`pages/mod.rs` に全画面を実装: HomePage, LocalTimelinePage, GlobalTimelinePage, StatusDetailPage, NotificationsPage, SearchPage, DmPage, DmConversationPage, ProfilePage, SettingsPage, LoginPage, SignupPage, WelcomePage, AdminPage, NotFoundPage の15画面。実APIとWebSocketに一部接続済み。
+`pages/mod.rs` に画面を実装: Home/Local/Global/Notifications は Deck（複数列）、ほか StatusDetail, Search, Profile, Settings, Login, Signup, Admin, NotFound, Drive。DM 画面は廃止。実APIとWebSocketに一部接続済み。
 
 ### `frontend/src/components/` — UIコンポーネント (実装済み)
 
-Shell, TopBar, Sidebar, BottomNav, RightRail, Avatar, PostCard, PostBody, PostActions, MarkdownText, ComposeModal, Protected, LoadMore の13コンポーネント。レイアウトは3カラムレスポンシブ (drawer/sidebar + main + right-rail)。
+Shell（上部バー + モバイルドック）, DeckPage, Avatar, PostCard, ComposeModal, Protected, LoadMore ほか。デスクトップは Mastodon Deck 風の横並び列。モバイルは 1 列 + scroll-snap。
 
 ### `frontend/src/api/` — APIクライアント (一部実装)
 

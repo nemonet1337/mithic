@@ -1,6 +1,7 @@
 mod avatar;
 mod compose;
 mod confirm_dialog;
+mod deck;
 mod follow_button;
 mod load_more;
 mod markdown;
@@ -13,9 +14,8 @@ mod toast;
 
 pub use avatar::{Avatar, AvatarSize};
 pub use compose::ComposeModal;
+pub use deck::DeckPage;
 pub use follow_button::FollowButton;
-pub use load_more::LoadMore;
-pub use markdown::MarkdownText;
 pub use post_card::PostCard;
 pub use protected::Protected;
 pub use shell::{Shell, TopBar};

@@ -1,13 +1,3 @@
-/// RFC3339 から `HH:MM`。失敗時は `—`。
-pub fn clock_hm(rfc3339: &str) -> String {
-    rfc3339
-        .split('T')
-        .nth(1)
-        .map(|t| t.chars().take(5).collect::<String>())
-        .filter(|s| s.len() == 5 && s.as_bytes().get(2) == Some(&b':'))
-        .unwrap_or_else(|| "—".into())
-}
-
 /// `YYYY-MM-DD` → `YYYY·MM·DD`
 pub fn date_label(rfc3339: &str) -> String {
     rfc3339

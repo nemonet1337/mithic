@@ -19,7 +19,7 @@ pub fn SettingsPage() -> impl IntoView {
             .get("section")
             .unwrap_or_else(|| "プロフィール".into());
         match raw.as_str() {
-            "パスワード" | "プライバシー" | "通知" | "テーマ" | "QR" => raw,
+            "パスワード" | "プライバシー" | "通知" | "テーマ" => raw,
             _ => "プロフィール".into(),
         }
     };
@@ -27,7 +27,6 @@ pub fn SettingsPage() -> impl IntoView {
     let nav = [
         ("プロフィール", "アカウント"),
         ("パスワード", "アカウント"),
-        ("QR", "アカウント"),
         ("プライバシー", "プライバシー"),
         ("通知", "通知"),
         ("テーマ", "表示"),
@@ -35,13 +34,23 @@ pub fn SettingsPage() -> impl IntoView {
 
     view! {
         <Shell active="settings">
-            <div class="wf-settings-layout flex" style="height:100%;overflow:hidden;">
-                <aside class="wf-rail" style="width:200px;flex-shrink:0;">
-                    <span class="wf-title" style="font-size:18px;">"設定"</span>
-                    {nav.into_iter().map(|(item, group)| {
+            <div class="wf-settings-layout">
+                <nav class="wf-settings-tabs" aria-label="設定セクション">
+                    {nav.iter().copied().map(|(item, _group)| {
+                        view! {
+                            <A href=format!("/settings/{item}")
+                                attr:class=move || if section() == item { "wf-chip on" } else { "wf-chip" }>
+                                {item}
+                            </A>
+                        }
+                    }).collect_view()}
+                </nav>
+                <aside class="wf-rail">
+                    <span class="wf-title">"設定"</span>
+                    {nav.iter().copied().map(|(item, group)| {
                         view! {
                             <div>
-                                <span class="wf-rail-tag" style="display:block;margin:8px 0 4px;">{group}</span>
+                                <span class="wf-rail-tag">{group}</span>
                                 <A href=format!("/settings/{item}")
                                     attr:class=move || if section() == item { "wf-pop-item active" } else { "wf-pop-item" }>
                                     {item}
@@ -50,13 +59,12 @@ pub fn SettingsPage() -> impl IntoView {
                         }
                     }).collect_view()}
                 </aside>
-                <main class="wf-scroll p-6" style="flex:1;">
+                <main class="wf-scroll wf-settings-body">
                     {move || match section().as_str() {
                         "テーマ" => view! { <ThemeSection /> }.into_any(),
                         "通知" => view! { <PushSection /> }.into_any(),
                         "パスワード" => view! { <PasswordSection /> }.into_any(),
                         "プライバシー" => view! { <PrivacySection /> }.into_any(),
-                        "QR" => view! { <QrSection /> }.into_any(),
                         _ => view! { <ProfileSection /> }.into_any(),
                     }}
                 </main>
@@ -79,8 +87,6 @@ fn ProfileSection() -> impl IntoView {
     let lang = RwSignal::new("ja".to_string());
     let followed_message = RwSignal::new(String::new());
     let reaction_acceptance = RwSignal::new(String::new());
-    let is_bot = RwSignal::new(false);
-    let is_cat = RwSignal::new(false);
     let avatar_url = RwSignal::new(String::new());
     let banner_url = RwSignal::new(String::new());
     let fields = RwSignal::new(vec![
@@ -99,8 +105,6 @@ fn ProfileSection() -> impl IntoView {
         lang.set(user.lang.clone().unwrap_or_else(|| "ja".into()));
         followed_message.set(user.followed_message.clone().unwrap_or_default());
         reaction_acceptance.set(user.reaction_acceptance.clone().unwrap_or_default());
-        is_bot.set(user.is_bot);
-        is_cat.set(user.is_cat);
         avatar_url.set(user.avatar_url.clone().unwrap_or_default());
         banner_url.set(user.banner_url.clone().unwrap_or_default());
         let mut rows = user.fields;
@@ -156,8 +160,8 @@ fn ProfileSection() -> impl IntoView {
             lang: Some(lang.get_untracked()),
             followed_message: Some(followed_message.get_untracked()),
             reaction_acceptance: Some(reaction_acceptance.get_untracked()),
-            is_bot: Some(is_bot.get_untracked()),
-            is_cat: Some(is_cat.get_untracked()),
+            is_bot: None,
+            is_cat: None,
             avatar_url: Some(avatar_url.get_untracked()),
             banner_url: Some(banner_url.get_untracked()),
             fields: Some(fields.get_untracked()),
@@ -260,17 +264,6 @@ fn ProfileSection() -> impl IntoView {
                     <option value="nonSensitiveOnlyForLocalLikeOnlyForRemote" selected=move || reaction_acceptance.get() == "nonSensitiveOnlyForLocalLikeOnlyForRemote">"ローカルは NSFW 以外 / リモートはいいねのみ"</option>
                 </select>
             </Field>
-            <div class="wf-card flex flex-col gap-3">
-                <span class="wf-entry-meta">"高度な設定"</span>
-                <label class="wf-spread text-sm">
-                    <span>"猫として設定する"</span>
-                    <input class="wf-check" type="checkbox" prop:checked=move || is_cat.get() on:change=move |_| is_cat.update(|v| *v = !*v) />
-                </label>
-                <label class="wf-spread text-sm">
-                    <span>"Bot として設定する"</span>
-                    <input class="wf-check" type="checkbox" prop:checked=move || is_bot.get() on:change=move |_| is_bot.update(|v| *v = !*v) />
-                </label>
-            </div>
             <div class="flex justify-end gap-2">
                 <button class="wf-btn wf-btn-primary" disabled=move || save_busy.get() on:click=on_save>
                     {move || if save_busy.get() { "保存中…" } else { "保存" }}
@@ -486,29 +479,6 @@ fn ThemeSection() -> impl IntoView {
                 <button class=move || if theme.get() == "dark" || theme.get() == "night" { "wf-btn wf-btn-primary wf-btn-sm" } else { "wf-btn wf-btn-ghost wf-btn-sm" } on:click=move |_| set_theme("night")>"ダーク"</button>
                 <button class=move || if theme.get() == "auto" { "wf-btn wf-btn-primary wf-btn-sm" } else { "wf-btn wf-btn-ghost wf-btn-sm" } on:click=move |_| set_theme("auto")>"自動"</button>
             </div>
-        </div>
-    }
-}
-
-#[component]
-fn QrSection() -> impl IntoView {
-    let auth = expect_context::<AuthStore>();
-    let url = move || {
-        let origin = web_sys::window()
-            .and_then(|w| w.location().origin().ok())
-            .unwrap_or_default();
-        let handle = auth.me.get().map(|u| u.username).unwrap_or_default();
-        format!("{origin}/profile/{handle}")
-    };
-    view! {
-        <span class="wf-entry-meta">"アカウント / QR"</span>
-        <h1 class="wf-title mt-1 mb-6">"プロフィール QR"</h1>
-        <div class="wf-card max-w-md flex flex-col gap-3">
-            <p class="text-sm">"この URL を共有するとプロフィールを開けます。"</p>
-            <code class="font-mono text-xs break-all">{url}</code>
-            <button class="wf-btn wf-btn-sm" on:click=move |_| {
-                let _ = url();
-            }>"この URL をメモしてください"</button>
         </div>
     }
 }

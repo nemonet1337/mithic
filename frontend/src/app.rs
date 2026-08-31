@@ -4,12 +4,11 @@ use leptos_router::path;
 
 use crate::components::{ComposeModal, Protected, ToastContainer, ToastStore};
 use crate::pages::{
-    AdminPage, DmConversationPage, DmPage, DrivePage, GlobalTimelinePage, HomePage,
-    LocalTimelinePage, LoginPage, NotFoundPage, NotificationsPage, ProfilePage, SearchPage,
-    SettingsPage, SignupPage, StatusDetailPage,
+    AdminPage, DrivePage, GlobalTimelinePage, HomePage, LocalTimelinePage, LoginPage, NotFoundPage,
+    NotificationsPage, ProfilePage, SearchPage, SettingsPage, SignupPage, StatusDetailPage,
 };
 use crate::store::{
-    AuthStore, ComposeStore, NotificationStore, StreamStore, stream::connect_stream,
+    AuthStore, ComposeStore, DeckStore, NotificationStore, StreamStore, stream::connect_stream,
 };
 
 #[component]
@@ -19,6 +18,7 @@ pub fn App() -> impl IntoView {
     let auth_for_stream = auth.clone();
     provide_context(auth);
     provide_context(ComposeStore::new());
+    provide_context(DeckStore::new());
     let notifications = NotificationStore::new();
     provide_context(notifications);
     provide_context(ToastStore::new());
@@ -47,8 +47,6 @@ pub fn App() -> impl IntoView {
                 <Route path=path!("local") view=|| view! { <Protected><LocalTimelinePage /></Protected> } />
                 <Route path=path!("global") view=|| view! { <Protected><GlobalTimelinePage /></Protected> } />
                 <Route path=path!("notifications") view=|| view! { <Protected><NotificationsPage /></Protected> } />
-                <Route path=path!("dm") view=|| view! { <Protected><DmPage /></Protected> } />
-                <Route path=path!("dm/:conversation") view=|| view! { <Protected><DmConversationPage /></Protected> } />
                 <Route path=path!("settings") view=|| view! { <Protected><SettingsPage /></Protected> } />
                 <Route path=path!("settings/:section") view=|| view! { <Protected><SettingsPage /></Protected> } />
                 <Route path=path!("notes/:id") view=|| view! { <Protected><StatusDetailPage /></Protected> } />

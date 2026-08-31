@@ -32,7 +32,7 @@ pub fn NoteMenu(
                 <button class="wf-pop-item" on:click=move |_| do_action(NoteMenuAction::Pin)>
                     "プロフィールに固定"
                 </button>
-                <hr class="wf-spine-rule" style="margin:4px 6px;" />
+                <hr class="wf-rule" />
                 <div class="wf-entry-meta px-2.5 pt-1">"[ このユーザー ]"</div>
                 <button class="wf-pop-item" on:click=move |_| do_action(NoteMenuAction::Mute)>
                     "ミュート"
@@ -40,7 +40,7 @@ pub fn NoteMenu(
                 <button class="wf-pop-item" on:click=move |_| do_action(NoteMenuAction::Block)>
                     "ブロック"
                 </button>
-                <hr class="wf-spine-rule" style="margin:4px 6px;" />
+                <hr class="wf-rule" />
                 <button class="wf-pop-item danger" on:click=move |_| do_action(NoteMenuAction::Report)>
                     "通報する"
                 </button>
