@@ -53,7 +53,7 @@ dotenvy = "0.15"
 
 # Auth
 jsonwebtoken = { version = "11", features = ["rust_crypto"] }
-argon2 = "0.5"
+argon2 = "0.6"
 rand = "0.10"
 totp-rs = { version = "6", features = ["gen_secret", "otpauth"] }
 
