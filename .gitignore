@@ -14,7 +14,7 @@
 /frontend/wireframe-ui-sample
 
 # Agent / local tooling
-# Share: .grok/config.toml, .claude/settings.json, .claude/rules/,
+# Share: .grok/config.toml, .claude/settings.json, .claude/rules/, .mcp.json, .vscode/mcp.json, .github/copilot/settings.json,
 #        .serena/project.yml, .serena/memories/
 .claude/settings.local.json
 .mcp-auth/
