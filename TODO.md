@@ -132,7 +132,7 @@
 - [x] Docker: `mithic-server` のコンパイル落ち修正。BuildKit cache を backend/frontend で分離、mold + cargo-chef バイナリ、コンテナ内 LTO オフで再ビルド短縮
 - [x] SurrealDB 3: `user.fields` を `array<object> FLEXIBLE` に修正（`array FLEXIBLE` はパースエラー）
 - [x] Caddy: `:3000` を `http://` + `bind 0.0.0.0` で IPv4 HTTP として listen。`/uploads/*` をバックエンドへ。hashed 以外の JS（`sw.js`）を immutable にしない。静的アセット欠落は SPA フォールバックしない
-- [x] Windows+Podman: ホストの `127.0.0.1:3000` は `scripts/localhost_proxy.py` で WSL IP へ中継しないと login/register が Failed to fetch になる
+- [x] Windows localhost: frontend 公開ポートを dual-stack (`3000:3000`)。`0.0.0.0:3000:3000` だと `[::1]` に出ず Edge/SW が offline.html を出す
 
 ---
 

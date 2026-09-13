@@ -154,22 +154,11 @@ curl http://localhost:3000/api/v1/health      # => {"status":"ok"}
 
 メディアはデフォルトでローカル FS（`media_files` ボリューム）。S3 互換を使う場合は `.env` に `STORAGE_TYPE=s3` と `STORAGE_S3_*` を書く。
 
-### Windows + Podman で `ERR_CONNECTION_REFUSED` になる場合
+### Windows で `localhost:3000` が offline になる場合
 
-Podman Machine (WSL) がコンテナの公開ポートを **WSL 側 IP には出すが Windows の `127.0.0.1` には転送しない**ことがある。コンテナ内ヘルスチェックは通っていても、ブラウザだけ `localhost:3000` に繋がらない。
+frontend の公開ポートは `3000:3000`（IPv4+IPv6）にする。`0.0.0.0:3000:3000` だとホストの `[::1]:3000` に出ず、Edge / Service Worker が `localhost` を IPv6 優先したときに接続拒否 → `offline.html` になる。
 
-```powershell
-# 一時回避: Windows localhost を WSL IP へ中継（管理者権限不要）
-python scripts/localhost_proxy.py
-# 別ターミナルで確認
-curl http://127.0.0.1:3000/api/v1/health
-```
-
-恒久対策の候補:
-
-1. Podman Desktop で **User mode networking** を有効化してマシンを再作成 / 再起動する
-2. `.wslconfig` で `networkingMode=mirrored` を試す（要 `wsl --shutdown`）
-3. 上記プロキシを開発時に併用する
+WSL は `.wslconfig` の `localhostForwarding=true` が必要。コンテナ内ヘルスは通るのにブラウザだけ落ちる場合は、Docker/WSL 自体が再起動していないかも確認する。
 
 ### ローカル開発
 
