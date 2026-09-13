@@ -3834,6 +3834,7 @@ dependencies = [
  "futures",
  "futures-util",
  "hex",
+ "http",
  "image",
  "jsonwebtoken 11.0.0",
  "mimalloc",

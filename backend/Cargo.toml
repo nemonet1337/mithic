@@ -44,6 +44,7 @@ sha2 = { workspace = true }
 rsa = { workspace = true }
 hex = { workspace = true }
 bytes = { workspace = true }
+http = { workspace = true }
 web-push-native = { workspace = true }
 image = { workspace = true }
 apalis = { workspace = true }
