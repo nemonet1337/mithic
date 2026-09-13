@@ -173,6 +173,8 @@ curl http://127.0.0.1:3000/api/v1/health
 
 ### ローカル開発
 
+Windows 上の `cargo` でも OpenSSL は不要（Web Push は rustls / rust-crypto）。
+
 ```bash
 # インフラのみ Docker で起動
 docker compose up -d surrealdb dragonfly

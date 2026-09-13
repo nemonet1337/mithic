@@ -74,8 +74,8 @@ sha2 = "0.11"
 hex = "0.4"
 rsa = { version = "0.9", features = ["sha2", "pem"] }
 
-# Web Push
-web-push = { version = "0.11", features = ["isahc-client"] }
+# Web Push (pure Rust; no OpenSSL)
+web-push-native = "0.5"
 
 # Image processing (thumbnails). Pin <0.25.10 for MSRV 1.85 (0.25.10 needs 1.88).
 image = { version = "=0.25.10", default-features = false, features = ["png", "jpeg", "webp", "gif"] }

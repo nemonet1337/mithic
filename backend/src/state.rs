@@ -7,7 +7,7 @@ use crate::federation::{ActivityDelivery, FederationService};
 use apalis_redis::RedisStorage;
 use base64::Engine;
 use tracing::info;
-use web_push::{IsahcWebPushClient, VapidSignatureBuilder};
+use web_push_native::jwt_simple::algorithms::{ECDSAP256KeyPairLike, ES256KeyPair};
 
 use crate::events::{StreamBroadcast, StreamReceiver, StreamSender};
 
@@ -26,7 +26,7 @@ struct AppStateInner {
     pub storage: Arc<dyn ObjectStore>,
     /// URL-safe base64 public key for browser PushManager.subscribe
     pub vapid_public_key: Option<String>,
-    pub web_push_client: Option<IsahcWebPushClient>,
+    pub vapid_key_pair: Option<ES256KeyPair>,
 }
 
 impl std::fmt::Debug for AppStateInner {
@@ -46,10 +46,20 @@ impl std::fmt::Debug for AppState {
     }
 }
 
-fn derive_vapid_public_key(private_b64: &str) -> Option<String> {
-    let builder = VapidSignatureBuilder::from_base64_no_sub(private_b64).ok()?;
-    let bytes = builder.get_public_key();
-    Some(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes))
+fn decode_url_b64(s: &str) -> Option<Vec<u8>> {
+    let engine = base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    engine
+        .decode(s)
+        .or_else(|_| base64::engine::general_purpose::URL_SAFE.decode(s))
+        .ok()
+}
+
+fn parse_vapid_key(private_b64: &str) -> Option<(ES256KeyPair, String)> {
+    let raw = decode_url_b64(private_b64)?;
+    let key_pair = ES256KeyPair::from_bytes(&raw).ok()?;
+    let uncompressed = key_pair.key_pair().public_key().to_bytes_uncompressed();
+    let pub_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(uncompressed);
+    Some((key_pair, pub_b64))
 }
 
 impl AppState {
@@ -73,13 +83,11 @@ impl AppState {
         );
         federation_service.spawn_cache_janitor();
 
-        let (vapid_public_key, web_push_client) = if let Some(ref pk) = config.vapid_private_key {
-            match derive_vapid_public_key(pk) {
-                Some(pub_key) => {
-                    let client = IsahcWebPushClient::new()
-                        .map_err(|e| anyhow::anyhow!("Web push client: {e}"))?;
+        let (vapid_public_key, vapid_key_pair) = if let Some(ref pk) = config.vapid_private_key {
+            match parse_vapid_key(pk) {
+                Some((key_pair, pub_key)) => {
                     info!("Web Push enabled (VAPID public key derived)");
-                    (Some(pub_key), Some(client))
+                    (Some(pub_key), Some(key_pair))
                 }
                 None => {
                     tracing::warn!("VAPID_PRIVATE_KEY set but invalid; Web Push disabled");
@@ -103,7 +111,7 @@ impl AppState {
                 stream_tx,
                 storage: object_storage,
                 vapid_public_key,
-                web_push_client,
+                vapid_key_pair,
             }),
         })
     }
@@ -129,8 +137,8 @@ impl AppState {
     pub fn vapid_public_key(&self) -> Option<&str> {
         self.inner.vapid_public_key.as_deref()
     }
-    pub fn web_push_client(&self) -> Option<&IsahcWebPushClient> {
-        self.inner.web_push_client.as_ref()
+    pub fn vapid_key_pair(&self) -> Option<&ES256KeyPair> {
+        self.inner.vapid_key_pair.as_ref()
     }
 
     pub fn subscribe_stream(&self) -> StreamReceiver {

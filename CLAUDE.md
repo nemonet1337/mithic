@@ -14,7 +14,7 @@
 - **WebSocket**: Axum WebSocket
 - **国際化**: fluent + unic-langid
 - **Markdownパーサ**: comrak
-- **Web Push**: web-push (VAPID; `VAPID_PRIVATE_KEY` 設定時に配送)
+- **Web Push**: web-push-native + reqwest (VAPID; `VAPID_PRIVATE_KEY` 設定時に配送。OpenSSL 不要)
 
 ### フロントエンド
 
