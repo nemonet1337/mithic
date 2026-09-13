@@ -7,7 +7,7 @@ use crate::models::actor::ActorId;
 use base64::Engine;
 use shared::Notification as NotifDto;
 use tracing::{debug, warn};
-use web_push_native::{p256::PublicKey, Auth, WebPushBuilder};
+use web_push_native::{Auth, WebPushBuilder, p256::PublicKey};
 
 use crate::state::AppState;
 
@@ -116,7 +116,7 @@ async fn send_one(
 /// Fan-out Web Push for a recipient. Runs best-effort; never blocks the caller path long
 /// when spawned.
 pub async fn deliver_web_push(state: &AppState, recipient_id: ActorId, dto: &NotifDto) {
-    if state.config().vapid_private_key.is_none() {
+    if state.vapid_key_pair().is_none() {
         return;
     }
 
@@ -173,13 +173,17 @@ mod tests {
         let auth = decode_url_b64("_ordMnz7uTCmrpBTeUV4Bw").unwrap();
         let ua_public = PublicKey::from_sec1_bytes(&p256dh).unwrap();
         let ua_auth = Auth::clone_from_slice(&auth);
-        let request = WebPushBuilder::new("https://example.com/".parse().unwrap(), ua_public, ua_auth)
-            .with_vapid(&key_pair, "mailto:admin@example.com")
-            .build(b"hello".as_slice())
-            .unwrap();
+        let request =
+            WebPushBuilder::new("https://example.com/".parse().unwrap(), ua_public, ua_auth)
+                .with_vapid(&key_pair, "mailto:admin@example.com")
+                .build(b"hello".as_slice())
+                .unwrap();
         assert_eq!(request.method(), http::Method::POST);
         assert_eq!(
-            request.headers().get(http::header::CONTENT_ENCODING).unwrap(),
+            request
+                .headers()
+                .get(http::header::CONTENT_ENCODING)
+                .unwrap(),
             "aes128gcm"
         );
         assert!(request.headers().get(http::header::AUTHORIZATION).is_some());

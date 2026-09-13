@@ -8,6 +8,7 @@ services:
     image: surrealdb/surrealdb:latest
     container_name: mithic-surrealdb
     restart: unless-stopped
+    user: "0:0"
     command:
       - start
       - --log=info
@@ -22,7 +23,7 @@ services:
     networks:
       - mithic
     healthcheck:
-      test: ["CMD-SHELL", "curl -fs http://localhost:8000/health || exit 1"]
+      test: ["CMD", "/surreal", "is-ready", "--endpoint", "http://localhost:8000"]
       interval: 10s
       timeout: 5s
       retries: 5
