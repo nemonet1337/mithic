@@ -11,6 +11,7 @@ services:
     command:
       - start
       - --log=info
+      - --bind=0.0.0.0:8000
       - --user=${SURREALDB_USERNAME:-root}
       - --pass=${SURREALDB_PASSWORD:-root}
       - surrealkv:/data/surrealdb
