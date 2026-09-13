@@ -1,7 +1,5 @@
 # environment files
 .env
-.env.local
-.env.production
 
 # Rust
 /cargo
@@ -12,15 +10,6 @@
 
 # wireframe
 /frontend/wireframe-ui-sample
-
-# Agent / local tooling
-# Share: .grok/config.toml, .claude/settings.json, .claude/rules/, .mcp.json, .vscode/mcp.json, .github/copilot/settings.json,
-#        .serena/project.yml, .serena/memories/
-.claude/settings.local.json
-.mcp-auth/
-.headroom/
-.serena/cache/
-.serena/project.local.yml
 
 # Editors / OS
 .idea/

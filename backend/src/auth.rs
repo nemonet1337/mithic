@@ -1,9 +1,9 @@
 use argon2::{Argon2, PasswordHasher, PasswordVerifier};
-use password_hash::{PasswordHash, SaltString, rand_core::OsRng};
+use argon2::password_hash::phc::PasswordHash;
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
-use totp_rs::{Algorithm, Secret, Totp};
+use totp_rs::{Algorithm, Builder, Secret, Totp};
 
 use crate::error::{AppError, Result};
 
@@ -16,22 +16,26 @@ pub struct AuthUser {
 }
 
 fn build_totp(secret: Secret) -> Result<Totp> {
-    Totp::builder(
-        Algorithm::SHA1,
-        6,
-        1,
-        30,
-    )
-    .secret(secret.as_bytes())
-    .issuer("mithic".to_string())
-    .build()
-    .map_err(|e| AppError::Internal(format!("TOTP error: {e}")))
+    Builder::new()
+        .with_algorithm(Algorithm::SHA1)
+        .with_digits(6)
+        .with_skew(1)
+        .with_step_duration(30)
+        .with_secret(secret)
+        .with_issuer(Some("mithic"))
+        .with_account_name("mithic")
+        .build()
+        .map_err(|e| AppError::Internal(format!("TOTP error: {e}")))
 }
 
 /// TOTP シークレットを生成し、(base32シークレット, otpauth URL) を返す
 pub fn generate_totp_secret() -> Result<(String, String)> {
     let totp = build_totp(Secret::default())?;
-    Ok((totp.secret().to_base32(), totp.to_url()))
+    Ok((
+        totp.secret().to_base32(),
+        totp.to_url()
+            .map_err(|e| AppError::Internal(format!("TOTP URL error: {e}")))?,
+    ))
 }
 
 /// TOTP コードを検証する
