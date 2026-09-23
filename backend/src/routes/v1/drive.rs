@@ -64,22 +64,17 @@ fn is_inline_mime(mime: &str) -> bool {
 }
 
 fn public_url(state: &AppState, object_key: &str) -> String {
-    match state.config().storage_type.as_str() {
-        "s3" | "minio" | "r2" => {
-            if let Some(ref public_url) = state.config().storage_s3_public_url {
-                format!("{public_url}/{object_key}")
-            } else {
-                format!("{}/uploads/{object_key}", state.config().instance_url)
-            }
-        }
-        "gcs" => {
-            if let Some(ref public_url) = state.config().storage_gcs_public_url {
-                format!("{public_url}/{object_key}")
-            } else {
-                format!("{}/uploads/{object_key}", state.config().instance_url)
-            }
-        }
-        _ => format!("{}/uploads/{object_key}", state.config().instance_url),
+    let cfg = state.config();
+    let direct = if crate::db::storage::is_s3_storage(&cfg.storage_type) {
+        cfg.storage_s3_public_url.as_deref()
+    } else if cfg.storage_type.eq_ignore_ascii_case("gcs") {
+        cfg.storage_gcs_public_url.as_deref()
+    } else {
+        None
+    };
+    match direct.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(base) => format!("{}/{object_key}", base.trim_end_matches('/')),
+        None => format!("{}/uploads/{object_key}", cfg.instance_url),
     }
 }
 

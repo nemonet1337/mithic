@@ -152,7 +152,7 @@ curl http://localhost:3000/api/v1/health      # => {"status":"ok"}
 | surrealdb | 8000 | データベース |
 | dragonfly | 6379 | キャッシュ / 配送キュー |
 
-メディアはデフォルトでローカル FS（`media_files` ボリューム）。S3 互換を使う場合は `.env` に `STORAGE_TYPE=s3` と `STORAGE_S3_*` を書く。
+メディアはデフォルトでローカル FS（`media_files` ボリューム）。S3 互換（AWS S3 / MinIO / Garage / RustFS / R2）は `.env` の `STORAGE_TYPE`（`s3` など）と `STORAGE_S3_*`。Compose の RustFS は通常コメントアウト。結合テストは `cargo test -p mithic-server --lib rustfs_put_get -- --ignored`。
 
 ### Windows で `localhost:3000` が offline になる場合
 
@@ -194,7 +194,7 @@ SURREALDB_ENDPOINT=mem:// SURREALDB_POOL_SIZE=1 cargo run -p mithic-server
 | `JWT_SECRET` | 必須。空や `change-me-in-production` は起動拒否 |
 | `INSTANCE_URL` / `INSTANCE_NAME` | 公開 URL と表示名。連合の Actor URI の土台 |
 | `SURREALDB_*` / `DRAGONFLY_URL` | データストア |
-| `STORAGE_TYPE` | `local`（既定）または `s3` |
+| `STORAGE_TYPE` | `local`（既定）、または `s3` / `minio` / `garage` / `rustfs` / `r2` |
 | `CORS_ALLOWED_ORIGINS` | 許可オリジン |
 | `TRUST_PROXY` | リバースプロキシ背後でのみ `true`（`X-Forwarded-For` をクライアント IP にする） |
 | `VAPID_PRIVATE_KEY` | 任意。未設定でも購読 API は動くが **Push 配送は no-op** |

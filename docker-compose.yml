@@ -48,6 +48,32 @@ services:
       retries: 5
 
   # ---------------------------------------------------------------------------
+  # RustFS (S3 互換). 通常は起動しない。有効化はこのブロックのコメントを外す。
+  # 結合テストはコンテナを自前で起動する:
+  #   cargo test -p mithic-server --lib rustfs_put_get -- --ignored
+  # バケットは初回だけ作る:
+  #   docker run --rm --network mithic -e AWS_ACCESS_KEY_ID=mithic -e AWS_SECRET_ACCESS_KEY=mithic-dev-secret -e AWS_DEFAULT_REGION=us-east-1 amazon/aws-cli s3 mb s3://mithic-media --endpoint-url http://rustfs:9000
+  # ---------------------------------------------------------------------------
+  # rustfs:
+  #   image: rustfs/rustfs:latest
+  #   container_name: mithic-rustfs
+  #   restart: unless-stopped
+  #   command: ["/data"]
+  #   environment:
+  #     RUSTFS_ACCESS_KEY: mithic
+  #     RUSTFS_SECRET_KEY: mithic-dev-secret
+  #     RUSTFS_ADDRESS: ":9000"
+  #     RUSTFS_CONSOLE_ADDRESS: ":9001"
+  #     RUSTFS_CONSOLE_ENABLE: "true"
+  #   volumes:
+  #     - rustfs_data:/data
+  #   ports:
+  #     - "9000:9000"
+  #     - "9001:9001"
+  #   networks:
+  #     - mithic
+
+  # ---------------------------------------------------------------------------
   # Application
   # ---------------------------------------------------------------------------
   backend:
@@ -62,9 +88,16 @@ services:
     environment:
       SURREALDB_ENDPOINT: ws://surrealdb:8000
       DRAGONFLY_URL: redis://dragonfly:6379
-      # デフォルトはローカル FS。外部 S3 は .env の STORAGE_TYPE / STORAGE_S3_* で指定
+      # デフォルトはローカル FS。外部 S3 / RustFS は .env の STORAGE_TYPE / STORAGE_S3_*
       STORAGE_TYPE: ${STORAGE_TYPE:-local}
       LOCAL_STORAGE_PATH: ${LOCAL_STORAGE_PATH:-/app/files}
+      # RustFS を使うとき (下の rustfs コメントを外してから):
+      # STORAGE_TYPE: s3
+      # STORAGE_S3_ENDPOINT: http://rustfs:9000
+      # STORAGE_S3_BUCKET: mithic-media
+      # STORAGE_S3_ACCESS_KEY: mithic
+      # STORAGE_S3_SECRET_KEY: mithic-dev-secret
+      # STORAGE_S3_REGION: us-east-1
     volumes:
       - media_files:/app/files
     depends_on:
@@ -113,6 +146,7 @@ volumes:
   surrealdb_data:
   dragonfly_data:
   media_files:
+  rustfs_data:
 
 # -----------------------------------------------------------------------------
 # Networks
