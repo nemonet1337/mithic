@@ -1,9 +1,10 @@
 use leptos::prelude::*;
 use leptos_router::components::A;
-use leptos_router::hooks::{use_navigate, use_params_map, use_query_map};
+use leptos_router::hooks::{use_navigate, use_params_map};
 
 use crate::components::{
-    Avatar, AvatarSize, DeckPage, FollowButton, PostCard, Shell, ToastKind, ToastStore, TopBar,
+    Avatar, AvatarSize, FollowButton, NotificationsColumn, PostCard, SearchColumn, Shell, TimelineColumn,
+    TimelineKind, ToastKind, ToastStore, TopBar,
 };
 use crate::store::{AuthStore, StreamStore};
 use shared::{Note, User};
@@ -16,17 +17,29 @@ pub use drive::DrivePage;
 
 #[component]
 pub fn HomePage() -> impl IntoView {
-    view! { <DeckPage active="home" /> }
+    view! {
+        <Shell active="home">
+            <TimelineColumn kind=TimelineKind::Home />
+        </Shell>
+    }
 }
 
 #[component]
 pub fn LocalTimelinePage() -> impl IntoView {
-    view! { <DeckPage active="home" /> }
+    view! {
+        <Shell active="local">
+            <TimelineColumn kind=TimelineKind::Local />
+        </Shell>
+    }
 }
 
 #[component]
 pub fn GlobalTimelinePage() -> impl IntoView {
-    view! { <DeckPage active="home" /> }
+    view! {
+        <Shell active="global">
+            <TimelineColumn kind=TimelineKind::Global />
+        </Shell>
+    }
 }
 
 #[component]
@@ -119,7 +132,7 @@ pub fn StatusDetailPage() -> impl IntoView {
                                     {if reactions.is_empty() {
                                         view! { <span class="wf-entry-meta">"まだありません"</span> }.into_any()
                                     } else {
-                                        reactions.iter().map(|r| {
+                                        reactions.iter().filter(|r| r.count > 0).map(|r| {
                                             let label = format!("{} {}", r.emoji, r.count);
                                             view! { <span class=if r.reacted_by_me { "wf-pill on" } else { "wf-pill" }>{label}</span> }
                                         }).collect_view().into_any()
@@ -137,181 +150,18 @@ pub fn StatusDetailPage() -> impl IntoView {
 
 #[component]
 pub fn NotificationsPage() -> impl IntoView {
-    view! { <DeckPage active="notif" /> }
+    view! {
+        <Shell active="notif">
+            <NotificationsColumn />
+        </Shell>
+    }
 }
 
 #[component]
 pub fn SearchPage() -> impl IntoView {
-    let auth = expect_context::<AuthStore>();
-    let query = use_query_map();
-    let navigate = use_navigate();
-
-    let search_input = RwSignal::new(query.read().get("q").unwrap_or_default());
-    let notes = RwSignal::<Vec<Note>>::new(Vec::new());
-    let users = RwSignal::<Vec<User>>::new(Vec::new());
-    let trend_tags = RwSignal::<Vec<shared::Hashtag>>::new(Vec::new());
-    let loading = RwSignal::new(false);
-    let searched = RwSignal::new(false);
-
-    Effect::new(move |_| {
-        let q = query.read().get("q").unwrap_or_default();
-        search_input.set(q);
-    });
-
-    // トレンドタグ（ピル用）
-    Effect::new(move |_| {
-        wasm_bindgen_futures::spawn_local(async move {
-            if let Ok(tags) = crate::api::notes::fetch_trending(6).await {
-                trend_tags.set(tags);
-            }
-        });
-    });
-
-    // クエリ変更で API 検索
-    Effect::new(move |_| {
-        let q_val = query.read().get("q").unwrap_or_default();
-        let tag_val = query.read().get("tag").unwrap_or_default();
-        let tok = auth.token.get();
-
-        if q_val.trim().is_empty() && tag_val.trim().is_empty() {
-            notes.set(Vec::new());
-            users.set(Vec::new());
-            searched.set(false);
-            return;
-        }
-
-        loading.set(true);
-        searched.set(true);
-        wasm_bindgen_futures::spawn_local(async move {
-            if !tag_val.is_empty() {
-                match crate::api::notes::fetch_hashtag_timeline(tok.as_deref(), &tag_val, 30).await
-                {
-                    Ok(list) => {
-                        notes.set(list);
-                        users.set(Vec::new());
-                    }
-                    Err(e) => {
-                        web_sys::console::error_1(&e.to_string().into());
-                        notes.set(Vec::new());
-                    }
-                }
-            } else {
-                let q = q_val.clone();
-                match crate::api::notes::search_notes(tok.as_deref(), &q, 30).await {
-                    Ok(list) => notes.set(list),
-                    Err(e) => {
-                        web_sys::console::error_1(&e.to_string().into());
-                        notes.set(Vec::new());
-                    }
-                }
-                match crate::api::users::search_users(tok.as_deref(), &q).await {
-                    Ok(list) => users.set(list),
-                    Err(e) => {
-                        web_sys::console::error_1(&e.to_string().into());
-                        users.set(Vec::new());
-                    }
-                }
-            }
-            loading.set(false);
-        });
-    });
-
-    let nav_enter = navigate.clone();
-    let nav_click = navigate;
-
     view! {
         <Shell active="search">
-            <TopBar title="検索 / 発見" />
-            <section class="wf-scroll p-4 flex flex-col gap-4">
-                <div class="wf-card flex flex-col gap-3">
-                    <span class="wf-entry-meta">"検索"</span>
-                    <div class="flex gap-2 w-full">
-                        <input
-                            class="wf-input flex-1"
-                            placeholder="投稿・ユーザー・タグを検索"
-                            prop:value=move || search_input.get()
-                            on:input=move |ev| search_input.set(event_target_value(&ev))
-                            on:keydown=move |ev| {
-                                if ev.key() == "Enter" {
-                                    let q = search_input.get();
-                                    nav_enter(&format!("/search?q={}", q), Default::default());
-                                }
-                            }
-                        />
-                        <button
-                            class="wf-btn wf-btn-primary"
-                            on:click=move |_| {
-                                let q = search_input.get();
-                                nav_click(&format!("/search?q={}", q), Default::default());
-                            }
-                        >
-                            "検索"
-                        </button>
-                    </div>
-                    <Show when=move || !trend_tags.get().is_empty()>
-                        <div class="flex flex-wrap gap-2 mt-2">
-                            {move || trend_tags.get().into_iter().map(|h| {
-                                let tag = h.tag.clone();
-                                let bare = tag.trim_start_matches('#').to_string();
-                                view! {
-                                    <A href=format!("/search?tag={}", bare) attr:class="wf-pill">{tag}</A>
-                                }
-                            }).collect_view()}
-                        </div>
-                    </Show>
-                </div>
-
-                <Show when=move || loading.get()>
-                    <div class="flex items-center justify-center gap-2 py-6">
-                        <span class="wf-spinner" style="width:18px;height:18px;" />
-                        <span class="wf-entry-meta">"検索中…"</span>
-                    </div>
-                </Show>
-
-                <Show when=move || !loading.get() && !users.get().is_empty()>
-                    <div class="wf-card flex flex-col gap-2">
-                        <span class="wf-entry-meta">"ユーザー"</span>
-                        {move || users.get().into_iter().map(|u| {
-                            let href = format!("/profile/{}", u.route_handle());
-                            let name = u.name();
-                            let handle = u.handle();
-                            view! {
-                                <A href=href attr:class="flex items-center gap-3 p-2 hover:underline">
-                                    <Avatar user=u size=AvatarSize::Sm />
-                                    <div class="min-w-0">
-                                        <div class="font-bold text-sm truncate">{name}</div>
-                                        <div class="wf-entry-meta truncate">{handle}</div>
-                                    </div>
-                                </A>
-                            }
-                        }).collect_view()}
-                    </div>
-                </Show>
-
-                <div class="flex flex-col gap-3">
-                    {move || {
-                        if loading.get() {
-                            return ().into_any();
-                        }
-                        let list = notes.get();
-                        if !searched.get() {
-                            view! {
-                                <div class="wf-dashed p-8 text-center">
-                                    <span class="wf-entry-meta">"キーワードまたはタグで検索できます。"</span>
-                                </div>
-                            }.into_any()
-                        } else if list.is_empty() && users.get().is_empty() {
-                            view! {
-                                <div class="wf-dashed p-8 text-center">
-                                    <span class="wf-entry-meta">"検索結果が見つかりませんでした。"</span>
-                                </div>
-                            }.into_any()
-                        } else {
-                            list.into_iter().map(|note| view! { <PostCard note=note /> }).collect_view().into_any()
-                        }
-                    }}
-                </div>
-            </section>
+            <SearchColumn />
         </Shell>
     }
 }

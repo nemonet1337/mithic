@@ -17,50 +17,139 @@ fn badge_label(n: u32) -> String {
     if n > 99 { "99+".into() } else { n.to_string() }
 }
 
+fn side_class(active: &str, id: &str) -> &'static str {
+    if active == id {
+        "wf-side-link active"
+    } else {
+        "wf-side-link"
+    }
+}
+
+fn clear_session(auth: &AuthStore) {
+    let token = auth.token.get_untracked();
+    auth.logout();
+    if let Some(tok) = token {
+        wasm_bindgen_futures::spawn_local(async move {
+            let _ = crate::api::auth::logout(&tok).await;
+        });
+    }
+}
+
 #[component]
-pub fn Shell(
-    #[prop(into)] active: String,
-    #[prop(optional)] deck: bool,
-    children: Children,
-) -> impl IntoView {
+pub fn Shell(#[prop(into)] active: String, children: Children) -> impl IntoView {
     view! {
-        <div class="app-root wf-shell" class:is-deck=deck>
-            <TopNav active=active.clone() />
-            <main class=if deck { "wf-main wf-main-deck" } else { "wf-main" }>
-                <div class=if deck {
-                    "wf-main-inner wf-main-inner-deck"
-                } else {
-                    "wf-main-inner"
-                }>
-                    {children()}
-                </div>
-            </main>
+        <div class="app-root wf-shell">
+            <SideNav active=active.clone() />
+            <div class="wf-shell-main">
+                <TopNav />
+                <main class="wf-main">
+                    <div class="wf-main-inner">{children()}</div>
+                </main>
+            </div>
             <MobileDock active=active />
         </div>
     }
 }
 
 #[component]
-fn TopNav(#[prop(into)] active: String) -> impl IntoView {
+fn SideNav(#[prop(into)] active: String) -> impl IntoView {
     let compose = expect_context::<ComposeStore>();
     let notifications = expect_context::<NotificationStore>();
     let auth = expect_context::<AuthStore>();
     let me = auth.me;
     let navigate = use_navigate();
+    let a_home = active.clone();
+    let a_local = active.clone();
+    let a_global = active.clone();
+    let a_notif = active.clone();
+    let a_search = active.clone();
+    let a_drive = active.clone();
+
+    view! {
+        <aside class="wf-side" aria-label="メインナビ">
+            <A href="/" attr:class="wf-brand" attr:aria-label="ホーム">
+                <span class="wf-brand-mark">"m"</span>
+                <span class="wf-brand-name">"mithic"</span>
+            </A>
+            <nav class="wf-side-nav">
+                <A href="/" attr:class=move || side_class(&a_home, "home")>
+                    <Icon icon=id::FiHome width="18" height="18" />
+                    "ホーム"
+                </A>
+                <A href="/local" attr:class=move || side_class(&a_local, "local")>
+                    <Icon icon=id::FiUsers width="18" height="18" />
+                    "ローカル"
+                </A>
+                <A href="/global" attr:class=move || side_class(&a_global, "global")>
+                    <Icon icon=id::FiGlobe width="18" height="18" />
+                    "グローバル"
+                </A>
+                <A href="/notifications" attr:class=move || side_class(&a_notif, "notif")>
+                    <Icon icon=id::FiBell width="18" height="18" />
+                    "通知"
+                    <Show when=move || { notifications.unread_notifications.get() > 0 }>
+                        <span class="wf-badge">{move || badge_label(notifications.unread_notifications.get())}</span>
+                    </Show>
+                </A>
+                <A href="/search" attr:class=move || side_class(&a_search, "search")>
+                    <Icon icon=id::FiSearch width="18" height="18" />
+                    "検索"
+                </A>
+                <A href="/drive" attr:class=move || side_class(&a_drive, "drive")>
+                    <Icon icon=id::FiFolder width="18" height="18" />
+                    "ドライブ"
+                </A>
+            </nav>
+            <button class="wf-stamp-btn" on:click=move |_| compose.open()>"投稿"</button>
+            <div class="wf-side-account">
+                {move || me.get().map(|u| {
+                    let name = u.name();
+                    let handle = u.handle();
+                    view! {
+                        <div class="wf-account-head">
+                            <div class="wf-account-name">{name}</div>
+                            <div class="wf-account-handle">{handle}</div>
+                        </div>
+                    }
+                })}
+                {move || {
+                    let href = profile_path(me.get().as_ref());
+                    view! {
+                        <A href=href attr:class="wf-side-link">
+                            <Icon icon=id::FiUser width="16" height="16" />
+                            "プロフィール"
+                        </A>
+                    }
+                }}
+                <A href="/settings" attr:class="wf-side-link">
+                    <Icon icon=id::FiSettings width="16" height="16" />
+                    "設定"
+                </A>
+                <button
+                    class="wf-side-link wf-side-logout"
+                    on:click={
+                        let auth = auth.clone();
+                        let navigate = navigate.clone();
+                        move |_| {
+                            clear_session(&auth);
+                            navigate("/login", Default::default());
+                        }
+                    }
+                >
+                    <Icon icon=id::FiLogOut width="16" height="16" />
+                    "ログアウト"
+                </button>
+            </div>
+        </aside>
+    }
+}
+
+#[component]
+fn TopNav() -> impl IntoView {
+    let auth = expect_context::<AuthStore>();
+    let me = auth.me;
+    let navigate = use_navigate();
     let account_open = RwSignal::new(false);
-    let search = RwSignal::new(String::new());
-    let go_search = {
-        let navigate = navigate.clone();
-        move || {
-            let q = search.get();
-            let href = if q.trim().is_empty() {
-                "/search".into()
-            } else {
-                format!("/search?q={q}")
-            };
-            navigate(&href, Default::default());
-        }
-    };
 
     view! {
         <header class="wf-topnav">
@@ -68,62 +157,7 @@ fn TopNav(#[prop(into)] active: String) -> impl IntoView {
                 <span class="wf-brand-mark">"m"</span>
                 <span class="wf-brand-name">"mithic"</span>
             </A>
-
-            <form
-                class="wf-topnav-search"
-                on:submit=move |ev| {
-                    ev.prevent_default();
-                    go_search();
-                }
-            >
-                <Icon icon=id::FiSearch width="16" height="16" />
-                <input
-                    type="search"
-                    placeholder="検索"
-                    prop:value=move || search.get()
-                    on:input=move |ev| search.set(event_target_value(&ev))
-                    aria-label="検索"
-                />
-            </form>
-
             <div class="wf-topnav-actions">
-                <A
-                    href="/search"
-                    attr:class="wf-ico-btn wf-topnav-search-btn"
-                    attr:aria-label="検索"
-                    attr:title="検索"
-                >
-                    <Icon icon=id::FiSearch width="18" height="18" />
-                </A>
-                <A
-                    href="/notifications"
-                    attr:class=move || {
-                        if active == "notif" {
-                            "wf-ico-btn wf-hide-mobile active"
-                        } else {
-                            "wf-ico-btn wf-hide-mobile"
-                        }
-                    }
-                    attr:aria-label="通知"
-                    attr:title="通知"
-                >
-                    <span class="wf-ico-rel">
-                        <Icon icon=id::FiBell width="18" height="18" />
-                        <Show when=move || { notifications.unread_notifications.get() > 0u32 }>
-                            <span class="wf-badge wf-badge-dot">
-                                {move || badge_label(notifications.unread_notifications.get())}
-                            </span>
-                        </Show>
-                    </span>
-                </A>
-                <button
-                    class="wf-ico-btn wf-ico-compose wf-hide-mobile"
-                    on:click=move |_| compose.open()
-                    aria-label="投稿"
-                    title="投稿"
-                >
-                    <Icon icon=id::FiEdit width="16" height="16" />
-                </button>
                 <div class="wf-ico-wrap">
                     <button
                         class="wf-ico-btn wf-ico-avatar"
@@ -173,13 +207,7 @@ fn TopNav(#[prop(into)] active: String) -> impl IntoView {
                                     let navigate = navigate.clone();
                                     move |_| {
                                         account_open.set(false);
-                                        let token = auth.token.get_untracked();
-                                        auth.logout();
-                                        if let Some(tok) = token {
-                                            wasm_bindgen_futures::spawn_local(async move {
-                                                let _ = crate::api::auth::logout(&tok).await;
-                                            });
-                                        }
+                                        clear_session(&auth);
                                         navigate("/login", Default::default());
                                     }
                                 }

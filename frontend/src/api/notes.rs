@@ -56,6 +56,21 @@ pub async fn pin_note(token: &str, note_id: &str) -> Result<(), ApiError> {
         .map(|_| ())
 }
 
+pub async fn vote(token: &str, note_id: &str, choice: usize) -> Result<(), ApiError> {
+    #[derive(Serialize)]
+    struct Body {
+        choice: usize,
+    }
+    request::<serde_json::Value, Body>(
+        "POST",
+        &format!("notes/{note_id}/vote"),
+        Some(token),
+        Some(&Body { choice }),
+    )
+    .await
+    .map(|_| ())
+}
+
 pub async fn renote(token: &str, note_id: &str) -> Result<Note, ApiError> {
     request::<Note, ()>(
         "POST",

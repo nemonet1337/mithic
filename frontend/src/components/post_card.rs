@@ -208,6 +208,7 @@ pub fn PostCard(note: Note, #[prop(default = false)] flat: bool) -> impl IntoVie
                 <Show when=move || note.renote_id.is_some() && note.renote.is_none() && note.content.trim().is_empty()>
                     <div class="wf-entry-meta p-2">"元ノートを表示できません"</div>
                 </Show>
+                <PollBlock note_id=note.id.clone() poll=note.poll.clone() />
                 <PostActions note=note_for_actions compose=compose />
                 <A href=note_href attr:class="sr-only">"詳細"</A>
             </div>
@@ -282,6 +283,63 @@ pub fn PostBody(content: String, cw: Option<String>) -> impl IntoView {
 }
 
 #[component]
+fn PollBlock(note_id: String, poll: Option<shared::Poll>) -> impl IntoView {
+    let Some(initial) = poll else {
+        return ().into_any();
+    };
+    let auth = expect_context::<AuthStore>();
+    let toast = expect_context::<ToastStore>();
+    let choices = RwSignal::new(initial.choices);
+    let voted = Signal::derive(move || choices.get().iter().any(|c| c.voted_by_me));
+    view! {
+        <div class="flex flex-col gap-1.5 px-1 py-2">
+            <For
+                each=move || { choices.get().into_iter().enumerate().collect::<Vec<_>>() }
+                key=|row| row.0
+                children=move |row| {
+                    let i = row.0;
+                    let choice = row.1;
+                    let note_id = note_id.clone();
+                    let auth = auth.clone();
+                    let toast = toast.clone();
+                    let label = format!("{} · {}", choice.text, choice.votes);
+                    view! {
+                        <button
+                            class=if choice.voted_by_me { "wf-pill on" } else { "wf-pill" }
+                            disabled=move || voted.get()
+                            on:click=move |_| {
+                                if voted.get_untracked() {
+                                    return;
+                                }
+                                let Some(tok) = auth.token.get_untracked() else {
+                                    toast.push("ログインが必要です", ToastKind::Error);
+                                    return;
+                                };
+                                let note_id = note_id.clone();
+                                wasm_bindgen_futures::spawn_local(async move {
+                                    match crate::api::notes::vote(&tok, &note_id, i).await {
+                                        Ok(()) => choices.update(|items| {
+                                            if let Some(c) = items.get_mut(i) {
+                                                c.votes = c.votes.saturating_add(1);
+                                                c.voted_by_me = true;
+                                            }
+                                        }),
+                                        Err(e) => toast.push(e.user_message(), ToastKind::Error),
+                                    }
+                                });
+                            }
+                        >
+                            {label}
+                        </button>
+                    }
+                }
+            />
+        </div>
+    }
+    .into_any()
+}
+
+#[component]
 pub fn PostActions(note: Note, compose: ComposeStore) -> impl IntoView {
     let auth = expect_context::<AuthStore>();
     let toast = expect_context::<ToastStore>();
@@ -302,7 +360,13 @@ pub fn PostActions(note: Note, compose: ComposeStore) -> impl IntoView {
     };
     let preview_meta = format!("{} · {}", author_handle, date_label(&note.created_at));
     let renote_count = RwSignal::new(note.renote_count);
-    let reactions = RwSignal::new(note.reactions.clone());
+    let reactions = RwSignal::new(
+        note.reactions
+            .iter()
+            .filter(|r| r.count > 0)
+            .cloned()
+            .collect::<Vec<_>>(),
+    );
     let react_open = RwSignal::new(false);
     let renote_open = RwSignal::new(false);
     let busy = RwSignal::new(false);
@@ -319,7 +383,7 @@ pub fn PostActions(note: Note, compose: ComposeStore) -> impl IntoView {
             let note_id = note_id.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 match crate::api::notes::add_reaction(&tok, &note_id, &emoji).await {
-                    Ok(list) => reactions.set(list),
+                    Ok(list) => reactions.set(list.into_iter().filter(|r| r.count > 0).collect()),
                     Err(e) => toast.push(e.message, ToastKind::Error),
                 }
             });
@@ -382,7 +446,7 @@ pub fn PostActions(note: Note, compose: ComposeStore) -> impl IntoView {
                 on_select=apply_reaction
                 on_close=Callback::new(move |_| react_open.set(false))
             />
-            {move || reactions.get().into_iter().map(|r| {
+            {move || reactions.get().into_iter().filter(|r| r.count > 0).map(|r| {
                 let on = r.reacted_by_me;
                 let emoji = r.emoji.clone();
                 view! {

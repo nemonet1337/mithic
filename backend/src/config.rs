@@ -30,9 +30,6 @@ pub struct AppConfig {
     pub storage_s3_secret_key: Option<String>,
     pub storage_s3_region: Option<String>,
     pub storage_s3_public_url: Option<String>,
-    pub storage_gcs_bucket: Option<String>,
-    pub storage_gcs_credentials: Option<String>,
-    pub storage_gcs_public_url: Option<String>,
 
     pub instance_url: String,
     pub instance_name: String,
@@ -106,9 +103,6 @@ impl AppConfig {
             storage_s3_secret_key: env::var("STORAGE_S3_SECRET_KEY").ok(),
             storage_s3_region: env::var("STORAGE_S3_REGION").ok(),
             storage_s3_public_url: env::var("STORAGE_S3_PUBLIC_URL").ok(),
-            storage_gcs_bucket: env::var("STORAGE_GCS_BUCKET").ok(),
-            storage_gcs_credentials: env::var("STORAGE_GCS_CREDENTIALS").ok(),
-            storage_gcs_public_url: env::var("STORAGE_GCS_PUBLIC_URL").ok(),
 
             instance_url,
             instance_name: env::var("INSTANCE_NAME").unwrap_or_else(|_| "Mithic".to_string()),

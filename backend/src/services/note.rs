@@ -38,7 +38,16 @@ pub async fn create_note_service(
         Some(request.text.clone())
     };
 
-    if text.is_none() && request.file_ids.is_empty() {
+    let poll_choices: Vec<String> = request
+        .poll_choices
+        .iter()
+        .map(|c| c.trim().to_string())
+        .filter(|c| !c.is_empty())
+        .take(10)
+        .collect();
+    let has_poll = poll_choices.len() >= 2;
+
+    if text.is_none() && request.file_ids.is_empty() && !has_poll {
         return Err(AppError::Validation(
             "Note must have text or files".to_string(),
         ));
@@ -47,6 +56,7 @@ pub async fn create_note_service(
     let mut note = Note::new(author_id, text, request.visibility);
     note.cw = request.cw.clone();
     note.file_ids = request.file_ids.clone();
+    note.has_poll = has_poll;
     if let Some(text) = &note.text {
         note.tags = extract_hashtags(text);
     }
@@ -57,6 +67,31 @@ pub async fn create_note_service(
     let created = create_note(state.surreal(), &note)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
+
+    if has_poll {
+        let choice_objs: Vec<serde_json::Value> = poll_choices
+            .into_iter()
+            .map(|text| serde_json::json!({ "text": text, "votes": 0 }))
+            .collect();
+        state
+            .surreal()
+            .query(
+                "
+                INSERT INTO poll {
+                    id: $id,
+                    note_id: type::record('note', $note_id),
+                    created_at: time::now(),
+                    multiple: false,
+                    choices: $choices
+                };
+                ",
+            )
+            .bind(("id", ulid::Ulid::generate().to_string()))
+            .bind(("note_id", created.id.to_string()))
+            .bind(("choices", choice_objs))
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+    }
 
     let author = get_actor_by_id(state.surreal(), &author_id)
         .await

@@ -8,7 +8,7 @@ use crate::pages::{
     NotificationsPage, ProfilePage, SearchPage, SettingsPage, SignupPage, StatusDetailPage,
 };
 use crate::store::{
-    AuthStore, ComposeStore, DeckStore, NotificationStore, StreamStore, stream::connect_stream,
+    AuthStore, ComposeStore, NotificationStore, StreamStore, stream::connect_stream,
 };
 
 #[component]
@@ -18,7 +18,6 @@ pub fn App() -> impl IntoView {
     let auth_for_stream = auth.clone();
     provide_context(auth);
     provide_context(ComposeStore::new());
-    provide_context(DeckStore::new());
     let notifications = NotificationStore::new();
     provide_context(notifications);
     provide_context(ToastStore::new());

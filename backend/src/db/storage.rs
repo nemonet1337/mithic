@@ -1,16 +1,12 @@
 use crate::config::AppConfig;
 use object_store::ObjectStore;
 use object_store::aws::AmazonS3Builder;
-use object_store::gcp::GoogleCloudStorageBuilder;
 use object_store::local::LocalFileSystem;
 use std::sync::Arc;
 
-/// AWS S3 と S3 互換 (MinIO / Garage / RustFS / R2) は同じクライアント。
+/// `STORAGE_TYPE=s3`。互換実装 (RustFS 等) も endpoint を指す同じクライアント。
 pub fn is_s3_storage(storage_type: &str) -> bool {
-    matches!(
-        storage_type.trim().to_ascii_lowercase().as_str(),
-        "s3" | "minio" | "garage" | "rustfs" | "r2"
-    )
+    storage_type.trim().eq_ignore_ascii_case("s3")
 }
 
 fn nonempty(value: &Option<String>) -> Option<&str> {
@@ -26,7 +22,7 @@ pub fn create_storage_client(config: &AppConfig) -> anyhow::Result<Arc<dyn Objec
             .with_bucket_name(bucket)
             .with_region(region);
 
-        // カスタム endpoint = MinIO / Garage / RustFS / ローカル S3。path-style + HTTP が要る。
+        // カスタム endpoint = RustFS 等の S3 互換。path-style + HTTP が要る。
         // endpoint なしは AWS 既定 (virtual-hosted, HTTPS, 認証情報チェーン)。
         if let Some(endpoint) = nonempty(&config.storage_s3_endpoint) {
             let access = nonempty(&config.storage_s3_access_key);
@@ -57,33 +53,16 @@ pub fn create_storage_client(config: &AppConfig) -> anyhow::Result<Arc<dyn Objec
         return Ok(Arc::new(store));
     }
 
-    match config.storage_type.trim().to_ascii_lowercase().as_str() {
-        "gcs" => {
-            let bucket = config
-                .storage_gcs_bucket
-                .as_deref()
-                .unwrap_or("mithic-media");
-
-            let mut builder = GoogleCloudStorageBuilder::new().with_bucket_name(bucket);
-
-            if let Some(ref credentials) = config.storage_gcs_credentials {
-                if credentials.starts_with('{') {
-                    builder = builder.with_service_account_key(credentials);
-                } else {
-                    builder = builder.with_service_account_path(credentials);
-                }
-            }
-
-            let store = builder.build()?;
-            Ok(Arc::new(store))
-        }
-        _ => {
-            // デフォルトはローカルファイルシステム
-            std::fs::create_dir_all(&config.local_storage_path)?;
-            let store = LocalFileSystem::new_with_prefix(&config.local_storage_path)?;
-            Ok(Arc::new(store))
-        }
+    if config.storage_type.trim().eq_ignore_ascii_case("local") {
+        std::fs::create_dir_all(&config.local_storage_path)?;
+        let store = LocalFileSystem::new_with_prefix(&config.local_storage_path)?;
+        return Ok(Arc::new(store));
     }
+
+    anyhow::bail!(
+        "STORAGE_TYPE must be local or s3, got {}",
+        config.storage_type
+    );
 }
 
 #[cfg(test)]
@@ -114,9 +93,6 @@ mod tests {
             storage_s3_secret_key: None,
             storage_s3_region: None,
             storage_s3_public_url: None,
-            storage_gcs_bucket: None,
-            storage_gcs_credentials: None,
-            storage_gcs_public_url: None,
             instance_url: "http://localhost:3000".into(),
             instance_name: "Mithic".into(),
             vapid_private_key: None,
@@ -125,18 +101,22 @@ mod tests {
     }
 
     #[test]
-    fn s3_aliases_share_one_client() {
-        for kind in ["s3", "MinIO", "garage", "rustfs", "r2"] {
-            assert!(is_s3_storage(kind), "{kind}");
-        }
+    fn only_s3_uses_s3_client() {
+        assert!(is_s3_storage("s3"));
+        assert!(is_s3_storage("S3"));
         assert!(!is_s3_storage("local"));
-        assert!(!is_s3_storage("gcs"));
+        assert!(!is_s3_storage("minio"));
+        assert!(!is_s3_storage("rustfs"));
+        let mut cfg = config();
+        cfg.storage_type = "minio".into();
+        let err = create_storage_client(&cfg).unwrap_err().to_string();
+        assert!(err.contains("local or s3"), "{err}");
     }
 
     #[test]
     fn custom_endpoint_requires_keys() {
         let mut cfg = config();
-        cfg.storage_type = "rustfs".into();
+        cfg.storage_type = "s3".into();
         cfg.storage_s3_endpoint = Some("http://127.0.0.1:9000".into());
         let err = create_storage_client(&cfg).unwrap_err().to_string();
         assert!(err.contains("STORAGE_S3_ACCESS_KEY"), "{err}");
@@ -145,7 +125,7 @@ mod tests {
     #[test]
     fn custom_endpoint_client_builds_without_connecting() {
         let mut cfg = config();
-        cfg.storage_type = "garage".into();
+        cfg.storage_type = "s3".into();
         cfg.storage_s3_endpoint = Some("http://127.0.0.1:9000".into());
         cfg.storage_s3_access_key = Some("mithic".into());
         cfg.storage_s3_secret_key = Some("mithic-dev-secret".into());
@@ -258,7 +238,7 @@ mod tests {
         );
 
         let mut cfg = config();
-        cfg.storage_type = "rustfs".into();
+        cfg.storage_type = "s3".into();
         cfg.storage_s3_endpoint = Some(format!("http://127.0.0.1:{RUSTFS_PORT}"));
         cfg.storage_s3_bucket = Some(RUSTFS_BUCKET.into());
         cfg.storage_s3_access_key = Some(RUSTFS_ACCESS.into());

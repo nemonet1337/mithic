@@ -548,9 +548,55 @@ pub async fn vote_route(
         return Err(AppError::Validation("Note is not a poll".to_string()));
     }
 
+    let mut res = state
+        .surreal()
+        .query("SELECT * FROM poll WHERE note_id = type::record('note', $nid) LIMIT 1;")
+        .bind(("nid", note_id.to_string()))
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let rows: Vec<surrealdb::types::Value> = res
+        .take(0)
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let poll = rows
+        .into_iter()
+        .next()
+        .map(|v| v.into_json_value())
+        .ok_or_else(|| AppError::Validation("Note is not a poll".to_string()))?;
+    let poll_id = poll
+        .get("id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .rsplit(':')
+        .next()
+        .unwrap_or("")
+        .to_string();
+    let n = poll
+        .get("choices")
+        .and_then(|v| v.as_array())
+        .map(|a| a.len())
+        .unwrap_or(0);
+    if body.choice >= n {
+        return Err(AppError::Validation("Choice out of range".to_string()));
+    }
+    let mut existing = state
+        .surreal()
+        .query(
+            "SELECT id FROM poll_vote WHERE poll_id = type::record('poll', $pid) AND actor_id = type::record('user', $aid) LIMIT 1;",
+        )
+        .bind(("pid", poll_id.clone()))
+        .bind(("aid", auth.user_id.to_string()))
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let already: Vec<surrealdb::types::Value> = existing
+        .take(0)
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    if !already.is_empty() {
+        return Err(AppError::Validation("Already voted".to_string()));
+    }
+
     crate::db::queries::vote_poll(
         state.surreal(),
-        &note_id.to_string(),
+        &poll_id,
         &auth.user_id.to_string(),
         body.choice,
     )
@@ -565,39 +611,99 @@ pub struct SearchNotesQuery {
     pub limit: Option<usize>,
 }
 
-pub async fn search_notes(
-    State(state): State<AppState>,
-    Query(query): Query<SearchNotesQuery>,
-) -> Result<Json<Vec<NoteDto>>> {
-    let limit = query.limit.unwrap_or(20).min(100);
+const SEARCH_VIS_PUBLIC_OR_HOME: &str = "(visibility = 'public' OR visibility = 'home')";
+const SEARCH_VIS_HOME: &str = "visibility = 'home'";
+
+fn cached_public_is_complete(page_len: usize, page_limit: usize) -> bool {
+    page_len < page_limit
+}
+
+async fn query_search_notes(
+    state: &AppState,
+    q: &str,
+    limit: usize,
+    visibility: &str,
+) -> Result<Vec<NoteDto>> {
+    let sql = format!(
+        "
+        SELECT
+            *,
+            actor_id.id AS actor_id,
+            reply_id.id AS reply_id,
+            renote_id.id AS renote_id,
+            actor_id.* AS author
+        FROM note
+        WHERE text CONTAINS $query
+          AND {visibility}
+        ORDER BY id DESC
+        LIMIT $limit;
+        "
+    );
     let mut response = state
         .surreal()
-        .query(
-            "
-            SELECT
-                *,
-                actor_id.id AS actor_id,
-                reply_id.id AS reply_id,
-                renote_id.id AS renote_id,
-                actor_id.* AS author
-            FROM note
-            WHERE text CONTAINS $query
-              AND (visibility = 'public' OR visibility = 'home')
-            ORDER BY id DESC
-            LIMIT $limit;
-            ",
-        )
-        .bind(("query", query.q))
+        .query(&sql)
+        .bind(("query", q.to_string()))
         .bind(("limit", limit as i64))
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
-
     let rows: Vec<surrealdb::types::Value> = response
         .take(0)
         .map_err(|e| AppError::Internal(e.to_string()))?;
     let notes: Vec<crate::db::queries::NoteWithAuthor> =
         crate::db::queries::rows_to(rows).map_err(|e| AppError::Internal(e.to_string()))?;
+    Ok(crate::routes::v1::common::rows_to_dtos(state, notes).await)
+}
+
+/// 公開 TL がページに収まる間は Dragonfly を先に見る。空の q は従来の SurrealDB。
+// ponytail: 公開TLがページに収まる間だけ Dragonfly を正にする。ページが満杯なら SurrealDB。CONTAINS が遅くなったら SurrealDB FULLTEXT。Meilisearch/ES は足さない。
+pub async fn search_notes(
+    State(state): State<AppState>,
+    Query(query): Query<SearchNotesQuery>,
+) -> Result<Json<Vec<NoteDto>>> {
+    let limit = query.limit.unwrap_or(20).min(100);
+    let q = query.q;
+    if q.is_empty() {
+        return Ok(Json(
+            query_search_notes(&state, &q, limit, SEARCH_VIS_PUBLIC_OR_HOME).await?,
+        ));
+    }
+
+    for page_limit in [100usize, 50, 40, 20, 10] {
+        let key = cache::timeline_json_key("global", page_limit);
+        let Some(page) = cache::get_json::<Vec<NoteDto>>(state.dragonfly(), &key).await else {
+            continue;
+        };
+        // 大きい limit が満杯なら、より小さいキーは全件ではない。短いページを正にしない。
+        if !cached_public_is_complete(page.len(), page_limit) {
+            break;
+        }
+        let mut hits: Vec<NoteDto> = page
+            .into_iter()
+            .filter(|n| n.visibility == NoteVisibility::Public && n.content.contains(&q))
+            .collect();
+        hits.extend(query_search_notes(&state, &q, limit, SEARCH_VIS_HOME).await?);
+        hits.sort_by(|a, b| b.id.cmp(&a.id));
+        hits.dedup_by(|a, b| a.id == b.id);
+        hits.truncate(limit);
+        return Ok(Json(hits));
+    }
+
     Ok(Json(
-        crate::routes::v1::common::rows_to_dtos(&state, notes).await,
+        query_search_notes(&state, &q, limit, SEARCH_VIS_PUBLIC_OR_HOME).await?,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::cached_public_is_complete;
+
+    #[test]
+    fn cached_public_is_complete_full_page_is_false() {
+        assert!(!cached_public_is_complete(20, 20));
+    }
+
+    #[test]
+    fn cached_public_is_complete_short_page_is_true() {
+        assert!(cached_public_is_complete(5, 20));
+    }
 }

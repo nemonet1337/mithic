@@ -46,6 +46,10 @@
                     } else {
                         root.classList.add('dark');
                     }
+                    const accent = localStorage.getItem('mithic.accent');
+                    if (accent && accent !== 'pink') {
+                        root.setAttribute('data-accent', accent);
+                    }
                 } catch (_) {}
             })();
         </script>

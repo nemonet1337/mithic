@@ -67,8 +67,6 @@ fn public_url(state: &AppState, object_key: &str) -> String {
     let cfg = state.config();
     let direct = if crate::db::storage::is_s3_storage(&cfg.storage_type) {
         cfg.storage_s3_public_url.as_deref()
-    } else if cfg.storage_type.eq_ignore_ascii_case("gcs") {
-        cfg.storage_gcs_public_url.as_deref()
     } else {
         None
     };

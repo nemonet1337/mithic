@@ -6,14 +6,18 @@ pub fn api_base() -> &'static str {
     "/api/v1"
 }
 
-/// Minimal percent-encoding for query path segments (ASCII unreserved left as-is).
+/// Query escape. Unreserved ASCII stays as-is; everything else is UTF-8 percent-encoding.
 pub fn urlencoding_loose(s: &str) -> String {
-    s.chars()
-        .map(|c| match c {
-            'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '_' | '.' | '~' => c.to_string(),
-            _ => format!("%{:02X}", c as u32),
-        })
-        .collect()
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char)
+            }
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
 }
 
 #[derive(Debug, Clone, Deserialize)]

@@ -1,4 +1,6 @@
 use leptos::prelude::*;
+use wasm_bindgen::JsCast;
+use web_sys::HtmlInputElement;
 
 use crate::api::drive::DriveFileResponse;
 use crate::components::Shell;
@@ -48,10 +50,43 @@ pub fn DrivePage() -> impl IntoView {
         });
     };
 
+    let upload = move |ev: web_sys::Event| {
+        let Some(input) = ev.target().and_then(|t| t.dyn_into::<HtmlInputElement>().ok()) else {
+            return;
+        };
+        let Some(list) = input.files() else { return };
+        let mut picked = Vec::new();
+        for i in 0..list.length() {
+            if let Some(file) = list.item(i) {
+                picked.push(file);
+            }
+        }
+        input.set_value("");
+        let Some(tok) = auth.token.get_untracked() else {
+            error.set(Some("ログインが必要です".into()));
+            return;
+        };
+        error.set(None);
+        wasm_bindgen_futures::spawn_local(async move {
+            for file in picked {
+                match crate::api::drive::upload(&tok, &file).await {
+                    Ok(stored) => files.update(|v| v.insert(0, stored)),
+                    Err(e) => error.set(Some(e.user_message())),
+                }
+            }
+        });
+    };
+
     view! {
         <Shell active="drive">
             <section class="p-4">
-                <h1 class="wf-title mb-4">"ファイルマネージャー"</h1>
+                <div class="mb-4 flex items-center justify-between gap-3">
+                    <h1 class="wf-title">"ファイルマネージャー"</h1>
+                    <label class="wf-btn wf-btn-primary wf-btn-sm">
+                        "アップロード"
+                        <input class="sr-only" type="file" multiple on:change=upload />
+                    </label>
+                </div>
 
                 <Show when=move || loading.get()>
                     <div class="flex items-center justify-center py-16">

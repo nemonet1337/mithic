@@ -1,6 +1,6 @@
 # Mithic TODO
 
-最終更新: 2026-08-31（UI: Misskey 左バー廃止、Deck シェル、DM/QR/高度な設定を削除）
+最終更新: 2026-09-23（ノート検索は Dragonfly の global TL キャッシュ優先）
 
 凡例:
 
@@ -40,6 +40,7 @@
 - [x] タイムライン: home / local / global / hashtag / trending
 - [x] 通知: 一覧・既読
 - [x] ドライブ: アップロード / URL 取込 / 一覧 / 削除 / 配信 (`/uploads/{hash}`)
+- [x] オブジェクトストレージ: `STORAGE_TYPE=local|s3` のみ。互換実装は `s3` + endpoint。`STORAGE_S3_PUBLIC_URL` が空なら `/uploads/{hash}` 経由
 - [x] 画像サムネイル: WebP 最大 400px → オブジェクト `{hash}.thumb` + `thumbnail_url`
 - [x] インスタンスメタ + 公開絵文字一覧
 - [x] 管理: アカウント停止/解除/削除、リレー CRUD
@@ -63,14 +64,14 @@
 
 ### フロント（画面はある）
 
-- [x] 画面 UI（Deck ホーム / 詳細 / 検索 / プロフィール / 設定 / ログイン等）
+- [x] 画面 UI（単一カラムのホーム / 詳細 / 検索 / プロフィール / 設定 / ログイン等）
 - [x] 認証・投稿・タイムライン・通知・一部ユーザー操作が API 接続済み
 - [x] WebSocket で note / notification / noteDeleted 受信
 - [x] リノート前の注意ダイアログ（公開範囲の拡散注意 + プレビュー）
 - [x] リアクションは投稿あたり1つ。別絵文字は置換、同じ絵文字の再押下は取り消し
 - [x] 削除した投稿をタイムライン / 詳細 / プロフィールから即時除去（REST + AP Delete も broadcast）
 - [x] プロフィール設定: バナー/アバター/名前/紹介/場所/誕生日/言語/追加情報/フォロー時メッセージ/リアクション受け入れ
-- [x] Deck シェル: 上部バー + モバイル下部ドック。ホーム/ローカル/グローバル（+通知）を横並び。列の追加・削除・並び替えは localStorage
+- [x] 単一カラム: デスクトップは左ナビ + 中央 1 列。モバイルは下部ドック。Deck の横スワイプ / 列追加 / localStorage 列は廃止
 - [x] Service Worker: `/api/` は intercept しない（Workbox に載せると login/register が Failed to fetch になる）
 - [x] 起動時は `/users/me` 成功まで未ログイン扱い。失効トークンで TL を叩かない
 - [x] API クライアントは `RequestMode::SameOrigin`（CORS 不一致を Failed to fetch にしない）
@@ -85,7 +86,7 @@
 |------|------|------|
 | **AP Delete / Update / Accept / Reject / Block** | inbox で永続化 | リモート Delete は所有ノート削除 / Person は suspend。Update は Note・プロフィール。Accept/Reject は Follow のみ。Block は相互フォロー解除 + block 辺。object が URI のみの Accept/Update は未解決（fetch しない） |
 | **AP fetch_remote_actor** | 実装あり。コメントに Phase F3 残り | SSRF 統一・キャッシュ・鍵取り回しの整理が甘い可能性 |
-| **ノート作成時の poll** | `CreateNoteRequest.poll_choices` と `vote` API はある | **作成サービスが poll を DB に書かない**（リモート Create 経由の poll のみ強い） |
+| **ノート作成時の poll** | 作成時に poll テーブルへ書き、`note.poll` を返す。投票は `POST /notes/{id}/vote` | 複数選択・期限は未対応 |
 | **ピン留め** | バックエンド pin/unpin API + メニューから POST | プロフィールでのピン表示・解除 UI は未確認 |
 | **ブロック / ミュート UI** | API + 投稿メニューから実行。設定に一覧 | 一覧からの解除ボタンは未接続 |
 | **ドライブ「添付ノート」** | `GET .../files/{id}/notes` | **常に空配列**（逆引き未実装） |
@@ -117,7 +118,7 @@
 - [ ] 予約投稿 (`scheduled_at` フィールドはあるが処理なし)
 - [ ] NSFW / CW の一貫したフロント表示ルール
 - [ ] フロント「設定」の残り（メール、連携アカウント、エクスポート、アカウント削除）
-- [ ] Deck: ハッシュタグ列・列幅変更・サーバ保存（現状は 4 種 + localStorage）
+- [x] Deck 列（ハッシュタグ列・列幅ドラッグ・サーバ保存）は単一カラム化でやらない
 - [ ] 設定 UI から外した猫 / Bot / QR（API フィールドは残っている）
 - [ ] アバターデコレーション（素材カタログが要るので未着手）
 - [ ] リノート確認からの引用フロー（CreateNoteRequest に renote_id が無い）
@@ -128,6 +129,7 @@
 - [ ] メトリクス / Prometheus（依存は落としたまま）
 - [ ] 本番向け監視・バックアップ手順ドキュメント
 - [x] MSRV / toolchain 文書の実態合わせ（`rust-version` 1.88。jsonwebtoken 11 が要求）
+- [x] ノート検索は Dragonfly の global TL が全件入っているときそこを先に見て、home とキャッシュ外だけ SurrealDB。Meilisearch / Elasticsearch は入れない。
 - [ ] 水平スケール時のストリーム: 現状 process-local broadcast のみ（複数 `mithic-server` では WS が共有されない）
 - [x] Docker: `mithic-server` のコンパイル落ち修正。BuildKit cache を backend/frontend で分離、mold + cargo-chef バイナリ、コンテナ内 LTO オフで再ビルド短縮
 - [x] SurrealDB 3: `user.fields` を `array<object> FLEXIBLE` に修正（`array FLEXIBLE` はパースエラー）
@@ -140,15 +142,13 @@
 
 コードの穴を埋める順。新機能より **Partial の解消** 優先。
 
-1. **ノート作成時の poll 永続化**  
-   UI のアンケートと API のズレを解消。
-2. **プロフィールでのピン表示**  
+1. **プロフィールでのピン表示**  
    ピン API はメニューから叩ける。プロフィール先頭への表示が残る。
-3. **Web Push / サムネの手動 E2E**  
+2. **Web Push / サムネの手動 E2E**  
    `VAPID_PRIVATE_KEY` 設定 → 設定画面で有効化 → 通知発火。画像 UP → `.thumb` が返るか。
-4. **TOTP**（必要なら）API + 設定 UI。
-5. **ストリームの multi-instance**（スケールするとき）Dragonfly pub/sub 等。
-6. **AP Update/Accept の URI-only object**  
+3. **TOTP**（必要なら）API + 設定 UI。
+4. **ストリームの multi-instance**（スケールするとき）Dragonfly pub/sub 等。
+5. **AP Update/Accept の URI-only object**  
    埋め込み無しの場合は現状スキップ。必要なら fetch を足す。
 
 ---

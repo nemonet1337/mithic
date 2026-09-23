@@ -101,7 +101,14 @@ pub async fn get_home_timeline(
     fetch_notes(
         client,
         "(actor_id = type::record('user', $user_id)
-           OR actor_id IN (SELECT VALUE out FROM follow WHERE in = type::record('user', $user_id) AND is_accepted = true))",
+           OR (
+             actor_id IN (SELECT VALUE out FROM follow WHERE in = type::record('user', $user_id) AND is_accepted = true)
+             AND visibility != 'specified'
+           )
+           OR (
+             visibility = 'specified'
+             AND type::record('user', $user_id) IN visible_user_ids
+           ))",
         Some(user_id.to_string()),
         limit,
         since_id,

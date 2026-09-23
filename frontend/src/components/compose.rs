@@ -87,7 +87,19 @@ pub fn ComposeModal() -> impl IntoView {
         };
         let text = compose.draft.get_untracked();
         let file_ids = compose.file_ids.get_untracked();
-        if (text.trim().is_empty() && file_ids.is_empty()) || text.chars().count() > 500 {
+        let raw_poll = compose.poll_choices.get_untracked();
+        let poll_choices: Vec<String> = raw_poll
+            .iter()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        if !raw_poll.is_empty() && poll_choices.len() < 2 {
+            error.set(Some("選択肢は2つ以上必要です".into()));
+            return;
+        }
+        if (text.trim().is_empty() && file_ids.is_empty() && poll_choices.len() < 2)
+            || text.chars().count() > 500
+        {
             return;
         }
         let cw = compose.cw.get_untracked();
@@ -98,7 +110,7 @@ pub fn ComposeModal() -> impl IntoView {
             is_nsfw: compose.nsfw.get_untracked(),
             file_ids,
             reply_id: compose.reply_id.get_untracked(),
-            poll_choices: compose.poll_choices.get_untracked(),
+            poll_choices,
             scheduled_at: compose.scheduled_at.get_untracked(),
         };
         busy.set(true);
@@ -123,7 +135,17 @@ pub fn ComposeModal() -> impl IntoView {
         !busy.get()
             && !upload_busy.get()
             && remaining.get() >= 0
-            && (!compose.draft.get().trim().is_empty() || !compose.file_ids.get().is_empty())
+            && {
+                let poll_n = compose
+                    .poll_choices
+                    .get()
+                    .iter()
+                    .filter(|s| !s.trim().is_empty())
+                    .count();
+                !compose.draft.get().trim().is_empty()
+                    || !compose.file_ids.get().is_empty()
+                    || poll_n >= 2
+            }
     };
 
     view! {
@@ -294,43 +316,79 @@ pub fn ComposeModal() -> impl IntoView {
                         </Show>
 
                         <div>
-                            <button
-                                class="wf-btn wf-btn-ghost wf-btn-sm"
-                                on:click=move |_| {
-                                    compose.poll_choices.update(|choices| choices.push(String::new()));
-                                }
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
-                                "投票を追加"
-                            </button>
+                            <Show when=move || compose.poll_choices.get().is_empty()>
+                                <button
+                                    class="wf-btn wf-btn-ghost wf-btn-sm"
+                                    on:click=move |_| {
+                                        compose.poll_choices.set(vec![String::new(), String::new()]);
+                                    }
+                                >
+                                    "投票を追加"
+                                </button>
+                            </Show>
                             <Show when=move || !compose.poll_choices.get().is_empty()>
                                 <div class="mt-2" style="display:flex;flex-direction:column;gap:6px;">
-                                    {move || compose.poll_choices.get().iter().enumerate().map(|(i, _)| {
-                                        view! {
-                                            <div class="flex items-center gap-2">
-                                                <input
-                                                    class="wf-input"
-                                                    style="flex:1;padding:6px 10px;font-size:13px;"
-                                                    placeholder=format!("選択肢 {}", i+1)
-                                                    prop:value=move || compose.poll_choices.get().get(i).cloned().unwrap_or_default()
-                                                    on:input=move |event| {
-                                                        let value = event_target_value(&event);
-                                                        compose.poll_choices.update(|choices| {
-                                                            if let Some(c) = choices.get_mut(i) { *c = value; }
-                                                        });
-                                                    }
-                                                />
-                                                <button
-                                                    class="wf-btn wf-btn-ghost wf-btn-sm wf-btn-circle"
-                                                    on:click=move |_| {
-                                                        compose.poll_choices.update(|choices| { choices.remove(i); });
-                                                    }
-                                                >
-                                                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                                                </button>
-                                            </div>
+                                    <For
+                                        each=move || {
+                                            compose.poll_choices.get().into_iter().enumerate().collect::<Vec<_>>()
                                         }
-                                    }).collect::<Vec<_>>()}
+                                        key=|row| row.0
+                                        children=move |row| {
+                                            let i = row.0;
+                                            view! {
+                                                <div class="flex items-center gap-2">
+                                                    <input
+                                                        class="wf-input"
+                                                        style="flex:1;padding:6px 10px;font-size:13px;"
+                                                        placeholder=format!("選択肢 {}", i + 1)
+                                                        attr:data-i=i
+                                                        prop:value=move || compose.poll_choices.get().get(i).cloned().unwrap_or_default()
+                                                        on:input=move |event| {
+                                                            let el = event_target::<HtmlInputElement>(&event);
+                                                            let idx = el.dataset().get("i").and_then(|s| s.parse().ok()).unwrap_or(i);
+                                                            let value = el.value();
+                                                            compose.poll_choices.update(|choices| {
+                                                                if let Some(c) = choices.get_mut(idx) { *c = value; }
+                                                            });
+                                                        }
+                                                    />
+                                                    <button
+                                                        class="wf-btn wf-btn-ghost wf-btn-sm wf-btn-circle"
+                                                        attr:data-i=i
+                                                        on:click=move |event| {
+                                                            let idx = event_target::<web_sys::HtmlButtonElement>(&event)
+                                                                .dataset()
+                                                                .get("i")
+                                                                .and_then(|s| s.parse().ok())
+                                                                .unwrap_or(i);
+                                                            compose.poll_choices.update(|choices| {
+                                                                choices.remove(idx);
+                                                                if choices.len() < 2 {
+                                                                    choices.clear();
+                                                                }
+                                                            });
+                                                        }
+                                                    >
+                                                        "×"
+                                                    </button>
+                                                </div>
+                                            }
+                                        }
+                                    />
+                                    <Show when=move || compose.poll_choices.get().len() < 10>
+                                        <button
+                                            class="wf-btn wf-btn-ghost wf-btn-sm"
+                                            on:click=move |_| {
+                                                compose.poll_choices.update(|choices| {
+                                                    if choices.len() < 10 {
+                                                        choices.push(String::new());
+                                                    }
+                                                });
+                                            }
+                                        >
+                                            "選択肢を追加"
+                                        </button>
+                                    </Show>
                                 </div>
                             </Show>
                         </div>

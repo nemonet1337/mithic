@@ -101,7 +101,7 @@ fn ProfileSection() -> impl IntoView {
         display_name.set(user.display_name.clone().unwrap_or_default());
         bio.set(user.bio.clone().unwrap_or_default());
         location.set(user.location.clone().unwrap_or_default());
-        birthday.set(user.birthday.clone().unwrap_or_default());
+        birthday.set(birthday_display(&user.birthday.clone().unwrap_or_default()));
         lang.set(user.lang.clone().unwrap_or_else(|| "ja".into()));
         followed_message.set(user.followed_message.clone().unwrap_or_default());
         reaction_acceptance.set(user.reaction_acceptance.clone().unwrap_or_default());
@@ -156,7 +156,7 @@ fn ProfileSection() -> impl IntoView {
             display_name: Some(display_name.get_untracked()),
             bio: Some(bio.get_untracked()),
             location: Some(location.get_untracked()),
-            birthday: Some(birthday.get_untracked()),
+            birthday: Some(birthday_save(&birthday.get_untracked())),
             lang: Some(lang.get_untracked()),
             followed_message: Some(followed_message.get_untracked()),
             reaction_acceptance: Some(reaction_acceptance.get_untracked()),
@@ -216,7 +216,15 @@ fn ProfileSection() -> impl IntoView {
                 <input class="wf-input" prop:value=move || location.get() on:input=move |e| location.set(event_target_value(&e)) />
             </Field>
             <Field label="誕生日">
-                <input class="wf-input" type="date" prop:value=move || birthday.get() on:input=move |e| birthday.set(event_target_value(&e)) />
+                <input
+                    class="wf-input"
+                    type="text"
+                    inputmode="numeric"
+                    maxlength="10"
+                    placeholder="yyyy/mm/dd"
+                    prop:value=move || birthday.get()
+                    on:input=move |e| birthday.set(birthday_display(&event_target_value(&e)))
+                />
             </Field>
             <Field label="言語">
                 <select class="wf-select w-full" on:change=move |e| lang.set(event_target_value(&e))>
@@ -434,6 +442,23 @@ fn ThemeSection() -> impl IntoView {
     let theme = RwSignal::new(
         LocalStorage::get::<String>("mithic.theme").unwrap_or_else(|_| "night".into()),
     );
+    let accent = RwSignal::new(
+        LocalStorage::get::<String>("mithic.accent").unwrap_or_else(|_| "pink".into()),
+    );
+    let set_accent = move |name: &'static str| {
+        accent.set(name.into());
+        let _ = LocalStorage::set("mithic.accent", name);
+        if let Some(html) = web_sys::window()
+            .and_then(|w| w.document())
+            .and_then(|d| d.document_element())
+        {
+            if name == "pink" {
+                let _ = html.remove_attribute("data-accent");
+            } else {
+                let _ = html.set_attribute("data-accent", name);
+            }
+        }
+    };
     let set_theme = move |t: &'static str| {
         let is_dark = match t {
             "light" => false,
@@ -480,5 +505,40 @@ fn ThemeSection() -> impl IntoView {
                 <button class=move || if theme.get() == "auto" { "wf-btn wf-btn-primary wf-btn-sm" } else { "wf-btn wf-btn-ghost wf-btn-sm" } on:click=move |_| set_theme("auto")>"自動"</button>
             </div>
         </div>
+        <div class="wf-card max-w-md mt-3 flex flex-col gap-2">
+            <span class="text-sm font-semibold">"アクセント"</span>
+            <div class="flex flex-wrap gap-1">
+                <button class=move || if accent.get() == "pink" { "wf-btn wf-btn-primary wf-btn-sm" } else { "wf-btn wf-btn-ghost wf-btn-sm" } on:click=move |_| set_accent("pink")>"ピンク"</button>
+                <button class=move || if accent.get() == "teal" { "wf-btn wf-btn-primary wf-btn-sm" } else { "wf-btn wf-btn-ghost wf-btn-sm" } on:click=move |_| set_accent("teal")>"ティール"</button>
+                <button class=move || if accent.get() == "blue" { "wf-btn wf-btn-primary wf-btn-sm" } else { "wf-btn wf-btn-ghost wf-btn-sm" } on:click=move |_| set_accent("blue")>"ブルー"</button>
+                <button class=move || if accent.get() == "amber" { "wf-btn wf-btn-primary wf-btn-sm" } else { "wf-btn wf-btn-ghost wf-btn-sm" } on:click=move |_| set_accent("amber")>"アンバー"</button>
+                <button class=move || if accent.get() == "violet" { "wf-btn wf-btn-primary wf-btn-sm" } else { "wf-btn wf-btn-ghost wf-btn-sm" } on:click=move |_| set_accent("violet")>"バイオレット"</button>
+            </div>
+        </div>
+    }
+}
+
+fn birthday_digits(raw: &str) -> String {
+    raw.chars().filter(|c| c.is_ascii_digit()).take(8).collect()
+}
+
+fn birthday_display(raw: &str) -> String {
+    let digits = birthday_digits(raw);
+    let mut out = String::new();
+    for (i, c) in digits.chars().enumerate() {
+        if i == 4 || i == 6 {
+            out.push('/');
+        }
+        out.push(c);
+    }
+    out
+}
+
+fn birthday_save(raw: &str) -> String {
+    let digits = birthday_digits(raw);
+    if digits.len() == 8 {
+        format!("{}-{}-{}", &digits[0..4], &digits[4..6], &digits[6..8])
+    } else {
+        birthday_display(raw)
     }
 }

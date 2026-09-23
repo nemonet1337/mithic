@@ -7,7 +7,7 @@ use crate::db::queries::{
 use crate::models::actor::Actor;
 use crate::models::file::DriveFile;
 use crate::models::note::Note;
-use shared::{MediaAttachment, Note as NoteDto, ReactionSummary, User};
+use shared::{MediaAttachment, Note as NoteDto, Poll, PollChoice, ReactionSummary, User};
 
 use crate::state::AppState;
 
@@ -111,14 +111,20 @@ pub async fn notes_to_dtos(
         None => HashMap::new(),
     };
 
+    let mut poll_ids: Vec<String> = note_ids.clone();
+    poll_ids.extend(renote_map.keys().cloned());
+    let polls = load_polls(state, &poll_ids, viewer_id).await;
+
     rows.iter()
         .map(|row| {
             let mut dto = note_to_dto(&row.note, actor_to_user(&row.author));
             dto.attachments = attachments_for(&row.note.file_ids, &files);
+            dto.poll = polls.get(&dto.id).cloned();
             if let Some(rid) = row.note.renote_id {
                 if let Some(target) = renote_map.get(&rid.to_string()) {
                     let mut nested = note_to_dto(&target.note, actor_to_user(&target.author));
                     nested.attachments = attachments_for(&target.note.file_ids, &files);
+                    nested.poll = polls.get(&nested.id).cloned();
                     dto.renote = Some(Box::new(nested));
                 }
             }
@@ -160,7 +166,7 @@ pub fn drive_file_to_attachment(f: &crate::models::file::DriveFile) -> MediaAtta
 
 /// Sync minimal DTO conversion (renote / attachments filled by enrich later)
 pub fn note_to_dto(note: &Note, author: User) -> NoteDto {
-    let reactions = note
+    let reactions: Vec<ReactionSummary> = note
         .reactions
         .iter()
         .map(|(emoji, count)| ReactionSummary {
@@ -177,7 +183,7 @@ pub fn note_to_dto(note: &Note, author: User) -> NoteDto {
         content: note.text.clone().unwrap_or_default(),
         cw: note.cw.clone(),
         visibility: note.visibility,
-        reactions,
+        reactions: reactions.into_iter().filter(|r| r.count > 0).collect(),
         reply_count: note.replies_count.max(0) as u64,
         renote_count: note.renote_count.max(0) as u64,
         quote_count: 0,
@@ -186,6 +192,7 @@ pub fn note_to_dto(note: &Note, author: User) -> NoteDto {
         is_nsfw: false,
         renote_id: note.renote_id.map(|id| id.to_string()),
         renote: None,
+        poll: None,
     }
 }
 
@@ -205,12 +212,132 @@ pub async fn note_to_dto_full(state: &AppState, note: &Note, author: User) -> No
     files.dedup();
     let file_map = load_files_map(state, &files).await;
 
+    let mut poll_note_ids = vec![note.id.to_string()];
+    if let Some(target) = renotes.first() {
+        poll_note_ids.push(target.note.id.to_string());
+    }
+    let polls = load_polls(state, &poll_note_ids, None).await;
+
     let mut dto = note_to_dto(note, author);
     dto.attachments = attachments_for(&note.file_ids, &file_map);
+    dto.poll = polls.get(&dto.id).cloned();
     if let Some(target) = renotes.first() {
         let mut nested = note_to_dto(&target.note, actor_to_user(&target.author));
         nested.attachments = attachments_for(&target.note.file_ids, &file_map);
+        nested.poll = polls.get(&nested.id).cloned();
         dto.renote = Some(Box::new(nested));
     }
     dto
+}
+
+fn record_tail(v: &serde_json::Value) -> Option<String> {
+    let s = v.as_str().or_else(|| {
+        v.get("id")
+            .or_else(|| v.get("tb"))
+            .and_then(|x| x.as_str())
+    })?;
+    Some(s.rsplit(':').next().unwrap_or(s).to_string())
+}
+
+fn votes_u64(v: &serde_json::Value) -> u64 {
+    v.as_u64()
+        .or_else(|| v.as_i64().map(|n| n.max(0) as u64))
+        .unwrap_or(0)
+}
+
+async fn load_polls(
+    state: &AppState,
+    note_ids: &[String],
+    viewer_id: Option<&str>,
+) -> HashMap<String, Poll> {
+    if note_ids.is_empty() {
+        return HashMap::new();
+    }
+    let records: Vec<String> = note_ids.iter().map(|id| format!("note:{id}")).collect();
+    let Ok(mut res) = state
+        .surreal()
+        .query("SELECT * FROM poll WHERE note_id IN $ids;")
+        .bind(("ids", records))
+        .await
+    else {
+        return HashMap::new();
+    };
+    let rows: Vec<surrealdb::types::Value> = res.take(0).unwrap_or_default();
+    let mut by_note: HashMap<String, (String, Poll)> = HashMap::new();
+    for row in rows {
+        let json = row.into_json_value();
+        let Some(note_id) = json.get("note_id").and_then(record_tail) else {
+            continue;
+        };
+        let Some(poll_id) = json.get("id").and_then(record_tail) else {
+            continue;
+        };
+        let choices = json
+            .get("choices")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|c| {
+                        let text = c.get("text").and_then(|t| t.as_str())?.to_string();
+                        Some(PollChoice {
+                            text,
+                            votes: c.get("votes").map(votes_u64).unwrap_or(0),
+                            voted_by_me: false,
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        by_note.insert(
+            note_id,
+            (
+                poll_id,
+                Poll {
+                    choices,
+                    multiple: json.get("multiple").and_then(|v| v.as_bool()).unwrap_or(false),
+                },
+            ),
+        );
+    }
+    if let Some(vid) = viewer_id {
+        if !by_note.is_empty() {
+            let poll_records: Vec<String> = by_note
+                .values()
+                .map(|(id, _)| format!("poll:{id}"))
+                .collect();
+            if let Ok(mut vote_res) = state
+                .surreal()
+                .query(
+                    "SELECT poll_id, choice_index FROM poll_vote WHERE actor_id = type::record('user', $actor) AND poll_id IN $polls;",
+                )
+                .bind(("actor", vid.to_string()))
+                .bind(("polls", poll_records))
+                .await
+            {
+                let vote_rows: Vec<surrealdb::types::Value> = vote_res.take(0).unwrap_or_default();
+                let mut voted: HashMap<String, usize> = HashMap::new();
+                for row in vote_rows {
+                    let json = row.into_json_value();
+                    let Some(pid) = json.get("poll_id").and_then(record_tail) else {
+                        continue;
+                    };
+                    let Some(idx) = json.get("choice_index").and_then(|v| {
+                        v.as_u64()
+                            .or_else(|| v.as_i64().map(|n| n.max(0) as u64))
+                    }) else {
+                        continue;
+                    };
+                    voted.insert(pid, idx as usize);
+                }
+                for (poll_id, poll) in by_note.values_mut() {
+                    if let Some(idx) = voted.get(poll_id) {
+                        if let Some(choice) = poll.choices.get_mut(*idx) {
+                            choice.voted_by_me = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    by_note.into_iter().map(|(nid, (_, poll))| (nid, poll)).collect()
 }

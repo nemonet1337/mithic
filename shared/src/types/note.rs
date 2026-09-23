@@ -31,6 +31,23 @@ pub struct MediaAttachment {
     pub is_sensitive: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PollChoice {
+    pub text: String,
+    pub votes: u64,
+    #[serde(default)]
+    pub voted_by_me: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct Poll {
+    pub choices: Vec<PollChoice>,
+    #[serde(default)]
+    pub multiple: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Note {
@@ -53,6 +70,8 @@ pub struct Note {
     /// ネストされた元ノート（表示用）
     #[serde(default)]
     pub renote: Option<Box<Note>>,
+    #[serde(default)]
+    pub poll: Option<Poll>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

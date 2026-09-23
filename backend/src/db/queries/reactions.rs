@@ -113,6 +113,7 @@ pub async fn remove_reaction(
             BEGIN TRANSACTION;
             DELETE note_reaction WHERE note_id = type::record('note', $note_id) AND actor_id = type::record('user', $actor_id) AND reaction = $reaction;
             UPDATE note SET reactions[$reaction] = <int>(reactions[$reaction] OR 1) - 1 WHERE id = type::record('note', $note_id);
+            UPDATE note SET reactions = object::remove(reactions, $reaction) WHERE id = type::record('note', $note_id) AND <int>(reactions[$reaction] OR 0) <= 0;
             COMMIT TRANSACTION;
             ",
         )
@@ -151,7 +152,8 @@ pub async fn remove_all_reactions_by_actor(
             let reaction = r.to_string();
             let _ = client
                 .query(
-                    "UPDATE note SET reactions[$reaction] = <int>(reactions[$reaction] OR 1) - 1 WHERE id = type::record('note', $note_id);",
+                    "UPDATE note SET reactions[$reaction] = <int>(reactions[$reaction] OR 1) - 1 WHERE id = type::record('note', $note_id);
+                     UPDATE note SET reactions = object::remove(reactions, $reaction) WHERE id = type::record('note', $note_id) AND <int>(reactions[$reaction] OR 0) <= 0;",
                 )
                 .bind(("note_id", note_id.to_string()))
                 .bind(("reaction", reaction.clone()))
