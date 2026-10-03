@@ -53,8 +53,8 @@ mimalloc = { workspace = true }
 fluent = { workspace = true }
 unic-langid = { workspace = true }
 # rsa 0.9 の鍵生成が rand 0.8 を要求する
-rand = "0.8"
+rand = "0.10"
 dashmap = "6"
 
 [dev-dependencies]
-rand = "0.8"
+rand = "0.10"
