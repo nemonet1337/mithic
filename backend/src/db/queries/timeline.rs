@@ -186,7 +186,7 @@ pub async fn get_notes_with_authors_by_ids(
     let id_records: Vec<String> = ids.iter().map(|id| format!("note:{id}")).collect();
     let mut response = client
         .query(format!(
-            "SELECT {NOTE_WITH_AUTHOR_FIELDS} FROM note WHERE id IN $ids;"
+            "SELECT {NOTE_WITH_AUTHOR_FIELDS} FROM note WHERE <string> id IN $ids;"
         ))
         .bind(("ids", id_records))
         .await?;

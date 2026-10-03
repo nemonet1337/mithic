@@ -3,9 +3,10 @@
 use crate::auth::{hash_password, verify_password};
 use crate::db::cache;
 use crate::db::queries::{
-    block_user as block, follow_user as follow, get_actor_by_id, get_actor_by_username,
-    get_followers, get_following, get_user_notes, is_blocking, is_following, is_muting,
-    mute_user as mute, unblock_user as unblock, unfollow_user as unfollow, unmute_user as unmute,
+    block_user as block, follow_request_state, follow_user as follow, get_actor_by_id,
+    get_actor_by_username, get_followers, get_following, get_user_notes, is_blocking, is_following,
+    is_muting, mute_user as mute, unblock_user as unblock, unfollow_user as unfollow,
+    unmute_user as unmute,
 };
 use crate::models::actor::{Actor, ActorId};
 use crate::models::notification::Notification;
@@ -268,14 +269,14 @@ async fn build_relation(
     my_id: ActorId,
     target_id: ActorId,
 ) -> Result<UserRelation> {
-    let (is_following_val, is_followed_val, is_blocking_val, is_blocked_val, is_muted_val) = tokio::join!(
-        is_following(state.surreal(), &my_id, &target_id),
+    let (mine, is_followed_val, is_blocking_val, is_blocked_val, is_muted_val) = tokio::join!(
+        follow_request_state(state.surreal(), &my_id, &target_id),
         is_following(state.surreal(), &target_id, &my_id),
         check_blocking_cached(state, &my_id, &target_id),
         check_blocking_cached(state, &target_id, &my_id),
         check_muting_cached(state, &my_id, &target_id),
     );
-    let is_following_val = is_following_val.map_err(|e| AppError::Internal(e.to_string()))?;
+    let mine = mine.map_err(|e| AppError::Internal(e.to_string()))?;
     let is_followed_val = is_followed_val.map_err(|e| AppError::Internal(e.to_string()))?;
     let is_blocking_val = is_blocking_val.map_err(|e| AppError::Internal(e.to_string()))?;
     let is_blocked_val = is_blocked_val.map_err(|e| AppError::Internal(e.to_string()))?;
@@ -283,11 +284,12 @@ async fn build_relation(
 
     Ok(UserRelation {
         id: target_id.to_string(),
-        is_following: is_following_val,
+        is_following: mine == Some(true),
         is_followed: is_followed_val,
         is_blocking: is_blocking_val,
         is_blocked: is_blocked_val,
         is_muted: is_muted_val,
+        is_follow_requested: mine == Some(false),
     })
 }
 
@@ -332,28 +334,41 @@ pub async fn follow_user(
         return Err(AppError::Validation("Cannot follow yourself".to_string()));
     }
 
-    let already = is_following(state.surreal(), &auth.user_id, &target_id)
+    let target = get_actor_by_id(state.surreal(), &target_id)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?
+        .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
+
+    let existing = follow_request_state(state.surreal(), &auth.user_id, &target_id)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
-    if !already {
-        follow(state.surreal(), &auth.user_id, &target_id)
+
+    if existing != Some(true) {
+        let accepted = !target.is_locked;
+        follow(state.surreal(), &auth.user_id, &target_id, accepted)
             .await
             .map_err(|e| AppError::Internal(e.to_string()))?;
 
         let sender = get_actor_by_id(state.surreal(), &auth.user_id)
             .await
             .map_err(|e| AppError::Internal(e.to_string()))?;
-        let notif = Notification::follow(target_id, auth.user_id);
+        let notif = if accepted {
+            Notification::follow(target_id, auth.user_id)
+        } else {
+            Notification::new(
+                crate::models::notification::NotificationType::FollowRequest,
+                target_id,
+                Some(auth.user_id),
+                None,
+            )
+        };
         publish_notification(&state, &notif, sender.as_ref(), None).await;
     }
-    let followed_message = get_actor_by_id(state.surreal(), &target_id)
-        .await
-        .ok()
-        .flatten()
-        .and_then(|a| a.followed_message);
-    Ok(Json(
-        serde_json::json!({ "followedMessage": followed_message }),
-    ))
+
+    Ok(Json(serde_json::json!({
+        "followedMessage": target.followed_message,
+        "isPending": existing == Some(false),
+    })))
 }
 
 pub async fn unfollow_user(

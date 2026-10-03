@@ -191,6 +191,7 @@ pub fn note_to_dto(note: &Note, author: User) -> NoteDto {
         tags: note.tags.clone(),
         is_nsfw: false,
         renote_id: note.renote_id.map(|id| id.to_string()),
+        reply_id: note.reply_id.map(|id| id.to_string()),
         renote: None,
         poll: None,
     }
@@ -256,7 +257,7 @@ async fn load_polls(
     let records: Vec<String> = note_ids.iter().map(|id| format!("note:{id}")).collect();
     let Ok(mut res) = state
         .surreal()
-        .query("SELECT * FROM poll WHERE note_id IN $ids;")
+        .query("SELECT * FROM poll WHERE <string> note_id IN $ids;")
         .bind(("ids", records))
         .await
     else {
@@ -308,7 +309,7 @@ async fn load_polls(
             if let Ok(mut vote_res) = state
                 .surreal()
                 .query(
-                    "SELECT poll_id, choice_index FROM poll_vote WHERE actor_id = type::record('user', $actor) AND poll_id IN $polls;",
+                    "SELECT poll_id, choice_index FROM poll_vote WHERE actor_id = type::record('user', $actor) AND <string> poll_id IN $polls;",
                 )
                 .bind(("actor", vid.to_string()))
                 .bind(("polls", poll_records))

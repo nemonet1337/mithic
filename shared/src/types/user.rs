@@ -101,4 +101,7 @@ pub struct UserRelation {
     pub is_blocking: bool,
     pub is_blocked: bool,
     pub is_muted: bool,
+    /// 承認待ちのフォローリクエストを送っている状態
+    #[serde(default)]
+    pub is_follow_requested: bool,
 }

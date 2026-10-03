@@ -67,6 +67,9 @@ pub struct Note {
     /// リノート先ノート ID（pure renote / quote 共通）
     #[serde(default)]
     pub renote_id: Option<String>,
+    /// 返信先ノート ID（会話の流れを辿るのに使う）
+    #[serde(default)]
+    pub reply_id: Option<String>,
     /// ネストされた元ノート（表示用）
     #[serde(default)]
     pub renote: Option<Box<Note>>,

@@ -150,7 +150,7 @@ pub async fn get_drive_files_by_ids(
                 url,
                 thumbnail_url
             FROM drive_file
-            WHERE id IN $ids;
+            WHERE <string> id IN $ids;
             ",
         )
         .bind(("ids", id_records))

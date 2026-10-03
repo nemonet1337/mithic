@@ -93,7 +93,7 @@ pub async fn get_actors_by_ids(
     }
     let id_records: Vec<String> = ids.iter().map(|id| format!("user:{id}")).collect();
     let mut response = client
-        .query("SELECT * FROM user WHERE id IN $ids;")
+        .query("SELECT * FROM user WHERE <string> id IN $ids;")
         .bind(("ids", id_records))
         .await?;
     let rows: Vec<surrealdb::types::Value> = response.take(0)?;

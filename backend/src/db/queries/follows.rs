@@ -12,23 +12,33 @@ pub async fn follow_user(
     client: &SurrealClient,
     follower_id: &ActorId,
     followee_id: &ActorId,
+    accepted: bool,
 ) -> anyhow::Result<()> {
     let follower_str = follower_id.to_string();
     let followee_str = followee_id.to_string();
     let created_at = chrono::Utc::now();
 
-    client
-        .query(
-            "
-            RELATE (type::record('user', $follower)) -> follow -> (type::record('user', $followee))
-            SET created_at = $created_at;
+    let counts = if accepted {
+        "
             UPDATE user SET following_count += 1 WHERE id = type::record('user', $follower);
             UPDATE user SET followers_count += 1 WHERE id = type::record('user', $followee);
-            ",
-        )
+        "
+    } else {
+        ""
+    };
+
+    client
+        .query(&format!(
+            "
+            RELATE (type::record('user', $follower)) -> follow -> (type::record('user', $followee))
+            SET created_at = $created_at, is_accepted = $accepted;
+            {counts}
+            "
+        ))
         .bind(("follower", follower_str))
         .bind(("followee", followee_str))
         .bind(("created_at", created_at))
+        .bind(("accepted", accepted))
         .await?;
 
     Ok(())
@@ -45,9 +55,14 @@ pub async fn unfollow_user(
     client
         .query(
             "
+            LET $accepted = (SELECT VALUE is_accepted FROM follow
+                WHERE in = type::record('user', $follower) AND out = type::record('user', $followee)
+                LIMIT 1)[0];
             DELETE follow WHERE in = type::record('user', $follower) AND out = type::record('user', $followee);
-            UPDATE user SET following_count = <int>(following_count OR 1) - 1 WHERE id = type::record('user', $follower);
-            UPDATE user SET followers_count = <int>(followers_count OR 1) - 1 WHERE id = type::record('user', $followee);
+            IF $accepted = true {
+                UPDATE user SET following_count = <int>(following_count OR 1) - 1 WHERE id = type::record('user', $follower);
+                UPDATE user SET followers_count = <int>(followers_count OR 1) - 1 WHERE id = type::record('user', $followee);
+            };
             ",
         )
         .bind(("follower", follower_str))
@@ -167,6 +182,28 @@ pub async fn is_following(
 
     let counts: Vec<usize> = response.take(0)?;
     Ok(counts.first().cloned().unwrap_or(0) > 0)
+}
+
+/// フォローリクエストの状態。`None` = フォロー関係なし、`Some(false)` = 承認待ち
+pub async fn follow_request_state(
+    client: &SurrealClient,
+    follower_id: &ActorId,
+    followee_id: &ActorId,
+) -> anyhow::Result<Option<bool>> {
+    let mut response = client
+        .query(
+            "
+            SELECT VALUE is_accepted FROM follow
+            WHERE in = type::record('user', $follower) AND out = type::record('user', $followee)
+            LIMIT 1;
+            ",
+        )
+        .bind(("follower", follower_id.to_string()))
+        .bind(("followee", followee_id.to_string()))
+        .await?;
+
+    let rows: Vec<Option<bool>> = response.take(0)?;
+    Ok(rows.into_iter().next().flatten())
 }
 
 pub async fn is_blocking(

@@ -42,7 +42,7 @@ pub async fn get_reactions_by_actor_for_notes(
             "
             SELECT note_id.id AS note_id, reaction FROM note_reaction
             WHERE actor_id = type::record('user', $actor_id)
-              AND note_id IN $note_ids;
+              AND <string> note_id IN $note_ids;
             ",
         )
         .bind(("actor_id", actor_id.to_string()))
