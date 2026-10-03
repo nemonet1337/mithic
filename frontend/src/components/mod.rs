@@ -3,6 +3,7 @@ mod compose;
 mod confirm_dialog;
 mod deck;
 mod follow_button;
+mod image_viewer;
 mod load_more;
 mod markdown;
 mod note_menu;

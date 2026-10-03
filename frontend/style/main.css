@@ -414,6 +414,18 @@ html.dark[data-accent="violet"] {
       grid-template-columns: 1fr 1fr 1fr;
     }
   }
+  .wf-collapse > summary {
+    @apply cursor-pointer list-none select-none;
+  }
+  .wf-collapse > summary::-webkit-details-marker {
+    display: none;
+  }
+  .wf-collapse > summary::after {
+    content: " ▼";
+  }
+  .wf-collapse[open] > summary::after {
+    content: " ▲";
+  }
   .wf-spread {
     @apply flex items-center justify-between gap-2;
   }

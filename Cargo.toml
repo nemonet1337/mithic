@@ -54,7 +54,7 @@ dotenvy = "0.15"
 # Auth
 jsonwebtoken = { version = "11", features = ["rust_crypto"] }
 argon2 = { version = "0.6", features = ["rand_core"] }
-rand = "0.10"
+rand = "0.8"
 totp-rs = { version = "6", features = ["gen_secret", "otpauth"] }
 
 regex = "1"

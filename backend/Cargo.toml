@@ -52,9 +52,9 @@ apalis-redis = { workspace = true }
 mimalloc = { workspace = true }
 fluent = { workspace = true }
 unic-langid = { workspace = true }
-# rsa 0.9 の鍵生成が rand 0.8 を要求する
-rand = "0.10"
+# rsa 0.9 の鍵生成が rand_core 0.6 (rand 0.8) の RNG を要求する
+rand = "0.8"
 dashmap = "6"
 
 [dev-dependencies]
-rand = "0.10"
+rand = "0.8"

@@ -5,6 +5,7 @@ use leptos_router::components::A;
 
 use super::avatar::{Avatar, AvatarSize};
 use super::confirm_dialog::ConfirmDialog;
+use super::image_viewer::ImageViewer;
 use super::markdown::MarkdownText;
 use super::note_menu::{NoteMenu, NoteMenuAction};
 use super::reaction_picker::ReactionPicker;
@@ -237,17 +238,41 @@ fn MediaThumbs(attachments: Vec<MediaAttachment>) -> impl IntoView {
         3 => "wf-grid-3",
         _ => "wf-grid-4",
     };
+    let opened = RwSignal::new(None::<usize>);
+    let index = RwSignal::new(0usize);
+    let open = Callback::new(move |i: usize| {
+        index.set(i);
+        opened.set(Some(i));
+    });
+    let close = Callback::new(move |()| opened.set(None));
+    let thumbs: Vec<MediaAttachment> = attachments.into_iter().take(4).collect();
+    let originals = thumbs.clone();
     view! {
         <div class=format!("wf-media {}", grid)>
-            {attachments.into_iter().take(4).map(|att| {
+            {thumbs.into_iter().enumerate().map(|(i, att)| {
                 let url = att.preview_url.clone().unwrap_or_else(|| att.url.clone());
                 let alt = att.alt.clone().unwrap_or_default();
+                let viewable = !att.url.is_empty();
                 view! {
-                    <div class="wf-thumb aspect-video">
+                    <div
+                        class="wf-thumb aspect-video"
+                        on:click=move |_| {
+                            if viewable {
+                                open.run(i);
+                            }
+                        }
+                    >
                         <img src=url alt=alt loading="lazy" />
                     </div>
                 }
             }).collect_view()}
+            <Show when=move || opened.get().is_some()>
+                <ImageViewer
+                    images=originals.clone()
+                    index=index
+                    on_close=close
+                />
+            </Show>
         </div>
     }
 }

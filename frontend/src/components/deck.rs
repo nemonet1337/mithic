@@ -255,6 +255,15 @@ pub fn NotificationsColumn() -> impl IntoView {
                 children=move |notification: Notification| {
                     let sender = notification.sender.clone();
                     let note = notification.note.clone();
+                    // リノート通知は通知ノート（ラッパ）の本文が空なので元ノートにフォールバックする
+                    let quote: Option<String> = note.as_ref().and_then(|n| {
+                        let text = if n.content.trim().is_empty() {
+                            n.renote.as_ref().map(|r| r.content.clone()).unwrap_or_default()
+                        } else {
+                            n.content.clone()
+                        };
+                        (!text.trim().is_empty()).then_some(text)
+                    });
                     let unread_class = if notification.is_read { "wf-notif" } else { "wf-notif unread" };
                     let kind_label = notif_label(&notification);
                     let when = relative_label(&notification.created_at);
@@ -283,13 +292,13 @@ pub fn NotificationsColumn() -> impl IntoView {
                                     </button>
                                     <span class="wf-notif-time">{when}</span>
                                 </div>
-                                {note.map(|n| view! {
+                                {quote.map(|text| view! {
                                     <button
                                         class="wf-notif-quote"
                                         style="cursor:pointer;text-align:left;width:100%;"
                                         on:click=move |_| open.run(target.get_untracked())
                                         title="会話を開く"
-                                    ><MarkdownText text=n.content /></button>
+                                    ><MarkdownText text=text /></button>
                                 }).into_view()}
                                 <Show when=move || is_request.get() && sender_id.get().is_some()>
                                     <div class="flex gap-2 mt-2">

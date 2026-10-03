@@ -4,6 +4,11 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    ignore:
+      # rsa 0.9 は rand_core 0.6 (= rand 0.8) の RNG を要求する。
+      # 0.9 以降は OsRng/thread_rng が消え、鍵生成と署名がコンパイルできない。
+      - dependency-name: "rand"
+        versions: [">=0.9.0"]
 
   - package-ecosystem: "docker"
     directory: "/"

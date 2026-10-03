@@ -1,4 +1,6 @@
+use icondata as id;
 use leptos::prelude::*;
+use leptos_icons::Icon;
 use leptos_router::components::A;
 use leptos_router::hooks::{use_navigate, use_params_map};
 
@@ -210,6 +212,7 @@ pub fn ProfilePage() -> impl IntoView {
     let params = use_params_map();
     let auth = expect_context::<AuthStore>();
     let token = auth.token;
+    let me = auth.me;
     let handle = move || {
         params
             .read()
@@ -224,6 +227,13 @@ pub fn ProfilePage() -> impl IntoView {
     let is_muted = RwSignal::new(false);
     let follow_busy = RwSignal::new(false);
     let profile_tab = RwSignal::new("notes");
+    let media_menu = RwSignal::new("");
+    let is_self = Signal::derive(move || {
+        me.get()
+            .zip(user.get())
+            .map(|(mine, other)| mine.id == other.id)
+            .unwrap_or(false)
+    });
     let stream = expect_context::<StreamStore>();
 
     // プロフィールと投稿一覧を実 API から取得
@@ -324,10 +334,32 @@ pub fn ProfilePage() -> impl IntoView {
     view! {
         <Shell active="profile">
             <section class="wf-scroll wf-profile-editorial">
-                <div
-                    class="wf-profile-banner"
-                    style=move || user.get().and_then(|u| u.banner_url).map(|url| format!("background-image:url('{url}');background-size:cover;background-position:center;"))
-                />
+                <div class="relative">
+                    <div
+                        class="wf-profile-banner"
+                        style=move || user.get().and_then(|u| u.banner_url).map(|url| format!("background-image:url('{url}');background-size:cover;background-position:center;"))
+                    />
+                    <Show when=move || is_self.get()>
+                        <button
+                            class="absolute inset-0 cursor-pointer border-0 bg-transparent p-0"
+                            aria-label="プロフィール設定"
+                            on:click=move |_| media_menu.set("banner")
+                        />
+                        <Show when=move || media_menu.get() == "banner">
+                            <div class="wf-menu-scrim" on:click=move |_| media_menu.set("") />
+                            <div class="wf-pop wf-nav-pop wf-nav-pop-end" role="menu">
+                                <A
+                                    href="/settings/プロフィール"
+                                    attr:class="wf-pop-item"
+                                    on:click=move |_| media_menu.set("")
+                                >
+                                    <Icon icon=id::FiSettings width="16" height="16" />
+                                    "プロフィール設定へ"
+                                </A>
+                            </div>
+                        </Show>
+                    </Show>
+                </div>
                 <div class="px-6 pt-5 pb-2">
                     <span class="wf-entry-meta">"PROFILE"</span>
                     <div class="flex items-start justify-between gap-4 mt-1">
@@ -341,7 +373,29 @@ pub fn ProfilePage() -> impl IntoView {
                                 {move || user.get().filter(|u| u.is_cat).map(|_| view! { <span class="wf-pill on">"cat"</span> })}
                             </div>
                         </div>
-                        {move || user.get().map(|u| view! { <Avatar user=u size=AvatarSize::Xl /> })}
+                        <div class="relative">
+                            {move || user.get().map(|u| view! { <Avatar user=u size=AvatarSize::Xl /> })}
+                            <Show when=move || is_self.get()>
+                                <button
+                                    class="absolute inset-0 cursor-pointer rounded-full border-0 bg-transparent p-0 hover:outline hover:outline-[1.5px] hover:outline-offset-1 hover:outline-accent"
+                                    aria-label="プロフィール設定"
+                                    on:click=move |_| media_menu.set("avatar")
+                                />
+                                <Show when=move || media_menu.get() == "avatar">
+                                    <div class="wf-menu-scrim" on:click=move |_| media_menu.set("") />
+                                    <div class="wf-pop wf-nav-pop wf-nav-pop-end" role="menu">
+                                        <A
+                                            href="/settings/プロフィール"
+                                            attr:class="wf-pop-item"
+                                            on:click=move |_| media_menu.set("")
+                                        >
+                                            <Icon icon=id::FiSettings width="16" height="16" />
+                                            "プロフィール設定へ"
+                                        </A>
+                                    </div>
+                                </Show>
+                            </Show>
+                        </div>
                     </div>
                     <div class="flex flex-wrap items-center gap-2 mt-3">
                         <Show when=move || auth.me.get().zip(user.get()).map(|(me, u)| me.id != u.id).unwrap_or(false)>
@@ -376,8 +430,8 @@ pub fn ProfilePage() -> impl IntoView {
                             <span class="wf-entry-meta">"BIO"</span>
                             <p class="text-sm mt-2 leading-relaxed">{move || user.get().and_then(|u| u.bio).unwrap_or_default()}</p>
                         </div>
-                        <div>
-                            <span class="wf-entry-meta">"追加情報"</span>
+                        <details class="wf-collapse">
+                            <summary class="wf-entry-meta">"追加情報"</summary>
                             <div class="flex flex-col gap-1 mt-2">
                                 {move || {
                                     let fields = user.get().map(|u| u.fields).unwrap_or_default();
@@ -395,7 +449,7 @@ pub fn ProfilePage() -> impl IntoView {
                                     }
                                 }}
                             </div>
-                        </div>
+                        </details>
                         <div>
                             <span class="wf-entry-meta">"指標"</span>
                             <div class="flex flex-col gap-1 mt-2 text-sm">

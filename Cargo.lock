@@ -3911,7 +3911,7 @@ dependencies = [
  "jsonwebtoken 11.1.0",
  "mimalloc",
  "object_store 0.14.2",
- "rand 0.10.3",
+ "rand 0.8.8",
  "redis 1.7.1",
  "regex",
  "reqwest 0.13.5",
