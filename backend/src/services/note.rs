@@ -164,18 +164,17 @@ pub async fn create_note_service(
 /// 返信・メンション通知をバックグラウンドで生成する
 async fn spawn_note_notifications(state: AppState, author: Actor, created: Note, dto: NoteDto) {
     // 返信通知
-    if let Some(reply_id) = created.reply_id {
-        if let Ok(Some(parent)) = get_note_by_id(state.surreal(), &reply_id).await {
-            if parent.actor_id != author.id {
-                let notif = Notification::new(
-                    NotificationType::Reply,
-                    parent.actor_id,
-                    Some(author.id),
-                    Some(created.id),
-                );
-                publish_notification(&state, &notif, Some(&author), Some(dto.clone())).await;
-            }
-        }
+    if let Some(reply_id) = created.reply_id
+        && let Ok(Some(parent)) = get_note_by_id(state.surreal(), &reply_id).await
+        && parent.actor_id != author.id
+    {
+        let notif = Notification::new(
+            NotificationType::Reply,
+            parent.actor_id,
+            Some(author.id),
+            Some(created.id),
+        );
+        publish_notification(&state, &notif, Some(&author), Some(dto.clone())).await;
     }
 
     // メンション通知: ユニーク username を一括解決
@@ -461,17 +460,14 @@ pub async fn deliver_reaction(
 
     tokio::spawn(async move {
         // リモート著者の inbox へ直接
-        if let Ok(Some(author)) = get_actor_by_id(&surreal, &note_author_id).await {
-            if author.host.is_some() {
-                if let Some(inbox) = author.shared_inbox.or(author.inbox) {
-                    if let Err(e) = federation
-                        .queue_delivery(activity.clone(), vec![inbox])
-                        .await
-                    {
-                        tracing::warn!("Failed to queue reaction to author: {e}");
-                    }
-                }
-            }
+        if let Ok(Some(author)) = get_actor_by_id(&surreal, &note_author_id).await
+            && author.host.is_some()
+            && let Some(inbox) = author.shared_inbox.or(author.inbox)
+            && let Err(e) = federation
+                .queue_delivery(activity.clone(), vec![inbox])
+                .await
+        {
+            tracing::warn!("Failed to queue reaction to author: {e}");
         }
         // フォロワー配信
         if let Err(e) = federation

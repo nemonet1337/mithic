@@ -6,7 +6,7 @@ use wasm_bindgen::JsCast;
 use web_sys::HtmlInputElement;
 
 use crate::api::users::UpdateProfileRequest;
-use crate::components::{Avatar, AvatarSize, Shell, ToastKind, ToastStore};
+use crate::components::{Avatar, AvatarSize, ConfirmDialog, Shell, ToastKind, ToastStore};
 use crate::store::AuthStore;
 use shared::{ProfileField, User};
 
@@ -297,27 +297,74 @@ fn PasswordSection() -> impl IntoView {
     let toast = expect_context::<ToastStore>();
     let current = RwSignal::new(String::new());
     let next = RwSignal::new(String::new());
+    let confirm = RwSignal::new(String::new());
     let busy = RwSignal::new(false);
+    let ask = RwSignal::new(false);
+    let error = RwSignal::<Option<String>>::new(None);
+
+    let submit = move |_: ()| {
+        ask.set(false);
+        let Some(tok) = auth.token.get_untracked() else {
+            return;
+        };
+        let cur = current.get_untracked();
+        let newp = next.get_untracked();
+        if newp != confirm.get_untracked() {
+            error.set(Some("新しいパスワードが一致しません".into()));
+            return;
+        }
+        if newp == cur {
+            error.set(Some("現在のパスワードと同じものは使えません".into()));
+            return;
+        }
+        error.set(None);
+        busy.set(true);
+        let toast = toast;
+        wasm_bindgen_futures::spawn_local(async move {
+            match crate::api::users::change_password(&tok, &cur, &newp).await {
+                Ok(()) => toast.push("パスワードを変更しました", ToastKind::Success),
+                Err(e) => toast.push(e.user_message(), ToastKind::Error),
+            }
+            busy.set(false);
+        });
+    };
+
     view! {
-        <span class="wf-entry-meta">"アカウント / パスワード"</span>
-        <h1 class="wf-title mt-1 mb-6">"パスワード変更"</h1>
-        <div class="flex flex-col gap-3 max-w-md">
-            <input class="wf-input" type="password" placeholder="現在のパスワード" prop:value=move || current.get() on:input=move |e| current.set(event_target_value(&e)) />
-            <input class="wf-input" type="password" placeholder="新しいパスワード" prop:value=move || next.get() on:input=move |e| next.set(event_target_value(&e)) />
-            <button class="wf-btn wf-btn-primary" disabled=move || busy.get() on:click=move |_| {
-                let Some(tok) = auth.token.get_untracked() else { return };
-                busy.set(true);
-                let cur = current.get_untracked();
-                let newp = next.get_untracked();
-                wasm_bindgen_futures::spawn_local(async move {
-                    match crate::api::users::change_password(&tok, &cur, &newp).await {
-                        Ok(()) => toast.push("パスワードを変更しました", ToastKind::Success),
-                        Err(e) => toast.push(e.user_message(), ToastKind::Error),
-                    }
-                    busy.set(false);
-                });
-            }>"変更する"</button>
-        </div>
+                <span class="wf-entry-meta">"アカウント / パスワード"</span>
+                <h1 class="wf-title mt-1 mb-6">"パスワード変更"</h1>
+                <div class="flex flex-col gap-3 max-w-md">
+        <input class="wf-input" type="password" placeholder="現在のパスワード" prop:value=move || current.get() on:input=move |e| current.set(event_target_value(&e)) />
+                    <input class="wf-input" type="password" placeholder="新しいパスワード（8文字以上）" prop:value=move || next.get() on:input=move |e| next.set(event_target_value(&e)) />
+                    <input class="wf-input" type="password" placeholder="新しいパスワード（確認）" prop:value=move || confirm.get() on:input=move |e| confirm.set(event_target_value(&e)) />
+                    <Show when=move || error.get().is_some()>
+                        <p class="wf-alert error">{move || error.get().unwrap_or_default()}</p>
+                    </Show>
+                    <button class="wf-btn wf-btn-primary" disabled=move || busy.get() on:click=move |_| ask.set(true)>
+                        {move || if busy.get() { "変更中…" } else { "変更する" }}
+                    </button>
+                </div>
+    <PasswordConfirm open=ask on_submit=Callback::new(submit) on_close=Callback::new(move |()| ask.set(false)) />
+        }
+}
+
+#[component]
+fn PasswordConfirm(
+    open: RwSignal<bool>,
+    on_submit: Callback<()>,
+    on_close: Callback<()>,
+) -> impl IntoView {
+    view! {
+        <ConfirmDialog
+            is_open=open
+            title="パスワードを変更しますか？"
+            body="変更後は新しいパスワードでログインする必要があります。"
+            preview_meta="新しいパスワード"
+            preview="••••••••"
+            confirm_label="変更する"
+            danger=true
+            on_confirm=on_submit
+            on_close=on_close
+        />
     }
 }
 
@@ -341,6 +388,33 @@ fn PrivacySection() -> impl IntoView {
             }
             if let Ok(list) = crate::api::users::list_mutes(&tok).await {
                 mutes.set(list);
+            }
+        });
+    });
+
+    // 解除用のハンドラ（ブロック / ミュートで共通）
+    let release = Callback::new(move |(id, muted): (String, bool)| {
+        let Some(tok) = auth.token.get_untracked() else {
+            return;
+        };
+        let toast = toast;
+        wasm_bindgen_futures::spawn_local(async move {
+            let result = if muted {
+                crate::api::users::unmute(&tok, &id).await
+            } else {
+                crate::api::users::unblock(&tok, &id).await
+            };
+            match result {
+                Ok(_) => {
+                    if muted {
+                        mutes.update(|list| list.retain(|u| u.id != id));
+                        toast.push("ミュートを解除しました", ToastKind::Success);
+                    } else {
+                        blocks.update(|list| list.retain(|u| u.id != id));
+                        toast.push("ブロックを解除しました", ToastKind::Success);
+                    }
+                }
+                Err(e) => toast.push(e.user_message(), ToastKind::Error),
             }
         });
     });
@@ -371,9 +445,21 @@ fn PrivacySection() -> impl IntoView {
                 {move || {
                     let list = blocks.get();
                     if list.is_empty() {
-                        view! { <p class="wf-entry-meta mt-2">"まだいません"</p> }.into_any()
+                        view! { <p class="wf-entry-meta mt-2">"まだありません"</p> }.into_any()
                     } else {
-                        list.into_iter().map(|u| view! { <div class="text-sm mt-1">{u.handle()}</div> }).collect_view().into_any()
+                        list.into_iter().map(|u| {
+                            let id = u.id.clone();
+                            let handle = u.handle();
+                            let drop = release;
+                            view! {
+                                <div class="wf-spread text-sm mt-1">
+                                    <span>{handle}</span>
+                                    <button class="wf-btn wf-btn-ghost wf-btn-sm" on:click=move |_| drop.run((id.clone(), false))>
+                                        "解除"
+                                    </button>
+                                </div>
+                            }
+                        }).collect_view().into_any()
                     }
                 }}
             </div>
@@ -382,9 +468,21 @@ fn PrivacySection() -> impl IntoView {
                 {move || {
                     let list = mutes.get();
                     if list.is_empty() {
-                        view! { <p class="wf-entry-meta mt-2">"まだいません"</p> }.into_any()
+                        view! { <p class="wf-entry-meta mt-2">"まだありません"</p> }.into_any()
                     } else {
-                        list.into_iter().map(|u| view! { <div class="text-sm mt-1">{u.handle()}</div> }).collect_view().into_any()
+                        list.into_iter().map(|u| {
+                            let id = u.id.clone();
+                            let handle = u.handle();
+                            let drop = release;
+                            view! {
+                                <div class="wf-spread text-sm mt-1">
+                                    <span>{handle}</span>
+                                    <button class="wf-btn wf-btn-ghost wf-btn-sm" on:click=move |_| drop.run((id.clone(), true))>
+                                        "解除"
+                                    </button>
+                                </div>
+                            }
+                        }).collect_view().into_any()
                     }
                 }}
             </div>

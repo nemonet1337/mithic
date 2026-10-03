@@ -29,12 +29,11 @@ fn client_key(request: &Request, trust_proxy: bool) -> String {
             .headers()
             .get("x-forwarded-for")
             .and_then(|v| v.to_str().ok())
+            && let Some(first) = xff.split(',').next()
         {
-            if let Some(first) = xff.split(',').next() {
-                let ip = first.trim();
-                if !ip.is_empty() {
-                    return ip.to_string();
-                }
+            let ip = first.trim();
+            if !ip.is_empty() {
+                return ip.to_string();
             }
         }
         if let Some(real_ip) = request

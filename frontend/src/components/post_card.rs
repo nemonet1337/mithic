@@ -120,7 +120,7 @@ pub fn PostCard(note: Note, #[prop(default = false)] flat: bool) -> impl IntoVie
                     };
                     wasm_bindgen_futures::spawn_local(async move {
                         match crate::api::users::mute(&tok, &target_user_id).await {
-                            Ok(()) => toast.push("ミュートしました", ToastKind::Success),
+                            Ok(_) => toast.push("ミュートしました", ToastKind::Success),
                             Err(e) => toast.push(e.message, ToastKind::Error),
                         }
                     });
@@ -132,7 +132,7 @@ pub fn PostCard(note: Note, #[prop(default = false)] flat: bool) -> impl IntoVie
                     };
                     wasm_bindgen_futures::spawn_local(async move {
                         match crate::api::users::block(&tok, &target_user_id).await {
-                            Ok(()) => toast.push("ブロックしました", ToastKind::Success),
+                            Ok(_) => toast.push("ブロックしました", ToastKind::Success),
                             Err(e) => toast.push(e.message, ToastKind::Error),
                         }
                     });

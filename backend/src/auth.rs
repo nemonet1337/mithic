@@ -99,8 +99,10 @@ pub fn generate_jwt(user_id: &str, jwt_secret: &str, expiry_hours: i64) -> Resul
 }
 
 pub fn verify_jwt(token: &str, jwt_secret: &str) -> Result<Claims> {
-    let mut validation = Validation::default();
-    validation.validate_exp = true;
+    let mut validation = Validation {
+        validate_exp: true,
+        ..Default::default()
+    };
     validation.set_required_spec_claims(&["exp", "sub"]);
 
     let token_data = decode::<Claims>(

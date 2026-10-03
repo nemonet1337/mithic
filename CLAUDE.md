@@ -19,7 +19,7 @@
 ### フロントエンド
 
 - **言語**: Rust (edition 2024)
-- **フレームワーク**: Leptos 0.7
+- **フレームワーク**: Leptos 0.8
 - **ビルドツール**: Trunk 0.21
 - **スタイリング**: Tailwind CSS 4.x (Trunk standalone CLI, `Trunk.toml` で `tailwindcss = "4.x"`)
 - **状態管理**: Leptos Signals (組み込み)

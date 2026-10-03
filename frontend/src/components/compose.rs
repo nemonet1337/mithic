@@ -132,20 +132,17 @@ pub fn ComposeModal() -> impl IntoView {
     };
 
     let can_submit = move || {
-        !busy.get()
-            && !upload_busy.get()
-            && remaining.get() >= 0
-            && {
-                let poll_n = compose
-                    .poll_choices
-                    .get()
-                    .iter()
-                    .filter(|s| !s.trim().is_empty())
-                    .count();
-                !compose.draft.get().trim().is_empty()
-                    || !compose.file_ids.get().is_empty()
-                    || poll_n >= 2
-            }
+        !busy.get() && !upload_busy.get() && remaining.get() >= 0 && {
+            let poll_n = compose
+                .poll_choices
+                .get()
+                .iter()
+                .filter(|s| !s.trim().is_empty())
+                .count();
+            !compose.draft.get().trim().is_empty()
+                || !compose.file_ids.get().is_empty()
+                || poll_n >= 2
+        }
     };
 
     view! {

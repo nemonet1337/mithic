@@ -3,8 +3,8 @@ use leptos_router::components::A;
 use leptos_router::hooks::{use_navigate, use_params_map};
 
 use crate::components::{
-    Avatar, AvatarSize, FollowButton, NotificationsColumn, PostCard, SearchColumn, Shell, TimelineColumn,
-    TimelineKind, ToastKind, ToastStore, TopBar,
+    Avatar, AvatarSize, ConfirmDialog, FollowButton, NotificationsColumn, PostCard, SearchColumn,
+    Shell, TimelineColumn, TimelineKind, ToastKind, ToastStore, TopBar,
 };
 use crate::store::{AuthStore, StreamStore};
 use shared::{Note, User};
@@ -48,6 +48,7 @@ pub fn StatusDetailPage() -> impl IntoView {
     let auth = expect_context::<AuthStore>();
     let stream = expect_context::<StreamStore>();
     let note = RwSignal::<Option<Note>>::new(None);
+    let ancestors = RwSignal::<Vec<Note>>::new(Vec::new());
     let replies = RwSignal::<Vec<Note>>::new(Vec::new());
     let error = RwSignal::<Option<String>>::new(None);
     let loading = RwSignal::new(true);
@@ -69,6 +70,7 @@ pub fn StatusDetailPage() -> impl IntoView {
         wasm_bindgen_futures::spawn_local(async move {
             match crate::api::notes::fetch_note(&tok, &id).await {
                 Ok(n) => {
+                    ancestors.set(Vec::new());
                     note.set(Some(n));
                     match crate::api::notes::fetch_replies(&tok, &id).await {
                         Ok(r) => replies.set(r),
@@ -80,6 +82,34 @@ pub fn StatusDetailPage() -> impl IntoView {
             loading.set(false);
         });
     });
+
+    // reply_id を辿って親を遡り、会話の流れを上で見せる
+    Effect::new(move |_| {
+        let Some(current) = note.get() else {
+            return;
+        };
+        let Some(parent_id) = current.reply_id.clone() else {
+            return;
+        };
+        wasm_bindgen_futures::spawn_local(async move {
+            let Some(tok) = auth.token.get() else {
+                return;
+            };
+            let Ok(parent) = crate::api::notes::fetch_note(&tok, &parent_id).await else {
+                return;
+            };
+            let mut chain = Vec::new();
+            if let Some(grand) = parent.reply_id.clone()
+                && let Ok(grandparent) = crate::api::notes::fetch_note(&tok, &grand).await
+            {
+                chain.push(grandparent);
+            }
+            chain.push(parent);
+            ancestors.set(chain);
+        });
+    });
+
+    let has_ancestors = Signal::derive(move || !ancestors.get().is_empty());
 
     view! {
         <Shell active="home">
@@ -113,6 +143,15 @@ pub fn StatusDetailPage() -> impl IntoView {
                     view! {
                         <div class="wf-detail-split">
                             <div class="flex flex-col gap-3">
+                                <Show when=move || has_ancestors.get()>
+                                    <span class="wf-entry-meta">"[ 会話 / CONTEXT ]"</span>
+                                    <For
+                                        each=move || ancestors.get()
+                                        key=|n| n.id.clone()
+                                        children=|n| view! { <PostCard note=n /> }
+                                    />
+                                    <hr class="wf-rule" />
+                                </Show>
                                 <PostCard note=current.clone() />
                                 <span class="wf-entry-meta">"[ 返信 / REPLIES ]"</span>
                                 <Show when=move || replies.get().is_empty()>
@@ -180,6 +219,9 @@ pub fn ProfilePage() -> impl IntoView {
     let user = RwSignal::<Option<User>>::new(None);
     let notes = RwSignal::<Vec<Note>>::new(vec![]);
     let is_following = RwSignal::new(false);
+    let is_follow_requested = RwSignal::new(false);
+    let is_blocking = RwSignal::new(false);
+    let is_muted = RwSignal::new(false);
     let follow_busy = RwSignal::new(false);
     let profile_tab = RwSignal::new("notes");
     let stream = expect_context::<StreamStore>();
@@ -190,7 +232,16 @@ pub fn ProfilePage() -> impl IntoView {
         if let Some(tok) = token.get() {
             wasm_bindgen_futures::spawn_local(async move {
                 match crate::api::users::fetch_user(&tok, &username).await {
-                    Ok(fetched) => user.set(Some(fetched)),
+                    Ok(fetched) => {
+                        let id = fetched.id.clone();
+                        user.set(Some(fetched));
+                        if let Ok(rel) = crate::api::users::fetch_relation(&tok, &id).await {
+                            is_following.set(rel.is_following);
+                            is_follow_requested.set(rel.is_follow_requested);
+                            is_blocking.set(rel.is_blocking);
+                            is_muted.set(rel.is_muted);
+                        }
+                    }
                     Err(e) => web_sys::console::error_1(&e.to_string().into()),
                 }
                 match crate::api::users::fetch_user_notes(&tok, &username).await {
@@ -210,13 +261,14 @@ pub fn ProfilePage() -> impl IntoView {
             return;
         };
         follow_busy.set(true);
-        let currently = is_following.get_untracked();
+        let currently = is_following.get_untracked() || is_follow_requested.get_untracked();
         let toast = toast;
         wasm_bindgen_futures::spawn_local(async move {
             if currently {
                 match crate::api::users::unfollow(&tok, &target.id).await {
                     Ok(()) => {
                         is_following.set(false);
+                        is_follow_requested.set(false);
                         toast.push("フォローを解除しました", ToastKind::Success);
                     }
                     Err(e) => toast.push(e.user_message(), ToastKind::Error),
@@ -224,8 +276,11 @@ pub fn ProfilePage() -> impl IntoView {
             } else {
                 match crate::api::users::follow(&tok, &target.id).await {
                     Ok(res) => {
-                        is_following.set(true);
-                        if let Some(msg) = res.followed_message.filter(|m| !m.is_empty()) {
+                        is_following.set(!res.is_pending);
+                        is_follow_requested.set(res.is_pending);
+                        if res.is_pending {
+                            toast.push("フォローリクエストを送信しました", ToastKind::Info);
+                        } else if let Some(msg) = res.followed_message.filter(|m| !m.is_empty()) {
                             toast.push(msg, ToastKind::Info);
                         } else {
                             toast.push("フォローしました", ToastKind::Success);
@@ -235,6 +290,34 @@ pub fn ProfilePage() -> impl IntoView {
                 }
             }
             follow_busy.set(false);
+        });
+    });
+
+    // ブロック / ミュートは確認ダイアログ経由
+    let relation_action = RwSignal::new("");
+    let run_relation_action = Callback::new(move |action: &'static str| {
+        let (Some(tok), Some(target)) = (token.get_untracked(), user.get_untracked()) else {
+            return;
+        };
+        let toast = toast;
+        wasm_bindgen_futures::spawn_local(async move {
+            let result = match action {
+                "block" => crate::api::users::block(&tok, &target.id).await,
+                "unblock" => crate::api::users::unblock(&tok, &target.id).await,
+                "mute" => crate::api::users::mute(&tok, &target.id).await,
+                _ => crate::api::users::unmute(&tok, &target.id).await,
+            };
+            match result {
+                Ok(rel) => {
+                    is_blocking.set(rel.is_blocking);
+                    is_muted.set(rel.is_muted);
+                    toast.push(
+                        action_label(action, rel.is_blocking, rel.is_muted),
+                        ToastKind::Success,
+                    );
+                }
+                Err(e) => toast.push(e.user_message(), ToastKind::Error),
+            }
         });
     });
 
@@ -260,13 +343,32 @@ pub fn ProfilePage() -> impl IntoView {
                         </div>
                         {move || user.get().map(|u| view! { <Avatar user=u size=AvatarSize::Xl /> })}
                     </div>
-                    <div class="flex items-center gap-2 mt-3">
+                    <div class="flex flex-wrap items-center gap-2 mt-3">
                         <Show when=move || auth.me.get().zip(user.get()).map(|(me, u)| me.id != u.id).unwrap_or(false)>
                             <FollowButton
                                 is_following=is_following
                                 is_pending=follow_busy
+                                is_requested=is_follow_requested
                                 on_toggle=toggle_follow
                             />
+                            <button
+                                class="wf-btn wf-btn-ghost wf-btn-sm"
+                                on:click={
+                                    let action = relation_action;
+                                    move |_| action.set(if is_blocking.get_untracked() { "unblock" } else { "block" })
+                                }
+                            >
+                                {move || if is_blocking.get() { "ブロック解除" } else { "ブロック" }}
+                            </button>
+                            <button
+                                class="wf-btn wf-btn-ghost wf-btn-sm"
+                                on:click={
+                                    let action = relation_action;
+                                    move |_| action.set(if is_muted.get_untracked() { "unmute" } else { "mute" })
+                                }
+                            >
+                                {move || if is_muted.get() { "ミュート解除" } else { "ミュート" }}
+                            </button>
                         </Show>
                     </div>
                     <div class="wf-profile-grid">
@@ -372,7 +474,85 @@ pub fn ProfilePage() -> impl IntoView {
                     }}
                 </div>
             </section>
+            <ConfirmDialog
+                is_open=Signal::derive(move || relation_action.get() != "")
+                title=Signal::derive(move || action_title(relation_action.get()))
+                body=Signal::derive(move || action_body(relation_action.get()))
+                preview_meta="対象アカウント"
+                preview=Signal::derive(move || user.get().map(|u| u.handle()).unwrap_or_default())
+                confirm_label=Signal::derive(move || action_confirm_label(relation_action.get()))
+                danger=Signal::derive(move || matches!(relation_action.get(), "block" | "unblock"))
+                on_confirm=Callback::new({
+                    let run = run_relation_action;
+                    move |()| run.run(leak_action(relation_action.get()))
+                })
+                on_close=Callback::new({
+                    let action = relation_action;
+                    move |()| action.set("")
+                })
+            />
         </Shell>
+    }
+}
+
+fn leak_action(action: &str) -> &'static str {
+    match action {
+        "block" => "block",
+        "unblock" => "unblock",
+        "mute" => "mute",
+        _ => "unmute",
+    }
+}
+
+fn action_title(action: &str) -> String {
+    match action {
+        "block" => "ブロックしますか？".into(),
+        "unblock" => "ブロックを解除しますか？".into(),
+        "mute" => "ミュートしますか？".into(),
+        "unmute" => "ミュートを解除しますか？".into(),
+        _ => String::new(),
+    }
+}
+
+fn action_body(action: &str) -> String {
+    match action {
+        "block" => {
+            "ブロックすると、このアカウントの投稿はタイムラインに表示されなくなります。".into()
+        }
+        "unblock" => "ブロックを解除すると、このアカウントの投稿が再び表示されます。".into(),
+        "mute" => "ミュートすると、タイムラインに表示されなくなります（通知は届きます）。".into(),
+        "unmute" => "ミュートを解除すると、タイムラインに再び表示されます。".into(),
+        _ => String::new(),
+    }
+}
+
+fn action_confirm_label(action: &str) -> String {
+    match action {
+        "block" => "ブロックする",
+        "unblock" => "解除する",
+        "mute" => "ミュートする",
+        "unmute" => "解除する",
+        _ => "実行する",
+    }
+    .into()
+}
+
+fn action_label(action: &str, blocking: bool, muted: bool) -> String {
+    match action {
+        "block" | "unblock" => {
+            if blocking {
+                "ブロックしました".into()
+            } else {
+                "ブロックを解除しました".into()
+            }
+        }
+        _ => {
+            if muted {
+                "ミュートしました".into()
+            } else {
+                "ミュートを解除しました".into()
+            }
+        }
     }
 }
 
@@ -590,6 +770,12 @@ pub fn SignupPage() -> impl IntoView {
 
     // ハンドル可用性チェック (簡易デバウンス)
     // 入力は `@user` でも可。API 失敗時は None のまま（ローカル検証ではブロックしない）
+    // 送信後にページを離れることがあるので、非リアクティブなフラグで破棄を検知する
+    let disposed = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    {
+        let flag = disposed.clone();
+        on_cleanup(move || flag.store(true, std::sync::atomic::Ordering::Relaxed));
+    }
     Effect::new(move |_| {
         let raw = signup_handle.get();
         let h = raw.trim().trim_start_matches('@').to_string();
@@ -597,8 +783,12 @@ pub fn SignupPage() -> impl IntoView {
             handle_available.set(None);
             return;
         }
+        let disposed = disposed.clone();
         wasm_bindgen_futures::spawn_local(async move {
             gloo_timers::future::sleep(std::time::Duration::from_millis(500)).await;
+            if disposed.load(std::sync::atomic::Ordering::Relaxed) {
+                return;
+            }
             let current = signup_handle
                 .get_untracked()
                 .trim()

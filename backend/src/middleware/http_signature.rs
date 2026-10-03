@@ -213,12 +213,12 @@ async fn fetch_actor_public_key(state: &AppState, key_id: &str) -> Result<String
     let actor_data: serde_json::Value = serde_json::from_slice(&body)
         .map_err(|e| AppError::Internal(format!("Failed to parse actor JSON: {e}")))?;
 
-    if let Some(id) = actor_data.get("id").and_then(|v| v.as_str()) {
-        if id != actor_url {
-            return Err(AppError::Internal(format!(
-                "Actor id mismatch: expected {actor_url}, got {id}"
-            )));
-        }
+    if let Some(id) = actor_data.get("id").and_then(|v| v.as_str())
+        && id != actor_url
+    {
+        return Err(AppError::Internal(format!(
+            "Actor id mismatch: expected {actor_url}, got {id}"
+        )));
     }
 
     let public_key_pem = actor_data

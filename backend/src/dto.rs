@@ -120,13 +120,13 @@ pub async fn notes_to_dtos(
             let mut dto = note_to_dto(&row.note, actor_to_user(&row.author));
             dto.attachments = attachments_for(&row.note.file_ids, &files);
             dto.poll = polls.get(&dto.id).cloned();
-            if let Some(rid) = row.note.renote_id {
-                if let Some(target) = renote_map.get(&rid.to_string()) {
-                    let mut nested = note_to_dto(&target.note, actor_to_user(&target.author));
-                    nested.attachments = attachments_for(&target.note.file_ids, &files);
-                    nested.poll = polls.get(&nested.id).cloned();
-                    dto.renote = Some(Box::new(nested));
-                }
+            if let Some(rid) = row.note.renote_id
+                && let Some(target) = renote_map.get(&rid.to_string())
+            {
+                let mut nested = note_to_dto(&target.note, actor_to_user(&target.author));
+                nested.attachments = attachments_for(&target.note.file_ids, &files);
+                nested.poll = polls.get(&nested.id).cloned();
+                dto.renote = Some(Box::new(nested));
             }
             if let Some(emoji) = mine.get(&dto.id) {
                 apply_my_reactions(&mut dto.reactions, Some(emoji));
@@ -232,11 +232,9 @@ pub async fn note_to_dto_full(state: &AppState, note: &Note, author: User) -> No
 }
 
 fn record_tail(v: &serde_json::Value) -> Option<String> {
-    let s = v.as_str().or_else(|| {
-        v.get("id")
-            .or_else(|| v.get("tb"))
-            .and_then(|x| x.as_str())
-    })?;
+    let s = v
+        .as_str()
+        .or_else(|| v.get("id").or_else(|| v.get("tb")).and_then(|x| x.as_str()))?;
     Some(s.rsplit(':').next().unwrap_or(s).to_string())
 }
 
@@ -295,18 +293,22 @@ async fn load_polls(
                 poll_id,
                 Poll {
                     choices,
-                    multiple: json.get("multiple").and_then(|v| v.as_bool()).unwrap_or(false),
+                    multiple: json
+                        .get("multiple")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false),
                 },
             ),
         );
     }
-    if let Some(vid) = viewer_id {
-        if !by_note.is_empty() {
-            let poll_records: Vec<String> = by_note
-                .values()
-                .map(|(id, _)| format!("poll:{id}"))
-                .collect();
-            if let Ok(mut vote_res) = state
+    if let Some(vid) = viewer_id
+        && !by_note.is_empty()
+    {
+        let poll_records: Vec<String> = by_note
+            .values()
+            .map(|(id, _)| format!("poll:{id}"))
+            .collect();
+        if let Ok(mut vote_res) = state
                 .surreal()
                 .query(
                     "SELECT poll_id, choice_index FROM poll_vote WHERE actor_id = type::record('user', $actor) AND <string> poll_id IN $polls;",
@@ -331,14 +333,15 @@ async fn load_polls(
                     voted.insert(pid, idx as usize);
                 }
                 for (poll_id, poll) in by_note.values_mut() {
-                    if let Some(idx) = voted.get(poll_id) {
-                        if let Some(choice) = poll.choices.get_mut(*idx) {
+                    if let Some(idx) = voted.get(poll_id)
+                        && let Some(choice) = poll.choices.get_mut(*idx) {
                             choice.voted_by_me = true;
                         }
-                    }
                 }
             }
-        }
     }
-    by_note.into_iter().map(|(nid, (_, poll))| (nid, poll)).collect()
+    by_note
+        .into_iter()
+        .map(|(nid, (_, poll))| (nid, poll))
+        .collect()
 }

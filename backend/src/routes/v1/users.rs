@@ -158,6 +158,12 @@ pub async fn change_password(
         ));
     }
 
+    if request.new_password == request.current_password {
+        return Err(AppError::Validation(
+            "New password must be different from the current one".to_string(),
+        ));
+    }
+
     let new_hash = hash_password(&request.new_password)?;
     state
         .surreal()
@@ -343,8 +349,8 @@ pub async fn follow_user(
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
+    let accepted = !target.is_locked;
     if existing != Some(true) {
-        let accepted = !target.is_locked;
         follow(state.surreal(), &auth.user_id, &target_id, accepted)
             .await
             .map_err(|e| AppError::Internal(e.to_string()))?;
@@ -367,7 +373,7 @@ pub async fn follow_user(
 
     Ok(Json(serde_json::json!({
         "followedMessage": target.followed_message,
-        "isPending": existing == Some(false),
+        "isPending": existing != Some(true) && !accepted,
     })))
 }
 
@@ -633,8 +639,8 @@ pub async fn list_follow_requests(
         .surreal()
         .query(
             "
-            SELECT out.* AS actor FROM follow
-            WHERE in = type::record('user', $user) AND is_accepted = false;
+            SELECT in.* AS actor FROM follow
+            WHERE out = type::record('user', $user) AND is_accepted = false;
             ",
         )
         .bind(("user", auth.user_id.to_string()))
@@ -668,9 +674,11 @@ pub async fn accept_follow_request(
         .query(
             "
             UPDATE follow SET is_accepted = true
-            WHERE in = type::record('user', $me) AND out = type::record('user', $target);
+            WHERE in = type::record('user', $target) AND out = type::record('user', $me);
             UPDATE user SET following_count = <int>(following_count OR 0) + 1
             WHERE id = type::record('user', $target);
+            UPDATE user SET followers_count = <int>(followers_count OR 0) + 1
+            WHERE id = type::record('user', $me);
             ",
         )
         .bind(("me", auth.user_id.to_string()))
@@ -700,8 +708,8 @@ pub async fn reject_follow_request(
         .query(
             "
             DELETE follow
-            WHERE in = type::record('user', $me)
-              AND out = type::record('user', $target)
+            WHERE in = type::record('user', $target)
+              AND out = type::record('user', $me)
               AND is_accepted = false;
             ",
         )

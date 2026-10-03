@@ -8,6 +8,7 @@ use super::avatar::{Avatar, AvatarSize};
 use super::load_more::LoadMore;
 use super::markdown::MarkdownText;
 use super::post_card::PostCard;
+use super::toast::{ToastKind, ToastStore};
 use crate::store::{AuthStore, NotificationStore, StreamStore};
 use crate::time::relative_label;
 use shared::{Note, Notification, NotificationType, User};
@@ -138,7 +139,9 @@ pub fn TimelineColumn(kind: TimelineKind) -> impl IntoView {
 pub fn NotificationsColumn() -> impl IntoView {
     let notification_store = expect_context::<NotificationStore>();
     let auth = expect_context::<AuthStore>();
+    let toast = expect_context::<ToastStore>();
     let token = auth.token;
+    let navigate = use_navigate();
     let notifications = RwSignal::<Vec<Notification>>::new(vec![]);
     let filter = RwSignal::new("all");
 
@@ -161,7 +164,10 @@ pub fn NotificationsColumn() -> impl IntoView {
             .filter(|n| match f {
                 "mention" => n.notification_type == NotificationType::Reply,
                 "reaction" => n.notification_type == NotificationType::Reaction,
-                "follow" => n.notification_type == NotificationType::Follow,
+                "follow" => matches!(
+                    n.notification_type,
+                    NotificationType::Follow | NotificationType::FollowRequest
+                ),
                 _ => true,
             })
             .collect::<Vec<_>>()
@@ -178,6 +184,40 @@ pub fn NotificationsColumn() -> impl IntoView {
             });
         }
     };
+
+    let resolve_request = Callback::new(move |(id, accept): (String, bool)| {
+        let Some(tok) = token.get_untracked() else {
+            return;
+        };
+        notifications.update(|items| items.retain(|n| n.id != id));
+        let toast = toast;
+        wasm_bindgen_futures::spawn_local(async move {
+            let result = if accept {
+                crate::api::users::accept_follow_request(&tok, &id)
+                    .await
+                    .map(|_| ())
+            } else {
+                crate::api::users::reject_follow_request(&tok, &id).await
+            };
+            match result {
+                Ok(()) => toast.push(
+                    if accept {
+                        "フォローを受け入れました"
+                    } else {
+                        "リクエストを拒否しました"
+                    },
+                    ToastKind::Success,
+                ),
+                Err(e) => toast.push(e.user_message(), ToastKind::Error),
+            }
+        });
+    });
+
+    let open = Callback::new(move |id: Option<String>| {
+        if let Some(id) = id {
+            navigate(&format!("/notes/{id}"), Default::default());
+        }
+    });
 
     view! {
         <div class="wf-scroll">
@@ -212,23 +252,59 @@ pub fn NotificationsColumn() -> impl IntoView {
             <For
                 each=filtered
                 key=|n| n.id.clone()
-                children=|notification| {
+                children=move |notification: Notification| {
                     let sender = notification.sender.clone();
                     let note = notification.note.clone();
                     let unread_class = if notification.is_read { "wf-notif" } else { "wf-notif unread" };
                     let kind_label = notif_label(&notification);
                     let when = relative_label(&notification.created_at);
+                    let target = RwSignal::new(
+                        notification
+                            .note
+                            .as_ref()
+                            .map(|n| n.id.clone())
+                            .or_else(|| notification.sender.as_ref().map(|u| u.id.clone())),
+                    );
+                    let is_request =
+                        RwSignal::new(notification.notification_type == NotificationType::FollowRequest);
+                    let sender_id = RwSignal::new(notification.sender.as_ref().map(|u| u.id.clone()));
                     view! {
                         <article class=unread_class>
                             {sender.map(|user| view! { <Avatar user=user size=AvatarSize::Sm /> }).into_view()}
                             <div class="wf-notif-text">
                                 <div class="wf-notif-row">
-                                    <span class="who">{kind_label}</span>
+                                    <button
+                                        class="who"
+                                        style="cursor:pointer;text-align:left;"
+                                        on:click=move |_| open.run(target.get_untracked())
+                                        title="会話を開く"
+                                    >
+                                        {kind_label}
+                                    </button>
                                     <span class="wf-notif-time">{when}</span>
                                 </div>
                                 {note.map(|n| view! {
-                                    <blockquote class="wf-notif-quote"><MarkdownText text=n.content /></blockquote>
+                                    <button
+                                        class="wf-notif-quote"
+                                        style="cursor:pointer;text-align:left;width:100%;"
+                                        on:click=move |_| open.run(target.get_untracked())
+                                        title="会話を開く"
+                                    ><MarkdownText text=n.content /></button>
                                 }).into_view()}
+                                <Show when=move || is_request.get() && sender_id.get().is_some()>
+                                    <div class="flex gap-2 mt-2">
+                                        <button class="wf-btn wf-btn-primary wf-btn-sm" on:click=move |_| {
+                                            if let Some(id) = sender_id.get_untracked() {
+                                                resolve_request.run((id, true));
+                                            }
+                                        }>"承認"</button>
+                                        <button class="wf-btn wf-btn-ghost wf-btn-sm" on:click=move |_| {
+                                            if let Some(id) = sender_id.get_untracked() {
+                                                resolve_request.run((id, false));
+                                            }
+                                        }>"拒否"</button>
+                                    </div>
+                                </Show>
                             </div>
                         </article>
                     }
@@ -260,8 +336,10 @@ fn notif_label(notification: &Notification) -> String {
         NotificationType::Renote => format!("{who} がリノートしました"),
         NotificationType::Mention => format!("{who} がメンションしました"),
         NotificationType::Quote => format!("{who} が引用しました"),
-        NotificationType::FollowRequest => format!("{who} がフォローリクエスト"),
-        NotificationType::FollowRequestAccepted => format!("{who} がリクエストを承認"),
+        NotificationType::FollowRequest => format!("{who} がフォローをリクエストしました"),
+        NotificationType::FollowRequestAccepted => {
+            format!("{who} がフォローリクエストを承認しました")
+        }
         NotificationType::PollEnded => "アンケートが終了しました".into(),
         NotificationType::UserSignup => format!("{who} が登録しました"),
     }
@@ -305,7 +383,8 @@ pub fn SearchColumn() -> impl IntoView {
         searched.set(true);
         wasm_bindgen_futures::spawn_local(async move {
             if !tag_val.is_empty() {
-                match crate::api::notes::fetch_hashtag_timeline(tok.as_deref(), &tag_val, 30).await {
+                match crate::api::notes::fetch_hashtag_timeline(tok.as_deref(), &tag_val, 30).await
+                {
                     Ok(list) => {
                         notes.set(list);
                         users.set(Vec::new());

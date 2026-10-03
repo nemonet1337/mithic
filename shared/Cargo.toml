@@ -12,4 +12,4 @@ serde.workspace = true
 serde_json.workspace = true
 ulid.workspace = true
 # default features pull syntect-onig (onig_sys / C), which cannot build for wasm32.
-comrak = { version = "0.54", default-features = false }
+comrak = { version = "0.55", default-features = false }

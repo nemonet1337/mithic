@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use super::client::{ApiError, request, urlencoding_loose};
 pub use shared::UpdateProfileRequest;
-use shared::{Note, User};
+use shared::{Note, User, UserRelation};
 
 #[derive(Debug, Deserialize)]
 pub struct HandleAvailability {
@@ -38,6 +38,19 @@ pub async fn check_handle(username: &str) -> Result<HandleAvailability, ApiError
 pub struct FollowResponse {
     #[serde(default)]
     pub followed_message: Option<String>,
+    /// 承認制アカウントへのフォローは承認待ちになる
+    #[serde(default)]
+    pub is_pending: bool,
+}
+
+pub async fn fetch_relation(token: &str, user_id: &str) -> Result<UserRelation, ApiError> {
+    request::<UserRelation, ()>(
+        "GET",
+        &format!("users/{user_id}/relation"),
+        Some(token),
+        None,
+    )
+    .await
 }
 
 pub async fn follow(token: &str, user_id: &str) -> Result<FollowResponse, ApiError> {
@@ -50,16 +63,53 @@ pub async fn follow(token: &str, user_id: &str) -> Result<FollowResponse, ApiErr
     .await
 }
 
-pub async fn block(token: &str, user_id: &str) -> Result<(), ApiError> {
-    request::<serde_json::Value, ()>("POST", &format!("users/{user_id}/block"), Some(token), None)
-        .await
-        .map(|_| ())
+pub async fn block(token: &str, user_id: &str) -> Result<UserRelation, ApiError> {
+    request::<UserRelation, ()>("POST", &format!("users/{user_id}/block"), Some(token), None).await
 }
 
-pub async fn mute(token: &str, user_id: &str) -> Result<(), ApiError> {
-    request::<serde_json::Value, ()>("POST", &format!("users/{user_id}/mute"), Some(token), None)
-        .await
-        .map(|_| ())
+pub async fn unblock(token: &str, user_id: &str) -> Result<UserRelation, ApiError> {
+    request::<UserRelation, ()>(
+        "DELETE",
+        &format!("users/{user_id}/block"),
+        Some(token),
+        None,
+    )
+    .await
+}
+
+pub async fn mute(token: &str, user_id: &str) -> Result<UserRelation, ApiError> {
+    request::<UserRelation, ()>("POST", &format!("users/{user_id}/mute"), Some(token), None).await
+}
+
+pub async fn unmute(token: &str, user_id: &str) -> Result<UserRelation, ApiError> {
+    request::<UserRelation, ()>(
+        "DELETE",
+        &format!("users/{user_id}/mute"),
+        Some(token),
+        None,
+    )
+    .await
+}
+
+pub async fn accept_follow_request(token: &str, user_id: &str) -> Result<UserRelation, ApiError> {
+    request::<UserRelation, ()>(
+        "POST",
+        &format!("follow-requests/{user_id}/accept"),
+        Some(token),
+        None,
+    )
+    .await
+}
+
+pub async fn reject_follow_request(token: &str, user_id: &str) -> Result<(), ApiError> {
+    request::<serde_json::Value, ()>(
+        "DELETE",
+        &format!("follow-requests/{user_id}"),
+        Some(token),
+        None,
+    )
+    .await
+    .map(|_| ())
 }
 
 pub async fn list_blocks(token: &str) -> Result<Vec<User>, ApiError> {

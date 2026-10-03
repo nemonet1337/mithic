@@ -5,6 +5,7 @@ use leptos_router::components::A;
 use leptos_router::hooks::use_navigate;
 
 use super::avatar::{Avatar, AvatarSize};
+use super::confirm_dialog::ConfirmDialog;
 use crate::store::{AuthStore, ComposeStore, NotificationStore};
 use shared::User;
 
@@ -36,6 +37,40 @@ fn clear_session(auth: &AuthStore) {
 }
 
 #[component]
+fn LogoutButton(#[prop(into)] class: String) -> impl IntoView {
+    let auth = expect_context::<AuthStore>();
+    let me = auth.me;
+    let navigate = use_navigate();
+    let confirm = RwSignal::new(false);
+
+    let logout = move |_: ()| {
+        confirm.set(false);
+        clear_session(&auth);
+        navigate("/login", Default::default());
+    };
+
+    view! {
+        <>
+            <button class=class on:click=move |_| confirm.set(true)>
+                <Icon icon=id::FiLogOut width="16" height="16" />
+                "ログアウト"
+            </button>
+            <ConfirmDialog
+                is_open=confirm
+                title="ログアウトしますか？"
+                body="保存されていない下書きは破棄されます。再度ログインが必要です。"
+                preview_meta="アカウント"
+                preview=Signal::derive(move || me.get().map(|u| u.handle()).unwrap_or_default())
+                confirm_label="ログアウト"
+                danger=true
+                on_confirm=Callback::new(logout)
+                on_close=Callback::new(move |()| confirm.set(false))
+            />
+        </>
+    }
+}
+
+#[component]
 pub fn Shell(#[prop(into)] active: String, children: Children) -> impl IntoView {
     view! {
         <div class="app-root wf-shell">
@@ -57,7 +92,6 @@ fn SideNav(#[prop(into)] active: String) -> impl IntoView {
     let notifications = expect_context::<NotificationStore>();
     let auth = expect_context::<AuthStore>();
     let me = auth.me;
-    let navigate = use_navigate();
     let a_home = active.clone();
     let a_local = active.clone();
     let a_global = active.clone();
@@ -125,20 +159,7 @@ fn SideNav(#[prop(into)] active: String) -> impl IntoView {
                     <Icon icon=id::FiSettings width="16" height="16" />
                     "設定"
                 </A>
-                <button
-                    class="wf-side-link wf-side-logout"
-                    on:click={
-                        let auth = auth.clone();
-                        let navigate = navigate.clone();
-                        move |_| {
-                            clear_session(&auth);
-                            navigate("/login", Default::default());
-                        }
-                    }
-                >
-                    <Icon icon=id::FiLogOut width="16" height="16" />
-                    "ログアウト"
-                </button>
+                <LogoutButton class="wf-side-link wf-side-logout" />
             </div>
         </aside>
     }
@@ -148,7 +169,6 @@ fn SideNav(#[prop(into)] active: String) -> impl IntoView {
 fn TopNav() -> impl IntoView {
     let auth = expect_context::<AuthStore>();
     let me = auth.me;
-    let navigate = use_navigate();
     let account_open = RwSignal::new(false);
 
     view! {
@@ -200,21 +220,7 @@ fn TopNav() -> impl IntoView {
                                 "ドライブ"
                             </A>
                             <hr class="wf-rule" />
-                            <button
-                                class="wf-pop-item danger"
-                                on:click={
-                                    let auth = auth.clone();
-                                    let navigate = navigate.clone();
-                                    move |_| {
-                                        account_open.set(false);
-                                        clear_session(&auth);
-                                        navigate("/login", Default::default());
-                                    }
-                                }
-                            >
-                                <Icon icon=id::FiLogOut width="16" height="16" />
-                                "ログアウト"
-                            </button>
+                            <LogoutButton class="wf-pop-item danger" />
                         </div>
                     </Show>
                 </div>

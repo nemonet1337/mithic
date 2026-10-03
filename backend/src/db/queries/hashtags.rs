@@ -35,30 +35,33 @@ pub async fn get_trending_tags(client: &SurrealClient, limit: usize) -> Result<V
     let mut response = client
         .query(
             "
-            SELECT value AS tag, COUNT(*) AS count 
-            FROM note, array::flatten(tags) AS value
-            GROUP BY value
-            ORDER BY count DESC
-            LIMIT $limit;
+            SELECT tags FROM note
+            WHERE array::len(tags) > 0
+            LIMIT 1000;
             ",
         )
-        .bind(("limit", limit))
         .await?;
 
     let rows: Vec<surrealdb::types::Value> = response.take(0)?;
-    Ok(rows
-        .into_iter()
-        .filter_map(|v| {
-            let json = v.into_json_value();
-            let tag = json.get("tag")?.as_str()?.to_string();
-            if tag.is_empty() {
-                return None;
+    let mut counts: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
+    for row in rows {
+        let Some(tags) = row
+            .into_json_value()
+            .get("tags")
+            .and_then(|v| v.as_array())
+            .map(|a| a.to_vec())
+        else {
+            continue;
+        };
+        for tag in tags {
+            if let Some(tag) = tag.as_str().filter(|t| !t.is_empty()) {
+                *counts.entry(tag.to_string()).or_insert(0) += 1;
             }
-            let count = json
-                .get("count")
-                .and_then(|c| c.as_u64().or_else(|| c.as_i64().map(|i| i.max(0) as u64)))
-                .unwrap_or(0);
-            Some((tag, count))
-        })
-        .collect())
+        }
+    }
+
+    let mut list: Vec<(String, u64)> = counts.into_iter().collect();
+    list.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    list.truncate(limit);
+    Ok(list)
 }

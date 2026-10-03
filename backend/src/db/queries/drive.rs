@@ -2,8 +2,17 @@ use crate::db::SurrealClient;
 use crate::models::actor::ActorId;
 use crate::models::file::{DriveFile, FileId, FileType};
 
-fn map_row_to_file(val: serde_json::Value) -> Option<DriveFile> {
-    let id_str = val.get("id")?.as_str()?;
+/// SurrealDB はレコード ID を `table:id` 文字列で返すので ULID 部分だけ取り出す
+fn record_tail(v: &serde_json::Value) -> String {
+    let s = v
+        .as_str()
+        .or_else(|| v.get("id").or_else(|| v.get("tb")).and_then(|x| x.as_str()))
+        .unwrap_or_default();
+    s.rsplit(':').next().unwrap_or(s).to_string()
+}
+
+pub fn map_row_to_file(val: serde_json::Value) -> Option<DriveFile> {
+    let id_str = record_tail(val.get("id")?);
     let id = id_str.parse::<FileId>().ok()?;
     let created_at_str = val.get("created_at")?.as_str()?;
     let created_at = chrono::DateTime::parse_from_rfc3339(created_at_str)
@@ -14,7 +23,7 @@ fn map_row_to_file(val: serde_json::Value) -> Option<DriveFile> {
     let mime_type = val.get("mime_type")?.as_str()?.to_string();
     let size = val.get("size")?.as_i64()?;
 
-    let owner_id_str = val.get("owner_id")?.as_str()?;
+    let owner_id_str = record_tail(val.get("owner_id")?);
     let owner_id = owner_id_str.parse::<ActorId>().ok()?;
 
     let hash = val

@@ -14,6 +14,7 @@ mod toast;
 
 pub use avatar::{Avatar, AvatarSize};
 pub use compose::ComposeModal;
+pub use confirm_dialog::ConfirmDialog;
 pub use deck::{NotificationsColumn, SearchColumn, TimelineColumn, TimelineKind};
 pub use follow_button::FollowButton;
 pub use post_card::PostCard;

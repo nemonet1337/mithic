@@ -1,7 +1,7 @@
 //! Drive files: upload / list / show / delete / from-url
 
 use crate::db::queries::{
-    create_drive_file, delete_drive_file, get_drive_file, get_drive_file_by_hash, rows_to,
+    create_drive_file, delete_drive_file, get_drive_file, get_drive_file_by_hash,
 };
 use crate::models::file::DriveFile;
 use crate::{AppError, AuthUser, Result};
@@ -253,8 +253,11 @@ pub async fn find(
 ) -> Result<Json<Vec<MediaAttachment>>> {
     let limit = request.limit.unwrap_or(10).min(100);
 
-    let mut query =
-        String::from("SELECT * FROM drive_file WHERE user_id = type::record('user', $user_id)");
+    let mut query = String::from(
+        "SELECT id, created_at, name, mime_type, size, user_id.id AS owner_id, \
+         md5 AS hash, url, thumbnail_url FROM drive_file \
+         WHERE user_id = type::record('user', $user_id)",
+    );
     if request.name.is_some() {
         query.push_str(" AND name CONTAINS $name");
     }
@@ -280,7 +283,10 @@ pub async fn find(
     let rows: Vec<surrealdb::types::Value> = response
         .take(0)
         .map_err(|e| AppError::Internal(e.to_string()))?;
-    let files: Vec<DriveFile> = rows_to(rows).map_err(|e| AppError::Internal(e.to_string()))?;
+    let files: Vec<DriveFile> = rows
+        .into_iter()
+        .filter_map(|v| crate::db::queries::map_row_to_file(v.into_json_value()))
+        .collect();
     Ok(Json(files.iter().map(file_to_dto).collect()))
 }
 
@@ -377,7 +383,7 @@ pub async fn serve_upload(
 
     let stream = get_result
         .into_stream()
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()));
+        .map_err(|e| std::io::Error::other(e.to_string()));
     let body = axum::body::Body::from_stream(stream);
 
     let disposition = if is_inline_mime(&mime) {

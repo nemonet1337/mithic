@@ -51,7 +51,10 @@ pub fn DrivePage() -> impl IntoView {
     };
 
     let upload = move |ev: web_sys::Event| {
-        let Some(input) = ev.target().and_then(|t| t.dyn_into::<HtmlInputElement>().ok()) else {
+        let Some(input) = ev
+            .target()
+            .and_then(|t| t.dyn_into::<HtmlInputElement>().ok())
+        else {
             return;
         };
         let Some(list) = input.files() else { return };

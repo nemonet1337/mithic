@@ -1,6 +1,6 @@
 # Mithic TODO
 
-最終更新: 2026-09-23（ノート検索は Dragonfly の global TL キャッシュ優先）
+最終更新: 2026-10-03（報告 11 件の修正: 添付/通知の送信者解決・会話スレッド・承認制フォロー・ブロック/ミュート導線・パスワード変更UI）
 
 凡例:
 
@@ -75,6 +75,14 @@
 - [x] Service Worker: `/api/` は intercept しない（Workbox に載せると login/register が Failed to fetch になる）
 - [x] 起動時は `/users/me` 成功まで未ログイン扱い。失効トークンで TL を叩かない
 - [x] API クライアントは `RequestMode::SameOrigin`（CORS 不一致を Failed to fetch にしない）
+- [x] 添付画像の表示（`drive_file` の `table:id` を ULID に直す）+ ドライブ一覧（`DriveFile` の camelCase 行マッピングを廃止）
+- [x] 通知の送信者名を解決（`get_actors_by_ids` / `get_notes_with_authors_by_ids` の `IN` 比較を `<string>` 化）
+- [x] 返信通知は本文を引用表示し、クリックで会話スレッド（親を遡って表示）へ遷移
+- [x] ログアウト確認ダイアログ
+- [x] パスワード変更: 確認ダイアログ + 新規を2回入力 + 現在パスワードと同じ値は拒否（バックエンド側でも検証）
+- [x] フォロー承認制: `is_locked` なら承認待ちエッジ + FollowRequest 通知、通知から承認/拒否
+- [x] プロフィール訪問時に `/users/{id}/relation` を取得（フォロー状態が画面遷移で消えない）
+- [x] 新規登録のハンドル重複チェックが、送信後のページ破棄でリアクティブ値を触らず panic しない
 
 ---
 
@@ -88,7 +96,7 @@
 | **AP fetch_remote_actor** | 実装あり。コメントに Phase F3 残り | SSRF 統一・キャッシュ・鍵取り回しの整理が甘い可能性 |
 | **ノート作成時の poll** | 作成時に poll テーブルへ書き、`note.poll` を返す。投票は `POST /notes/{id}/vote` | 複数選択・期限は未対応 |
 | **ピン留め** | バックエンド pin/unpin API + メニューから POST | プロフィールでのピン表示・解除 UI は未確認 |
-| **ブロック / ミュート UI** | API + 投稿メニューから実行。設定に一覧 | 一覧からの解除ボタンは未接続 |
+| **ブロック / ミュート UI** | プロフィールページのブロック/ミュートボタン + 確認ダイアログ。設定「プライバシー」に一覧と解除 | ブロックした相手のタイムライン除外（バックエンド側のフィルタ）は未実装 |
 | **ドライブ「添付ノート」** | `GET .../files/{id}/notes` | **常に空配列**（逆引き未実装） |
 | **Admin UI** | ルートはある | 画面は「管理機能は準備中」 |
 | **DM** | **廃止** | ルート・ナビ・画面を削除済み。API も無し |
@@ -135,6 +143,9 @@
 - [x] SurrealDB 3: `user.fields` を `array<object> FLEXIBLE` に修正（`array FLEXIBLE` はパースエラー）
 - [x] Caddy: `:3000` を `http://` + `bind 0.0.0.0` で IPv4 HTTP として listen。`/uploads/*` をバックエンドへ。hashed 以外の JS（`sw.js`）を immutable にしない。静的アセット欠落は SPA フォールバックしない
 - [x] Windows localhost: frontend 公開ポートを dual-stack (`3000:3000`)。`0.0.0.0:3000:3000` だと `[::1]` に出ず Edge/SW が offline.html を出す
+- [x] 依存とツールチェーンの更新（2026-10）: Rust stable 1.99.0、Docker base `rust:1.99-bookworm`、`cargo update`（surrealdb 3.3.0 / reqwest 0.13.5 / axum 0.8.9 など）、comrak 0.55、Tailwind CLI 4.3.3。clippy 1.99 の新 lint（`collapsible_if` の let チェーン化など）にも対応
+- [x] Dependabot を有効化（`package-ecosystem: ""` のテンプレートのまま無効だった）。cargo / docker / github-actions を weekly で追跡
+- [ ] future-incompat 警告が 2 残存: `apalis-redis 0.7.4` と `proc-macro-error2 2.0.1`（推移依存）。上位版が出るまで保留
 
 ---
 
@@ -144,11 +155,13 @@
 
 1. **プロフィールでのピン表示**  
    ピン API はメニューから叩ける。プロフィール先頭への表示が残る。
-2. **Web Push / サムネの手動 E2E**  
+2. **ブロック / ミュートのタイムライン除外**  
+   一覧と解除 UI は揃った。バックエンドで対象ノートを隠すフィルタが未実装。
+3. **Web Push / サムネの手動 E2E**  
    `VAPID_PRIVATE_KEY` 設定 → 設定画面で有効化 → 通知発火。画像 UP → `.thumb` が返るか。
-3. **TOTP**（必要なら）API + 設定 UI。
-4. **ストリームの multi-instance**（スケールするとき）Dragonfly pub/sub 等。
-5. **AP Update/Accept の URI-only object**  
+4. **TOTP**（必要なら）API + 設定 UI。
+5. **ストリームの multi-instance**（スケールするとき）Dragonfly pub/sub 等。
+6. **AP Update/Accept の URI-only object**  
    埋め込み無しの場合は現状スキップ。必要なら fetch を足す。
 
 ---

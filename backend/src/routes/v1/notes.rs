@@ -220,16 +220,15 @@ pub async fn add_reaction_route(
     if emoji.is_empty() {
         return Err(AppError::Validation("Reaction is required".to_string()));
     }
-    if let Ok(Some(author)) = get_actor_by_id(state.surreal(), &note.actor_id).await {
-        if author.reaction_acceptance.as_deref() == Some("likeOnly")
-            && emoji.starts_with(':')
-            && emoji.ends_with(':')
-            && emoji.len() > 2
-        {
-            return Err(AppError::Validation(
-                "This account only accepts likes".to_string(),
-            ));
-        }
+    if let Ok(Some(author)) = get_actor_by_id(state.surreal(), &note.actor_id).await
+        && author.reaction_acceptance.as_deref() == Some("likeOnly")
+        && emoji.starts_with(':')
+        && emoji.ends_with(':')
+        && emoji.len() > 2
+    {
+        return Err(AppError::Validation(
+            "This account only accepts likes".to_string(),
+        ));
     }
 
     let existing = get_reaction_by_actor(
@@ -554,9 +553,8 @@ pub async fn vote_route(
         .bind(("nid", note_id.to_string()))
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
-    let rows: Vec<surrealdb::types::Value> = res
-        .take(0)
-        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let rows: Vec<surrealdb::types::Value> =
+        res.take(0).map_err(|e| AppError::Internal(e.to_string()))?;
     let poll = rows
         .into_iter()
         .next()

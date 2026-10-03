@@ -28,8 +28,9 @@ pub async fn follow_user(
     };
 
     client
-        .query(&format!(
+        .query(format!(
             "
+            DELETE follow WHERE in = type::record('user', $follower) AND out = type::record('user', $followee);
             RELATE (type::record('user', $follower)) -> follow -> (type::record('user', $followee))
             SET created_at = $created_at, is_accepted = $accepted;
             {counts}

@@ -103,7 +103,7 @@ OGP 用に `/notes/{id}` と `/profile/{username}` をボット向けに返す�
 
 **バックエンド** — Rust (edition 2024)、Axum 0.8、Tokio、SurrealDB 3、Dragonfly（Redis 互換）、apalis（配送キュー）。
 
-**フロント** — Leptos 0.7（CSR/WASM）、Trunk 0.21、Tailwind CSS 4（Trunk の standalone CLI、Node.js 不要）、gloo-net（fetch / WebSocket）。状態は Leptos Signals。トークンは LocalStorage。
+**フロント** — Leptos 0.8（CSR/WASM）、Trunk 0.21、Tailwind CSS 4（Trunk の standalone CLI、Node.js 不要）、gloo-net（fetch / WebSocket）。状態は Leptos Signals。トークンは LocalStorage。
 
 **配信** — Docker Compose。Caddy が静的ファイルとリバースプロキシ。本番相当では Nginx でも同じ形にできる。
 

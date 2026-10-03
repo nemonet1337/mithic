@@ -231,19 +231,18 @@ fn build_actor_document(actor: &Actor, instance_url: &str) -> Value {
         "published": actor.created_at.to_rfc3339()
     });
     if let Some(obj) = doc.as_object_mut() {
-        if let Some(ctx) = obj.get_mut("@context").and_then(|c| c.as_array_mut()) {
-            if let Some(ext) = ctx.iter_mut().find(|v| v.is_object()) {
-                if let Some(map) = ext.as_object_mut() {
-                    map.insert("isCat".into(), json!("misskey:isCat"));
-                    map.insert(
-                        "_misskey_followedMessage".into(),
-                        json!("misskey:_misskey_followedMessage"),
-                    );
-                    map.insert("vcard".into(), json!("http://www.w3.org/2006/vcard/ns#"));
-                    map.insert("schema".into(), json!("http://schema.org#"));
-                    map.insert("PropertyValue".into(), json!("schema:PropertyValue"));
-                }
-            }
+        if let Some(ctx) = obj.get_mut("@context").and_then(|c| c.as_array_mut())
+            && let Some(ext) = ctx.iter_mut().find(|v| v.is_object())
+            && let Some(map) = ext.as_object_mut()
+        {
+            map.insert("isCat".into(), json!("misskey:isCat"));
+            map.insert(
+                "_misskey_followedMessage".into(),
+                json!("misskey:_misskey_followedMessage"),
+            );
+            map.insert("vcard".into(), json!("http://www.w3.org/2006/vcard/ns#"));
+            map.insert("schema".into(), json!("http://schema.org#"));
+            map.insert("PropertyValue".into(), json!("schema:PropertyValue"));
         }
         if let Some(url) = &actor.banner_url {
             obj.insert("image".into(), json!({ "type": "Image", "url": url }));
@@ -505,12 +504,12 @@ async fn process_activity(
 /// ローカルノート URI (`{instance}/notes/{id}`) または remote `uri` からノートを解決
 async fn resolve_note(state: &AppState, note_uri: &str) -> Result<Option<Note>> {
     let instance = state.config().instance_url.trim_end_matches('/');
-    if let Some(id_str) = note_uri.strip_prefix(&format!("{instance}/notes/")) {
-        if let Ok(id) = id_str.parse() {
-            return get_note_by_id(state.surreal(), &id)
-                .await
-                .map_err(|e| AppError::Internal(e.to_string()));
-        }
+    if let Some(id_str) = note_uri.strip_prefix(&format!("{instance}/notes/"))
+        && let Ok(id) = id_str.parse()
+    {
+        return get_note_by_id(state.surreal(), &id)
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()));
     }
     get_note_by_uri(state.surreal(), note_uri)
         .await
@@ -713,17 +712,15 @@ async fn handle_create(
         .unwrap_or("Note");
 
     // 投票: name のみの Note (inReplyTo = Question/Note)
-    if object_type == "Note" {
-        if let Some(choice_name) = object.get("name").and_then(|v| v.as_str()) {
-            if object
-                .get("content")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .is_empty()
-            {
-                return handle_poll_vote(state, remote_actor_uri, object, choice_name).await;
-            }
-        }
+    if object_type == "Note"
+        && let Some(choice_name) = object.get("name").and_then(|v| v.as_str())
+        && object
+            .get("content")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .is_empty()
+    {
+        return handle_poll_vote(state, remote_actor_uri, object, choice_name).await;
     }
 
     if object_type == "Question" {
@@ -773,18 +770,18 @@ async fn handle_create(
 
     let mut renote_id = None;
     let mut is_quote = false;
-    if let Some(ref q) = quote_uri {
-        if let Some(n) = resolve_note(state, q).await? {
-            renote_id = Some(n.id);
-            is_quote = content.as_ref().is_some_and(|t| !t.trim().is_empty());
-        }
+    if let Some(ref q) = quote_uri
+        && let Some(n) = resolve_note(state, q).await?
+    {
+        renote_id = Some(n.id);
+        is_quote = content.as_ref().is_some_and(|t| !t.trim().is_empty());
     }
 
     let mut reply_id = None;
-    if let Some(ref r) = reply_uri {
-        if let Some(n) = resolve_note(state, r).await? {
-            reply_id = Some(n.id);
-        }
+    if let Some(ref r) = reply_uri
+        && let Some(n) = resolve_note(state, r).await?
+    {
+        reply_id = Some(n.id);
     }
 
     // 永続化判定: フォロー関係 or ローカルへの reply/quote or メンション
@@ -850,33 +847,30 @@ async fn handle_create(
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
     // 通知
-    if let Some(parent_id) = created.reply_id {
-        if let Ok(Some(parent)) = get_note_by_id(state.surreal(), &parent_id).await {
-            if parent.actor_id != remote_actor.id {
-                let notif = Notification::new(
-                    crate::models::notification::NotificationType::Reply,
-                    parent.actor_id,
-                    Some(remote_actor.id),
-                    Some(created.id),
-                );
-                publish_notification(state, &notif, Some(&remote_actor), None).await;
-            }
-        }
+    if let Some(parent_id) = created.reply_id
+        && let Ok(Some(parent)) = get_note_by_id(state.surreal(), &parent_id).await
+        && parent.actor_id != remote_actor.id
+    {
+        let notif = Notification::new(
+            crate::models::notification::NotificationType::Reply,
+            parent.actor_id,
+            Some(remote_actor.id),
+            Some(created.id),
+        );
+        publish_notification(state, &notif, Some(&remote_actor), None).await;
     }
-    if is_quote {
-        if let Some(qid) = created.renote_id {
-            if let Ok(Some(target)) = get_note_by_id(state.surreal(), &qid).await {
-                if target.actor_id != remote_actor.id {
-                    let notif = Notification::new(
-                        crate::models::notification::NotificationType::Quote,
-                        target.actor_id,
-                        Some(remote_actor.id),
-                        Some(created.id),
-                    );
-                    publish_notification(state, &notif, Some(&remote_actor), None).await;
-                }
-            }
-        }
+    if is_quote
+        && let Some(qid) = created.renote_id
+        && let Ok(Some(target)) = get_note_by_id(state.surreal(), &qid).await
+        && target.actor_id != remote_actor.id
+    {
+        let notif = Notification::new(
+            crate::models::notification::NotificationType::Quote,
+            target.actor_id,
+            Some(remote_actor.id),
+            Some(created.id),
+        );
+        publish_notification(state, &notif, Some(&remote_actor), None).await;
     }
 
     Ok(StatusCode::ACCEPTED)
@@ -903,15 +897,14 @@ async fn handle_announce(
         .map(String::from);
 
     // 重複: 同一 uri の renote があればスキップ
-    if let Some(ref uri) = activity_id {
-        if get_note_by_uri(state.surreal(), uri)
+    if let Some(ref uri) = activity_id
+        && get_note_by_uri(state.surreal(), uri)
             .await
             .ok()
             .flatten()
             .is_some()
-        {
-            return Ok(StatusCode::ACCEPTED);
-        }
+    {
+        return Ok(StatusCode::ACCEPTED);
     }
 
     let mut renote = Note::new(remote_actor.id, None, NoteVisibility::Public);
@@ -1108,13 +1101,26 @@ async fn handle_follow(
     let local_actor = resolve_local_object(state, object_uri).await?;
     let remote_actor = resolve_remote_actor(state, remote_actor_uri).await?;
 
-    follow_user(state.surreal(), &remote_actor.id, &local_actor.id)
+    let accepted = !local_actor.is_locked;
+    follow_user(state.surreal(), &remote_actor.id, &local_actor.id, accepted)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
-    // フォロー通知
-    let notif = Notification::follow(local_actor.id, remote_actor.id);
+    let notif = if accepted {
+        Notification::follow(local_actor.id, remote_actor.id)
+    } else {
+        Notification::new(
+            crate::models::notification::NotificationType::FollowRequest,
+            local_actor.id,
+            Some(remote_actor.id),
+            None,
+        )
+    };
     publish_notification(state, &notif, Some(&remote_actor), None).await;
+
+    if !accepted {
+        return Ok(StatusCode::ACCEPTED);
+    }
 
     // Accept を非同期で返送
     if let Some(inbox) = remote_actor.inbox.clone() {
@@ -1434,11 +1440,10 @@ async fn handle_accept(
     if !is_following(state.surreal(), &local.id, &remote_actor.id)
         .await
         .unwrap_or(false)
+        && let Err(e) = follow_user(state.surreal(), &local.id, &remote_actor.id, false).await
     {
-        if let Err(e) = follow_user(state.surreal(), &local.id, &remote_actor.id).await {
-            warn!("Accept Follow: create follow failed: {e}");
-            return Ok(StatusCode::ACCEPTED);
-        }
+        warn!("Accept Follow: create follow failed: {e}");
+        return Ok(StatusCode::ACCEPTED);
     }
     let _ = state
         .surreal()
@@ -1469,10 +1474,9 @@ async fn handle_reject(
     if is_following(state.surreal(), &local.id, &remote_actor.id)
         .await
         .unwrap_or(false)
+        && let Err(e) = unfollow_user(state.surreal(), &local.id, &remote_actor.id).await
     {
-        if let Err(e) = unfollow_user(state.surreal(), &local.id, &remote_actor.id).await {
-            warn!("Reject Follow: unfollow failed: {e}");
-        }
+        warn!("Reject Follow: unfollow failed: {e}");
     }
     Ok(StatusCode::ACCEPTED)
 }
