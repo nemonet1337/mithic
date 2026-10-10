@@ -58,3 +58,5 @@ dashmap = "6"
 
 [dev-dependencies]
 rand = "0.8"
+
+tempfile = { workspace = true }

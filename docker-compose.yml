@@ -1,105 +1,41 @@
+# Mithic development docker-compose
 name: mithic
 
 services:
-  # ---------------------------------------------------------------------------
-  # Infrastructure
-  # ---------------------------------------------------------------------------
   surrealdb:
-    image: surrealdb/surrealdb:latest
+    image: surrealdb/surrealdb:v3
     container_name: mithic-surrealdb
     restart: unless-stopped
-    user: "0:0"
-    command:
-      - start
-      - --log=info
-      - --bind=0.0.0.0:8000
-      - --user=${SURREALDB_USERNAME:-root}
-      - --pass=${SURREALDB_PASSWORD:-root}
-      - surrealkv:/data/surrealdb
+    command: ['start', '--user', 'root', '--pass', 'root', 'surrealkv:/data']
     volumes:
-      - surrealdb_data:/data/surrealdb
+      - surrealdb_data:/data
     ports:
-      - "8000:8000"
+      - '8000:8000'
     networks:
       - mithic
     healthcheck:
-      test: ["CMD", "/surreal", "is-ready", "--endpoint", "http://localhost:8000"]
+      test: ['CMD', '/surreal', 'version']
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 15s
 
   dragonfly:
-    image: docker.dragonflydb.io/dragonflydb/dragonfly:latest
+    image: docker.dragonflydb.io/dragonflydb/dragonfly
     container_name: mithic-dragonfly
     restart: unless-stopped
-    ulimits:
-      memlock: -1
+    command: ['--maxmemory', '2gb']
     volumes:
       - dragonfly_data:/data
     ports:
-      - "6379:6379"
+      - '6379:6379'
     networks:
       - mithic
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ['CMD-SHELL', 'redis-cli -h 127.0.0.1 -p 6379 ping']
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # ---------------------------------------------------------------------------
-  # RustFS (S3 互換). 通常は起動しない。有効化はこのブロックのコメントを外す。
-  # 結合テストはコンテナを自前で起動する:
-  #   cargo test -p mithic-server --lib rustfs_put_get -- --ignored
-  # バケットは初回だけ作る:
-  #   docker run --rm --network mithic_mithic -e AWS_ACCESS_KEY_ID=mithic -e AWS_SECRET_ACCESS_KEY=mithic-dev-secret -e AWS_DEFAULT_REGION=us-east-1 -e AWS_EC2_METADATA_DISABLED=true amazon/aws-cli s3 mb s3://mithic-media --endpoint-url http://rustfs:9000
-  # ---------------------------------------------------------------------------
-  rustfs:
-    image: rustfs/rustfs:latest
-    container_name: mithic-rustfs
-    restart: unless-stopped
-    command: ["/data"]
-    environment:
-      RUSTFS_ACCESS_KEY: mithic
-      RUSTFS_SECRET_KEY: mithic-dev-secret
-      RUSTFS_ADDRESS: ":9000"
-      RUSTFS_CONSOLE_ADDRESS: ":9001"
-      RUSTFS_CONSOLE_ENABLE: "true"
-    volumes:
-      - rustfs_data:/data
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    networks:
-      - mithic
-
-  rustfs-init:
-    image: amazon/aws-cli
-    restart: "no"
-    networks:
-      - mithic
-    environment:
-      AWS_ACCESS_KEY_ID: mithic
-      AWS_SECRET_ACCESS_KEY: mithic-dev-secret
-      AWS_DEFAULT_REGION: us-east-1
-      AWS_EC2_METADATA_DISABLED: "true"
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - |
-        i=0
-        while [ $$i -lt 30 ]; do
-          aws s3api head-bucket --bucket mithic-media --endpoint-url http://rustfs:9000 && exit 0
-          aws s3 mb s3://mithic-media --endpoint-url http://rustfs:9000 && exit 0
-          i=$$((i+1))
-          sleep 2
-        done
-        exit 1
-    depends_on:
-      - rustfs
-
-  # ---------------------------------------------------------------------------
-  # Application
-  # ---------------------------------------------------------------------------
   backend:
     build:
       context: .
@@ -112,13 +48,8 @@ services:
     environment:
       SURREALDB_ENDPOINT: ws://surrealdb:8000
       DRAGONFLY_URL: redis://dragonfly:6379
-      STORAGE_TYPE: ${STORAGE_TYPE:-s3}
-      LOCAL_STORAGE_PATH: ${LOCAL_STORAGE_PATH:-/app/files}
-      STORAGE_S3_ENDPOINT: ${STORAGE_S3_ENDPOINT:-http://rustfs:9000}
-      STORAGE_S3_BUCKET: ${STORAGE_S3_BUCKET:-mithic-media}
-      STORAGE_S3_ACCESS_KEY: ${STORAGE_S3_ACCESS_KEY:-mithic}
-      STORAGE_S3_SECRET_KEY: ${STORAGE_S3_SECRET_KEY:-mithic-dev-secret}
-      STORAGE_S3_REGION: ${STORAGE_S3_REGION:-us-east-1}
+      STORAGE_S3_ENABLED: ${STORAGE_S3_ENABLED:-false}
+      LOCAL_STORAGE_PATH: \
     volumes:
       - media_files:/app/files
     depends_on:
@@ -126,12 +57,10 @@ services:
         condition: service_healthy
       dragonfly:
         condition: service_healthy
-      rustfs-init:
-        condition: service_completed_successfully
     networks:
       - mithic
     healthcheck:
-      test: ["CMD-SHELL", "curl -fs http://localhost:3000/api/v1/health || exit 1"]
+      test: ['CMD-SHELL', 'curl -fs http://localhost:3000/api/v1/health || exit 1']
       interval: 15s
       timeout: 5s
       retries: 5
@@ -143,37 +72,43 @@ services:
       target: frontend
     container_name: mithic-frontend
     restart: unless-stopped
-    ports:
-      - "80:80"
-      - "3000:3000"
-      - "443:443"
-    volumes:
-      # Apply Caddyfile without rebuilding the WASM image
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
     depends_on:
       backend:
         condition: service_healthy
     networks:
       - mithic
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/v1/health || exit 1"]
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3000/api/v1/health || exit 1']
       interval: 15s
       timeout: 5s
       retries: 5
       start_period: 5s
 
-# -----------------------------------------------------------------------------
-# Volumes
-# -----------------------------------------------------------------------------
+  proxy:
+    build:
+      context: .
+      target: frontend
+    container_name: mithic-proxy
+    restart: unless-stopped
+    depends_on:
+      frontend:
+        condition: service_healthy
+    ports:
+      - '3000:3000'
+    networks:
+      - mithic
+    healthcheck:
+      test: ['CMD', 'curl', '-fs', 'http://127.0.0.1:3000/']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
 volumes:
   surrealdb_data:
   dragonfly_data:
   media_files:
-  rustfs_data:
 
-# -----------------------------------------------------------------------------
-# Networks
-# -----------------------------------------------------------------------------
 networks:
   mithic:
     driver: bridge

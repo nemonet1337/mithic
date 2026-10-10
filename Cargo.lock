@@ -3921,6 +3921,7 @@ dependencies = [
  "sha2 0.11.0",
  "shared",
  "surrealdb",
+ "tempfile",
  "tokio",
  "totp-rs",
  "tower",

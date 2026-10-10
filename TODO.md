@@ -40,7 +40,7 @@
 - [x] タイムライン: home / local / global / hashtag / trending
 - [x] 通知: 一覧・既読
 - [x] ドライブ: アップロード / URL 取込 / 一覧 / 削除 / 配信 (`/uploads/{hash}`)
-- [x] オブジェクトストレージ: `STORAGE_TYPE=local|s3` のみ。互換実装は `s3` + endpoint。`STORAGE_S3_PUBLIC_URL` が空なら `/uploads/{hash}` 経由
+- [x] オブジェクトストレージ: STORAGE_S3_ENABLED の true/false。endpoint で AWS S3 / GCS / Wasabi / R2 / MinIO / RustFS に対応。STORAGE_S3_PUBLIC_URL が空なら /uploads/{hash} 経由で配信
 - [x] 画像サムネイル: WebP 最大 400px → オブジェクト `{hash}.thumb` + `thumbnail_url`
 - [x] インスタンスメタ + 公開絵文字一覧
 - [x] 管理: アカウント停止/解除/削除、リレー CRUD

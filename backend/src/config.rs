@@ -22,7 +22,7 @@ pub struct AppConfig {
     /// 信頼済みリバースプロキシ経由時のみ true。X-Forwarded-For をクライアント IP として使う。
     pub trust_proxy: bool,
 
-    pub storage_type: String,
+    pub s3_enabled: bool,
     pub local_storage_path: String,
     pub storage_s3_endpoint: Option<String>,
     pub storage_s3_bucket: Option<String>,
@@ -59,6 +59,19 @@ impl AppConfig {
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(false);
 
+        let s3_enabled = match env::var("STORAGE_S3_ENABLED") {
+            Ok(v) if !v.trim().is_empty() => parse_bool(&v).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "STORAGE_S3_ENABLED must be a boolean (true/false/1/0/yes/no), got '{v}'"
+                )
+            })?,
+            _ => false,
+        };
+
+        if env::var("STORAGE_TYPE").is_ok() {
+            tracing::warn!("STORAGE_TYPE is no longer used; set STORAGE_S3_ENABLED instead");
+        }
+
         Ok(Self {
             surrealdb_endpoint: env::var("SURREALDB_ENDPOINT")
                 .unwrap_or_else(|_| "ws://localhost:8000".to_string()),
@@ -94,7 +107,7 @@ impl AppConfig {
                 .unwrap_or_else(|_| vec![instance_url.clone()]),
             trust_proxy,
 
-            storage_type: env::var("STORAGE_TYPE").unwrap_or_else(|_| "local".to_string()),
+            s3_enabled,
             local_storage_path: env::var("LOCAL_STORAGE_PATH")
                 .unwrap_or_else(|_| "./files".to_string()),
             storage_s3_endpoint: env::var("STORAGE_S3_ENDPOINT").ok(),
@@ -114,5 +127,39 @@ impl AppConfig {
             vapid_contact: env::var("VAPID_CONTACT")
                 .unwrap_or_else(|_| "mailto:admin@localhost".to_string()),
         })
+    }
+}
+
+fn parse_bool(value: &str) -> Option<bool> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "true" | "1" | "yes" => Some(true),
+        "false" | "0" | "no" => Some(false),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_bool_variants() {
+        assert_eq!(parse_bool("true"), Some(true));
+        assert_eq!(parse_bool("True"), Some(true));
+        assert_eq!(parse_bool("TRUE"), Some(true));
+        assert_eq!(parse_bool("1"), Some(true));
+        assert_eq!(parse_bool("yes"), Some(true));
+        assert_eq!(parse_bool("YES"), Some(true));
+
+        assert_eq!(parse_bool("false"), Some(false));
+        assert_eq!(parse_bool("False"), Some(false));
+        assert_eq!(parse_bool("0"), Some(false));
+        assert_eq!(parse_bool("no"), Some(false));
+        assert_eq!(parse_bool("NO"), Some(false));
+
+        assert_eq!(parse_bool("ture"), None);
+        assert_eq!(parse_bool(""), None);
+        assert_eq!(parse_bool("   "), None);
+        assert_eq!(parse_bool("yep"), None);
     }
 }

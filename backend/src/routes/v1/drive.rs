@@ -65,7 +65,7 @@ fn is_inline_mime(mime: &str) -> bool {
 
 fn public_url(state: &AppState, object_key: &str) -> String {
     let cfg = state.config();
-    let direct = if crate::db::storage::is_s3_storage(&cfg.storage_type) {
+    let direct = if cfg.s3_enabled {
         cfg.storage_s3_public_url.as_deref()
     } else {
         None

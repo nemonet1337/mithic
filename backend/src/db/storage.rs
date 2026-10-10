@@ -15,8 +15,10 @@ fn nonempty(value: &Option<String>) -> Option<&str> {
 
 /// アプリケーション設定に基づき、統一オブジェクトストレージのクライアントを作成する
 pub fn create_storage_client(config: &AppConfig) -> anyhow::Result<Arc<dyn ObjectStore>> {
-    if is_s3_storage(&config.storage_type) {
-        let bucket = nonempty(&config.storage_s3_bucket).unwrap_or("mithic-media");
+    if config.s3_enabled {
+        let bucket = nonempty(&config.storage_s3_bucket).ok_or_else(|| {
+            anyhow::anyhow!("STORAGE_S3_BUCKET is required when STORAGE_S3_ENABLED=true")
+        })?;
         let region = nonempty(&config.storage_s3_region).unwrap_or("us-east-1");
         let mut builder = AmazonS3Builder::new()
             .with_bucket_name(bucket)
@@ -53,16 +55,9 @@ pub fn create_storage_client(config: &AppConfig) -> anyhow::Result<Arc<dyn Objec
         return Ok(Arc::new(store));
     }
 
-    if config.storage_type.trim().eq_ignore_ascii_case("local") {
-        std::fs::create_dir_all(&config.local_storage_path)?;
-        let store = LocalFileSystem::new_with_prefix(&config.local_storage_path)?;
-        return Ok(Arc::new(store));
-    }
-
-    anyhow::bail!(
-        "STORAGE_TYPE must be local or s3, got {}",
-        config.storage_type
-    );
+    std::fs::create_dir_all(&config.local_storage_path)?;
+    let store = LocalFileSystem::new_with_prefix(&config.local_storage_path)?;
+    Ok(Arc::new(store))
 }
 
 #[cfg(test)]
@@ -85,7 +80,7 @@ mod tests {
             server_port: 3000,
             cors_allowed_origins: vec![],
             trust_proxy: false,
-            storage_type: "local".into(),
+            s3_enabled: false,
             local_storage_path: "./files".into(),
             storage_s3_endpoint: None,
             storage_s3_bucket: None,
@@ -96,28 +91,40 @@ mod tests {
             instance_url: "http://localhost:3000".into(),
             instance_name: "Mithic".into(),
             vapid_private_key: None,
-            vapid_contact: "mailto:a@b.c".into(),
+            vapid_contact: "mailto:test@test.local".into(),
         }
     }
 
-    #[test]
-    fn only_s3_uses_s3_client() {
-        assert!(is_s3_storage("s3"));
-        assert!(is_s3_storage("S3"));
-        assert!(!is_s3_storage("local"));
-        assert!(!is_s3_storage("minio"));
-        assert!(!is_s3_storage("rustfs"));
+    #[tokio::test]
+    async fn disabled_uses_local_client() {
         let mut cfg = config();
-        cfg.storage_type = "minio".into();
+        cfg.s3_enabled = false;
+        cfg.storage_s3_bucket = Some("some-bucket".into());
+        let tempdir = tempfile::tempdir().unwrap();
+        cfg.local_storage_path = tempdir.path().to_string_lossy().to_string();
+        let store = create_storage_client(&cfg).unwrap();
+        let path = object_store::path::Path::from("hello.txt");
+        let _ = store.delete(&path).await;
+        store.put(&path, b"mithic".to_vec().into()).await.unwrap();
+        let got = store.get(&path).await.unwrap().bytes().await.unwrap();
+        assert_eq!(&got[..], b"mithic");
+        store.delete(&path).await.unwrap();
+    }
+
+    #[test]
+    fn enabled_requires_bucket() {
+        let mut cfg = config();
+        cfg.s3_enabled = true;
         let err = create_storage_client(&cfg).unwrap_err().to_string();
-        assert!(err.contains("local or s3"), "{err}");
+        assert!(err.contains("STORAGE_S3_BUCKET"), "{err}");
     }
 
     #[test]
     fn custom_endpoint_requires_keys() {
         let mut cfg = config();
-        cfg.storage_type = "s3".into();
+        cfg.s3_enabled = true;
         cfg.storage_s3_endpoint = Some("http://127.0.0.1:9000".into());
+        cfg.storage_s3_bucket = Some("mithic-media".into());
         let err = create_storage_client(&cfg).unwrap_err().to_string();
         assert!(err.contains("STORAGE_S3_ACCESS_KEY"), "{err}");
     }
@@ -125,7 +132,7 @@ mod tests {
     #[test]
     fn custom_endpoint_client_builds_without_connecting() {
         let mut cfg = config();
-        cfg.storage_type = "s3".into();
+        cfg.s3_enabled = true;
         cfg.storage_s3_endpoint = Some("http://127.0.0.1:9000".into());
         cfg.storage_s3_access_key = Some("mithic".into());
         cfg.storage_s3_secret_key = Some("mithic-dev-secret".into());
@@ -238,7 +245,7 @@ mod tests {
         );
 
         let mut cfg = config();
-        cfg.storage_type = "s3".into();
+        cfg.s3_enabled = true;
         cfg.storage_s3_endpoint = Some(format!("http://127.0.0.1:{RUSTFS_PORT}"));
         cfg.storage_s3_bucket = Some(RUSTFS_BUCKET.into());
         cfg.storage_s3_access_key = Some(RUSTFS_ACCESS.into());
