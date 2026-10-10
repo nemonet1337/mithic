@@ -28,31 +28,7 @@ COPY . .
 RUN cargo chef prepare --recipe-path recipe.json
 
 # =============================================================================
-# Stage 3: Pre-compile backend dependencies (cached Docker layer)
-# =============================================================================
-FROM chef AS backend-deps
-COPY --from=planner /app/.cargo .cargo
-COPY --from=planner /app/recipe.json recipe.json
-RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=shared \
-    --mount=type=cache,target=/usr/local/cargo/git,sharing=shared \
-    --mount=type=cache,target=/app/target,sharing=shared \
-    cargo chef cook --release \
-    --package mithic-server \
-    --recipe-path recipe.json
-
-# =============================================================================
-# Stage 4: Build backend binary (HTTP + federation delivery worker)
-# =============================================================================
-FROM backend-deps AS backend-builder
-COPY . .
-RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=shared \
-    --mount=type=cache,target=/usr/local/cargo/git,sharing=shared \
-    --mount=type=cache,target=/app/target,sharing=shared \
-    cargo build --release --package mithic-server && \
-    cp /app/target/release/mithic-server /app/mithic-server
-
-# =============================================================================
-# Stage 5: Pre-compile frontend WASM dependencies
+# Stage 3: Pre-compile frontend WASM dependencies
 # =============================================================================
 FROM chef AS frontend-deps
 RUN rustup target add wasm32-unknown-unknown
@@ -70,7 +46,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=shared \
     --recipe-path recipe.json
 
 # =============================================================================
-# Stage 6: Build frontend WASM with Trunk
+# Stage 4: Build frontend WASM with Trunk
 # Tailwind CSS v4 is built by Trunk's standalone CLI (no Node.js / package.json)
 # =============================================================================
 FROM frontend-deps AS frontend-builder
@@ -83,30 +59,13 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=shared \
     trunk build --release
 
 # =============================================================================
-# Stage 7: Backend runtime image (API + delivery worker in one process)
+# Stage 5: dist — Web サーバーは持たない（compose の frontend サービスが
+# /dist を frontend_dist ボリュームへ同期し、nginx が配信する）
+# NOTE: ビルダーを musl/Alpine にはしない。Trunk の Tailwind CLI は
+#       tailwindcss-linux-x64（glibc 固定）を取得するため musl 上では動かない。
 # =============================================================================
-FROM debian:bookworm-slim AS backend
-# curl はコンテナの healthcheck に必要
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY --from=backend-builder /app/mithic-server /usr/local/bin/
-
-EXPOSE 3000
-ENTRYPOINT ["mithic-server"]
-
-# =============================================================================
-# Stage 8: Frontend — caddy serving WASM dist
-# =============================================================================
-FROM caddy:alpine AS frontend
-COPY --from=frontend-builder /app/frontend/dist /usr/share/caddy
+FROM alpine:3.24 AS dist
 # Flatten public/ into dist root (Trunk nests public/ inside dist/)
-RUN find /usr/share/caddy -mindepth 2 -exec mv -t /usr/share/caddy {} + 2>/dev/null || true
-# Clean up empty public/ directory if it exists
-RUN rm -rf /usr/share/caddy/public
-COPY Caddyfile /etc/caddy/Caddyfile
-EXPOSE 80
-EXPOSE 443
-EXPOSE 3000
+COPY --from=frontend-builder /app/frontend/dist /dist
+RUN find /dist -mindepth 2 -exec mv -t /dist {} + 2>/dev/null || true
+RUN rm -rf /dist/public

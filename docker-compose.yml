@@ -19,19 +19,19 @@ services:
       timeout: 5s
       retries: 5
 
-  dragonfly:
-    image: docker.dragonflydb.io/dragonflydb/dragonfly
-    container_name: mithic-dragonfly
+  redis:
+    image: redis:8-alpine
+    container_name: mithic-redis
     restart: unless-stopped
-    command: ['--maxmemory', '2gb']
+    command: ['redis-server', '--maxmemory', '2gb']
     volumes:
-      - dragonfly_data:/data
+      - redis_data:/data
     ports:
       - '6379:6379'
     networks:
       - mithic
     healthcheck:
-      test: ['CMD-SHELL', 'redis-cli -h 127.0.0.1 -p 6379 ping']
+      test: ['CMD', 'redis-cli', 'ping']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -39,7 +39,7 @@ services:
   backend:
     build:
       context: .
-      target: backend
+      dockerfile: backend/Dockerfile
     container_name: mithic-backend
     restart: unless-stopped
     env_file:
@@ -47,7 +47,7 @@ services:
         required: false
     environment:
       SURREALDB_ENDPOINT: ws://surrealdb:8000
-      DRAGONFLY_URL: redis://dragonfly:6379
+      DRAGONFLY_URL: redis://redis:6379
       STORAGE_S3_ENABLED: ${STORAGE_S3_ENABLED:-false}
       LOCAL_STORAGE_PATH: \
     volumes:
@@ -55,7 +55,7 @@ services:
     depends_on:
       surrealdb:
         condition: service_healthy
-      dragonfly:
+      redis:
         condition: service_healthy
     networks:
       - mithic
@@ -66,39 +66,38 @@ services:
       retries: 5
       start_period: 15s
 
+  # WASM dist をビルドして frontend_dist へ同期するだけ（サーバーは持たない）。
+  # 正常終了するビルドサイドカー。restart は no 必須（unless-stopped だと同期がループする）。
   frontend:
     build:
       context: .
-      target: frontend
-    container_name: mithic-frontend
+      dockerfile: frontend/Dockerfile
+    restart: "no"
+    command: ['sh', '-c', 'rm -rf /out/* && cp -a /dist/. /out/']
+    volumes:
+      - frontend_dist:/out
+    networks:
+      - mithic
+
+  # Static SPA + 逆 proxy（compose で公式イメージを管理。設定は ./nginx.conf を bind mount）
+  proxy:
+    image: nginx:alpine
+    container_name: mithic-proxy
     restart: unless-stopped
     depends_on:
       backend:
         condition: service_healthy
-    networks:
-      - mithic
-    healthcheck:
-      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3000/api/v1/health || exit 1']
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 5s
-
-  proxy:
-    build:
-      context: .
-      target: frontend
-    container_name: mithic-proxy
-    restart: unless-stopped
-    depends_on:
       frontend:
-        condition: service_healthy
+        condition: service_completed_successfully
     ports:
-      - '3000:3000'
+      - '3000:80'   # dual-stack（Edge は localhost を [::1] に解決するため IPv4 限定は不可）
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - frontend_dist:/usr/share/nginx/html:ro
     networks:
       - mithic
     healthcheck:
-      test: ['CMD', 'curl', '-fs', 'http://127.0.0.1:3000/']
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1/']
       interval: 15s
       timeout: 5s
       retries: 5
@@ -106,7 +105,8 @@ services:
 
 volumes:
   surrealdb_data:
-  dragonfly_data:
+  redis_data:
+  frontend_dist:
   media_files:
 
 networks:

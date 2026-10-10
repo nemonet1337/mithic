@@ -143,7 +143,10 @@
 - [x] MSRV / toolchain 文書の実態合わせ（`rust-version` 1.88。jsonwebtoken 11 が要求）
 - [x] ノート検索は Dragonfly の global TL が全件入っているときそこを先に見て、home とキャッシュ外だけ SurrealDB。Meilisearch / Elasticsearch は入れない。
 - [ ] 水平スケール時のストリーム: 現状 process-local broadcast のみ（複数 `mithic-server` では WS が共有されない）
-- [x] Docker: `mithic-server` のコンパイル落ち修正。BuildKit cache を backend/frontend で分離、mold + cargo-chef バイナリ、コンテナ内 LTO オフで再ビルド短縮
+- [x] Docker: `mithic-server` のコンパイル落ち修正。BuildKit cache を backend/frontend で分離、mold + cargo-chef バイナリ、コンテナ内 LTO オフで再ビルド短縮。Dockerfile は `backend/Dockerfile` と `frontend/Dockerfile` に分割（コンテキストはリポジトリルートのまま）
+- [x] Docker: backend を musl/Alpine 化（`rust:1.99-alpine` + `alpine:3.24` 実行時、mold 外し）。frontend はビルダー bookworm 維持（Trunk の Tailwind CLI が glibc 固定）で最終段だけ Alpine の dist 専用に変更
+- [x] Docker: キャッシュ/キューを Dragonfly → Redis 8（`redis:8-alpine`、healthcheck は redis-cli ping）
+- [x] Docker: 逆 proxy を caddy → nginx に変更し compose 管理へ（`nginx:alpine` + `./nginx.conf` bind mount + `frontend_dist` named volume、frontend は dist 同期ビルドサイドカー、重複ビルドを解消）
 - [x] SurrealDB 3: `user.fields` を `array<object> FLEXIBLE` に修正（`array FLEXIBLE` はパースエラー）
 - [x] Caddy: `:3000` を `http://` + `bind 0.0.0.0` で IPv4 HTTP として listen。`/uploads/*` をバックエンドへ。hashed 以外の JS（`sw.js`）を immutable にしない。静的アセット欠落は SPA フォールバックしない
 - [x] Windows localhost: frontend 公開ポートを dual-stack (`3000:3000`)。`0.0.0.0:3000:3000` だと `[::1]` に出ず Edge/SW が offline.html を出す
