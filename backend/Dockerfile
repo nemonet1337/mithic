@@ -8,10 +8,20 @@ FROM rust:1.99-alpine AS chef
 RUN apk add --no-cache build-base pkgconf cmake perl ca-certificates curl
 # ソースから cargo install すると数分かかるので公式バイナリを使う
 # （インストーラーは host target に合う musl バイナリを自動選択する）
+# パイプに流すと curl の失敗が消えて「cargo chef がない」状態で
+# 後続ステージが落ちるので、ファイルに落としてから実行する。
+# GitHub への取得は一時的にタイムアウトすることがあるため
+# connect-timeout + リトライで粘る（初回接続だけ数十秒ハングする）
 RUN curl --proto '=https' --tlsv1.2 -LsSf \
-    https://github.com/LukeMathWalker/cargo-chef/releases/download/v0.1.78/cargo-chef-installer.sh | sh
+        --connect-timeout 30 --retry 8 --retry-all-errors --retry-delay 3 \
+        -o /tmp/cargo-chef-installer.sh \
+        https://github.com/LukeMathWalker/cargo-chef/releases/download/v0.1.78/cargo-chef-installer.sh \
+    && sh /tmp/cargo-chef-installer.sh \
+    && rm -f /tmp/cargo-chef-installer.sh
 ENV CARGO_INCREMENTAL=0
 ENV CARGO_TERM_COLOR=never
+# crates.io への取得も同様に不安定なことがあるため多めにリトライする
+ENV CARGO_NET_RETRY=10
 ENV CARGO_TARGET_DIR=/app/target
 # コンテナ再ビルドでは thin LTO のコストが大きい。opt-level=3 + strip は残す
 ENV CARGO_PROFILE_RELEASE_LTO=false

@@ -11,10 +11,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     xz-utils \
     && rm -rf /var/lib/apt/lists/*
 # ソースから cargo install すると数分かかるので公式バイナリを使う
+# 取得はファイルに落としてから展開する（パイプだと curl の失敗が消える）。
+# GitHub への取得は一時的にタイムアウトすることがあるため
+# connect-timeout + リトライで粘る（初回接続だけ数十秒ハングする）
 RUN curl --proto '=https' --tlsv1.2 -LsSf \
-    https://github.com/LukeMathWalker/cargo-chef/releases/download/v0.1.78/cargo-chef-installer.sh | sh
+        --connect-timeout 30 --retry 8 --retry-all-errors --retry-delay 3 \
+        -o /tmp/cargo-chef-installer.sh \
+        https://github.com/LukeMathWalker/cargo-chef/releases/download/v0.1.78/cargo-chef-installer.sh \
+    && sh /tmp/cargo-chef-installer.sh \
+    && rm -f /tmp/cargo-chef-installer.sh
 ENV CARGO_INCREMENTAL=0
 ENV CARGO_TERM_COLOR=never
+# crates.io への取得も同様に不安定なことがあるため多めにリトライする
+ENV CARGO_NET_RETRY=10
 ENV CARGO_TARGET_DIR=/app/target
 # コンテナ再ビルドでは thin LTO のコストが大きい。opt-level=3 + strip は残す
 ENV CARGO_PROFILE_RELEASE_LTO=false
@@ -33,8 +42,11 @@ RUN cargo chef prepare --recipe-path recipe.json
 FROM chef AS frontend-deps
 RUN rustup target add wasm32-unknown-unknown
 RUN curl -sSLf \
-    https://github.com/trunk-rs/trunk/releases/latest/download/trunk-x86_64-unknown-linux-gnu.tar.gz \
-    | tar -xzf - -C /usr/local/bin
+        --connect-timeout 30 --retry 8 --retry-all-errors --retry-delay 3 \
+        -o /tmp/trunk.tar.gz \
+        https://github.com/trunk-rs/trunk/releases/latest/download/trunk-x86_64-unknown-linux-gnu.tar.gz \
+    && tar -xzf /tmp/trunk.tar.gz -C /usr/local/bin \
+    && rm -f /tmp/trunk.tar.gz
 COPY --from=planner /app/.cargo .cargo
 COPY --from=planner /app/recipe.json recipe.json
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=shared \

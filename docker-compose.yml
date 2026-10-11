@@ -40,6 +40,9 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
+      # Docker の bridge ネットワークから github.com への接続がハング/切断される
+      # 環境があるため、ビルドは host ネットワークで実行する（外部取得の確実性のため）
+      network: host
     container_name: mithic-backend
     restart: unless-stopped
     env_file:
@@ -72,6 +75,7 @@ services:
     build:
       context: .
       dockerfile: frontend/Dockerfile
+      network: host
     restart: "no"
     command: ['sh', '-c', 'rm -rf /out/* && cp -a /dist/. /out/']
     volumes:
