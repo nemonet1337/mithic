@@ -1,6 +1,5 @@
 use crate::auth::{hash_password, verify_password};
-use crate::db::SurrealClient;
-use crate::db::queries::{create_actor, get_actor_by_username, get_actor_by_username_or_email};
+use crate::db::{Db, queries};
 use crate::models::actor::Actor;
 use crate::{AppError, Result};
 use shared::SignupRequest;
@@ -26,12 +25,8 @@ fn generate_keypair() -> Result<(String, String)> {
     Ok((private_pem, public_pem))
 }
 
-pub async fn register_user(
-    surreal: &SurrealClient,
-    request: SignupRequest,
-    instance_url: &str,
-) -> Result<Actor> {
-    if get_actor_by_username(surreal, &request.username)
+pub async fn register_user(db: &Db, request: SignupRequest, instance_url: &str) -> Result<Actor> {
+    if queries::get_actor_by_username(db, &request.username)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?
         .is_some()
@@ -59,19 +54,15 @@ pub async fn register_user(
     actor.inbox = Some(actor.inbox_url(instance_url));
     actor.shared_inbox = Some(format!("{instance_url}/inbox"));
 
-    let created = create_actor(surreal, &actor)
+    let created = queries::create_actor(db, &actor)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
     Ok(created)
 }
 
-pub async fn authenticate_user(
-    surreal: &SurrealClient,
-    username: &str,
-    password: &str,
-) -> Result<Actor> {
-    let actor = get_actor_by_username_or_email(surreal, username)
+pub async fn authenticate_user(db: &Db, username: &str, password: &str) -> Result<Actor> {
+    let actor = queries::get_actor_by_username_or_email(db, username)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?
         .ok_or_else(|| AppError::Unauthorized("Invalid username or password".to_string()))?;

@@ -2,19 +2,39 @@
 name: mithic
 
 services:
-  surrealdb:
-    image: surrealdb/surrealdb:v3
-    container_name: mithic-surrealdb
+  # PostgreSQL 16 + WAL archive。
+  # 冗長構成は primary + WAL archive とし、compose 同一ホスト内に standby は置かない
+  # (ホスト障害に対処できないため)。PITR は pg_wal_archive を別ホストへ退避して
+  # pgBackRest / Barman を組む運用を想定する。
+  db:
+    image: postgres:16-alpine
+    container_name: mithic-db
     restart: unless-stopped
-    command: ['start', '--user', 'root', '--pass', 'root', 'surrealkv:/data']
+    command:
+      - postgres
+      - -c
+      - listen_addresses=*
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_command=test ! -f /var/lib/postgresql/data/pg_wal_archive/%f && cp %p /var/lib/postgresql/data/pg_wal_archive/%f
+      - -c
+      - wal_level=replica
+      - -c
+      - max_wal_senders=10
+    environment:
+      POSTGRES_USER: mithic
+      POSTGRES_PASSWORD: mithic-dev-password
+      POSTGRES_DB: mithic
     volumes:
-      - surrealdb_data:/data
+      - db_data:/var/lib/postgresql/data
+      - pg_wal_archive:/var/lib/postgresql/data/pg_wal_archive
     ports:
-      - '8000:8000'
+      - '5432:5432'   # dual-stack (IPv4 限定だと localhost が [::1] のときに接続拒否になる)
     networks:
       - mithic
     healthcheck:
-      test: ['CMD', '/surreal', 'version']
+      test: ['CMD-SHELL', 'pg_isready -U mithic -d mithic']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -49,14 +69,15 @@ services:
       - path: .env
         required: false
     environment:
-      SURREALDB_ENDPOINT: ws://surrealdb:8000
+      DATABASE_URL: postgres://mithic:mithic-dev-password@db:5432/mithic
+      DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-10}
       REDIS_URL: redis://redis:6379
       STORAGE_S3_ENABLED: ${STORAGE_S3_ENABLED:-false}
       LOCAL_STORAGE_PATH: \
     volumes:
       - media_files:/app/files
     depends_on:
-      surrealdb:
+      db:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -108,7 +129,8 @@ services:
       start_period: 5s
 
 volumes:
-  surrealdb_data:
+  db_data:
+  pg_wal_archive:
   redis_data:
   frontend_dist:
   media_files:

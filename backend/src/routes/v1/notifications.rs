@@ -22,7 +22,7 @@ pub async fn list_notifications(
     Query(paging): Query<PagingQuery>,
 ) -> Result<Json<Vec<NotifDto>>> {
     let limit = paging.limit.unwrap_or(20).min(100);
-    let notifs = get_notifications(state.surreal(), &auth.user_id, limit)
+    let notifs = get_notifications(state.db(), &auth.user_id, limit)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
@@ -30,7 +30,7 @@ pub async fn list_notifications(
         .iter()
         .filter_map(|n| n.sender_id.map(|id| id.to_string()))
         .collect();
-    let senders = get_actors_by_ids(state.surreal(), &sender_ids)
+    let senders = get_actors_by_ids(state.db(), &sender_ids)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
     let sender_map: std::collections::HashMap<_, _> = senders
@@ -42,7 +42,7 @@ pub async fn list_notifications(
         .iter()
         .filter_map(|n| n.note_id.map(|id| id.to_string()))
         .collect();
-    let note_rows = get_notes_with_authors_by_ids(state.surreal(), &note_ids)
+    let note_rows = get_notes_with_authors_by_ids(state.db(), &note_ids)
         .await
         .unwrap_or_default();
     let note_dtos = notes_to_dtos(&state, &note_rows, Some(&auth.user_id.to_string())).await;
@@ -75,7 +75,7 @@ pub async fn read_all_notifications(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthUser>,
 ) -> Result<Json<Value>> {
-    mark_all_notifications_as_read(state.surreal(), &auth.user_id)
+    mark_all_notifications_as_read(state.db(), &auth.user_id)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
     Ok(ok_null())
@@ -86,7 +86,7 @@ pub async fn read_notification(
     Extension(auth): Extension<AuthUser>,
     Path(id): Path<String>,
 ) -> Result<Json<Value>> {
-    mark_notification_as_read(state.surreal(), &id, &auth.user_id)
+    mark_notification_as_read(state.db(), &id, &auth.user_id)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
     Ok(ok_null())

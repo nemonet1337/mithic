@@ -63,12 +63,8 @@ mod tests {
 
     fn config() -> AppConfig {
         AppConfig {
-            surrealdb_endpoint: "ws://localhost:8000".into(),
-            surrealdb_namespace: "mithic".into(),
-            surrealdb_database: "main".into(),
-            surrealdb_username: "root".into(),
-            surrealdb_password: "root".into(),
-            surrealdb_pool_size: 1,
+            database_url: "postgres://localhost:5432/mithic".into(),
+            database_pool_max: 1,
             redis_url: "redis://localhost:6379".into(),
             jwt_secret: "test".into(),
             jwt_expiry_hours: 1,

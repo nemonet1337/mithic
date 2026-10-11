@@ -7,6 +7,39 @@ use super::{actor::ActorId, note::NoteId};
 pub type NotificationId = Ulid;
 pub use shared::NotificationType;
 
+/// TEXT カラム → `NotificationType`。DB には snake_case で保存する。
+pub fn notif_type_str(nt: NotificationType) -> &'static str {
+    match nt {
+        NotificationType::Mention => "mention",
+        NotificationType::Reply => "reply",
+        NotificationType::Renote => "renote",
+        NotificationType::Quote => "quote",
+        NotificationType::Reaction => "reaction",
+        NotificationType::Follow => "follow",
+        NotificationType::FollowRequest => "follow_request",
+        NotificationType::FollowRequestAccepted => "follow_request_accepted",
+        NotificationType::PollEnded => "poll_ended",
+        NotificationType::UserSignup => "user_signup",
+    }
+}
+
+/// TEXT カラム → `NotificationType` (`shared` 型のため `FromStr` は直接 implant できない)
+pub fn notif_type_from_str(s: &str) -> anyhow::Result<NotificationType> {
+    match s {
+        "mention" => Ok(NotificationType::Mention),
+        "reply" => Ok(NotificationType::Reply),
+        "renote" => Ok(NotificationType::Renote),
+        "quote" => Ok(NotificationType::Quote),
+        "reaction" => Ok(NotificationType::Reaction),
+        "follow" => Ok(NotificationType::Follow),
+        "follow_request" => Ok(NotificationType::FollowRequest),
+        "follow_request_accepted" => Ok(NotificationType::FollowRequestAccepted),
+        "poll_ended" => Ok(NotificationType::PollEnded),
+        "user_signup" => Ok(NotificationType::UserSignup),
+        other => Err(anyhow::anyhow!("unknown notification type: {other}")),
+    }
+}
+
 // DB の snake_case フィールドと一致させるため rename しない
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Notification {

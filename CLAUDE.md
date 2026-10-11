@@ -6,7 +6,8 @@
 
 - **言語**: Rust (edition 2024)
 - **Webフレームワーク**: Axum 0.8
-- **データベース**: SurrealDB 3.0
+- **データベース**: PostgreSQL 16 (sqlx 0.8, runtime query_as / migrate!)
+- **マイグレーション**: `backend/migrations/0001_init.sql` を起動時に自動適用
 - **キャッシュ/キュー**: Redis (8)
 - **非同期ランタイム**: Tokio 1.0
 - **認証**: JWT (`jsonwebtoken`) + Argon2 (パスワードハッシュ)
@@ -34,7 +35,7 @@
 
 - **コンテナ**: Docker + Docker Compose
 - **リバースプロキシ**: Nginx
-- **データベース**: SurrealDB (コンテナ)
+- **データベース**: PostgreSQL (コンテナ)
 - **キャッシュ**: Redis (コンテナ)
 
 ## 2. ディレクトリ構成
@@ -63,7 +64,7 @@ mithic/
 │   └── src/
 │       ├── main.rs          # HTTP + 連合配送ワーカー起動
 │       ├── models/          # DB エンティティ
-│       ├── db/              # SurrealDB / Redis / クエリ
+│       ├── db/              # PostgreSQL / Redis / クエリ
 │       ├── federation/      # 配送 + HTTP Signature
 │       ├── routes/          # REST / ActivityPub / OGP
 │       ├── services/
@@ -107,7 +108,7 @@ note.rs, user.rs, push.rs。関係操作は `db/queries/follows.rs` をルート
 
 ### `backend/src/db/` — データベース層 (実装済み)
 
-SurrealDB / Redis クライアントラッパー。クエリモジュール (actors, drive, favorites, follows, hashtags, notes, notifications, polls, timeline 等)。
+PostgreSQL / Redis クライアントラッパー。クエリモジュール (actors, drive, favorites, follows, hashtags, notes, notifications, polls, timeline 等)。
 
 ### `backend/src/federation/` — ActivityPub 配送
 
@@ -164,7 +165,7 @@ auth.rs, compose.rs, notifications.rs, stream.rs, mod.rs で状態管理実装�
 
 ### パフォーマンス対策
 
-- **データベース**: SurrealDB の高パフォーマンスを活用
+- **データベース**: PostgreSQL のインデックス・ILIKE 検索・JSONB を活用
 - **キャッシュ**: Redis による積極的なキャッシュ
 - **非同期処理**: Tokio による完全非同期設計
 - **ストリーミング**: WebSocket によるリアルタイム更新 (gloo-net / tokio-tungstenite)
@@ -190,7 +191,7 @@ auth.rs, compose.rs, notifications.rs, stream.rs, mod.rs で状態管理実装�
 
 ### 責務分離
 
-- **バックエンド** (Axum / SurrealDB):
+- **バックエンド** (Axum / PostgreSQL):
   - データ永続化
   - ビジネスロジック
   - フェデレーション処理

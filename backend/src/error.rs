@@ -14,7 +14,7 @@ pub enum AppError {
     Forbidden(String),
     NotFound(String),
     Validation(String),
-    Database(surrealdb::Error),
+    Database(sqlx::Error),
     Redis(redis::RedisError),
     Internal(String),
 }
@@ -124,8 +124,8 @@ impl std::fmt::Display for AppError {
 
 impl std::error::Error for AppError {}
 
-impl From<surrealdb::Error> for AppError {
-    fn from(e: surrealdb::Error) -> Self {
+impl From<sqlx::Error> for AppError {
+    fn from(e: sqlx::Error) -> Self {
         AppError::Database(e)
     }
 }

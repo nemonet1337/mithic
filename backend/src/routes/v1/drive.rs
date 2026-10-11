@@ -145,7 +145,7 @@ async fn store_file(
         }
     }
 
-    create_drive_file(state.surreal(), &drive_file)
+    create_drive_file(state.db(), &drive_file)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
@@ -205,7 +205,7 @@ pub async fn show(
         .parse::<crate::models::file::FileId>()
         .map_err(|_| AppError::Validation("Invalid file id".to_string()))?;
 
-    let file = get_drive_file(state.surreal(), &file_id)
+    let file = get_drive_file(state.db(), &file_id)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?
         .ok_or_else(|| AppError::NotFound("File not found".to_string()))?;
@@ -222,7 +222,7 @@ pub async fn delete(
         .parse::<crate::models::file::FileId>()
         .map_err(|_| AppError::Validation("Invalid file id".to_string()))?;
 
-    let file = get_drive_file(state.surreal(), &file_id)
+    let file = get_drive_file(state.db(), &file_id)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?
         .ok_or_else(|| AppError::NotFound("File not found".to_string()))?;
@@ -231,7 +231,7 @@ pub async fn delete(
         return Err(AppError::Forbidden("You do not own this file".to_string()));
     }
 
-    delete_drive_file(state.surreal(), &file_id)
+    delete_drive_file(state.db(), &file_id)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
@@ -253,39 +253,31 @@ pub async fn find(
 ) -> Result<Json<Vec<MediaAttachment>>> {
     let limit = request.limit.unwrap_or(10).min(100);
 
-    let mut query = String::from(
-        "SELECT id, created_at, name, mime_type, size, user_id.id AS owner_id, \
-         md5 AS hash, url, thumbnail_url FROM drive_file \
-         WHERE user_id = type::record('user', $user_id)",
+    let mut sql = String::from(
+        "SELECT id, created_at, owner_id, name, mime_type, size, hash, url, thumbnail_url \
+         FROM drive_files WHERE owner_id = $1",
     );
     if request.name.is_some() {
-        query.push_str(" AND name CONTAINS $name");
+        sql.push_str(" AND name ILIKE '%' || $2 || '%'");
     }
     if request.mime_type.is_some() {
-        query.push_str(" AND mime_type CONTAINS $mime");
+        sql.push_str(" AND mime_type ILIKE '%' || $3 || '%'");
     }
-    query.push_str(" ORDER BY created_at DESC LIMIT $limit");
+    sql.push_str(" ORDER BY created_at DESC LIMIT $4");
 
-    let mut q = state
-        .surreal()
-        .query(&query)
-        .bind(("user_id", auth.user_id.to_string()))
-        .bind(("limit", limit));
-
-    if let Some(ref name) = request.name {
-        q = q.bind(("name", name.clone()));
-    }
-    if let Some(ref mime) = request.mime_type {
-        q = q.bind(("mime", mime.clone()));
-    }
-
-    let mut response = q.await.map_err(|e| AppError::Internal(e.to_string()))?;
-    let rows: Vec<surrealdb::types::Value> = response
-        .take(0)
+    // バインド順はプレースホルダ番号と 1 対 1 で対応させる
+    let rows: Vec<crate::db::queries::drive::DriveFileRow> = sqlx::query_as(&sql)
+        .bind(auth.user_id.to_string())
+        .bind(request.name.clone().unwrap_or_default())
+        .bind(request.mime_type.clone().unwrap_or_default())
+        .bind(limit as i64)
+        .fetch_all(state.db())
+        .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
+
     let files: Vec<DriveFile> = rows
         .into_iter()
-        .filter_map(|v| crate::db::queries::map_row_to_file(v.into_json_value()))
+        .filter_map(crate::db::queries::map_row_to_file)
         .collect();
     Ok(Json(files.iter().map(file_to_dto).collect()))
 }
@@ -366,7 +358,7 @@ pub async fn serve_upload(
         "image/webp".to_string()
     } else {
         let base = hash.strip_suffix(".thumb").unwrap_or(&hash);
-        let file_meta = get_drive_file_by_hash(state.surreal(), base)
+        let file_meta = get_drive_file_by_hash(state.db(), base)
             .await
             .map_err(|e| AppError::Internal(e.to_string()))?;
         file_meta

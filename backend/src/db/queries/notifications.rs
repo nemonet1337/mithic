@@ -1,128 +1,112 @@
-use crate::db::SurrealClient;
-use crate::db::queries::rows_to;
+use crate::db::Db;
+use crate::db::queries::actors::parse_actor_id;
 use crate::models::actor::ActorId;
-use crate::models::notification::{Notification, NotificationType};
+use crate::models::notification::{Notification, notif_type_from_str, notif_type_str};
+use chrono::{DateTime, Utc};
+use sqlx::FromRow;
 
-fn notif_type_str(nt: NotificationType) -> &'static str {
-    match nt {
-        NotificationType::Mention => "mention",
-        NotificationType::Reply => "reply",
-        NotificationType::Renote => "renote",
-        NotificationType::Quote => "quote",
-        NotificationType::Reaction => "reaction",
-        NotificationType::Follow => "follow",
-        NotificationType::FollowRequest => "follow_request",
-        NotificationType::FollowRequestAccepted => "follow_request_accepted",
-        NotificationType::PollEnded => "poll_ended",
-        NotificationType::UserSignup => "user_signup",
+#[derive(Debug, FromRow)]
+struct NotificationRow {
+    id: String,
+    created_at: DateTime<Utc>,
+    notification_type: String,
+    user_id: String,
+    notifier_id: Option<String>,
+    note_id: Option<String>,
+    reaction: Option<String>,
+    is_read: bool,
+}
+
+impl TryFrom<NotificationRow> for Notification {
+    type Error = anyhow::Error;
+
+    fn try_from(row: NotificationRow) -> anyhow::Result<Self> {
+        Ok(Notification {
+            id: row
+                .id
+                .parse()
+                .map_err(|e| anyhow::anyhow!("invalid notification id '{}': {e}", row.id))?,
+            created_at: row.created_at,
+            notification_type: notif_type_from_str(&row.notification_type)?,
+            recipient_id: parse_actor_id(&row.user_id)?,
+            sender_id: row.notifier_id.as_deref().map(parse_actor_id).transpose()?,
+            note_id: row
+                .note_id
+                .as_deref()
+                .map(|raw| {
+                    raw.parse()
+                        .map_err(|e| anyhow::anyhow!("invalid note id '{raw}': {e}"))
+                })
+                .transpose()?,
+            reaction: row.reaction,
+            is_read: row.is_read,
+        })
     }
 }
 
-pub async fn create_notification(
-    client: &SurrealClient,
-    notif: &Notification,
-) -> anyhow::Result<()> {
-    let id_str = notif.id.to_string();
-    let recipient_str = notif.recipient_id.to_string();
-    let sender_str = notif.sender_id.map(|id| id.to_string());
-    let note_str = notif.note_id.map(|id| id.to_string());
-    let type_str = notif_type_str(notif.notification_type);
-
-    client
-        .query(
-            "
-            INSERT INTO notification {
-                id: $id,
-                created_at: $created_at,
-                user_id: type::record('user', $recipient),
-                notification_type: $notification_type,
-                notifier_id: if $sender != None { type::record('user', $sender) } else { None },
-                note_id: if $note != None { type::record('note', $note) } else { None },
-                reaction: $reaction,
-                is_read: $is_read
-            };
-            ",
-        )
-        .bind(("id", id_str))
-        .bind(("created_at", notif.created_at))
-        .bind(("recipient", recipient_str))
-        .bind(("notification_type", type_str))
-        .bind(("sender", sender_str))
-        .bind(("note", note_str))
-        .bind(("reaction", notif.reaction.clone()))
-        .bind(("is_read", notif.is_read))
-        .await?;
+pub async fn create_notification(db: &Db, notif: &Notification) -> anyhow::Result<()> {
+    sqlx::query(
+        "INSERT INTO notifications (
+            id, created_at, notification_type, user_id, notifier_id, note_id, reaction, is_read
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+    )
+    .bind(notif.id.to_string())
+    .bind(notif.created_at)
+    .bind(notif_type_str(notif.notification_type))
+    .bind(notif.recipient_id.to_string())
+    .bind(notif.sender_id.map(|id| id.to_string()))
+    .bind(notif.note_id.map(|id| id.to_string()))
+    .bind(&notif.reaction)
+    .bind(notif.is_read)
+    .execute(db)
+    .await?;
 
     Ok(())
 }
 
 pub async fn get_notifications(
-    client: &SurrealClient,
+    db: &Db,
     recipient_id: &ActorId,
     limit: usize,
 ) -> anyhow::Result<Vec<Notification>> {
-    let recipient_str = recipient_id.to_string();
+    let rows = sqlx::query_as::<_, NotificationRow>(
+        "SELECT id, created_at, notification_type, user_id, notifier_id, note_id, reaction, is_read
+         FROM notifications
+         WHERE user_id = $1
+         ORDER BY created_at DESC
+         LIMIT $2",
+    )
+    .bind(recipient_id.to_string())
+    .bind(limit as i64)
+    .fetch_all(db)
+    .await?;
 
-    let mut response = client
-        .query(
-            "
-            SELECT 
-                id,
-                created_at,
-                notification_type,
-                user_id.id AS recipient_id,
-                notifier_id.id AS sender_id,
-                note_id.id AS note_id,
-                reaction,
-                is_read
-            FROM notification
-            WHERE user_id = type::record('user', $recipient)
-            ORDER BY created_at DESC
-            LIMIT $limit;
-            ",
-        )
-        .bind(("recipient", recipient_str))
-        .bind(("limit", limit))
-        .await?;
-
-    let rows: Vec<surrealdb::types::Value> = response.take(0)?;
-    rows_to::<Notification>(rows)
+    rows.into_iter().map(Notification::try_from).collect()
 }
 
 pub async fn mark_notification_as_read(
-    client: &SurrealClient,
+    db: &Db,
     id: &str,
     recipient_id: &ActorId,
 ) -> anyhow::Result<()> {
-    let recipient_str = recipient_id.to_string();
-
-    client
-        .query(
-            "
-            UPDATE notification SET is_read = true WHERE id = type::record('notification', $id) AND user_id = type::record('user', $recipient);
-            ",
-        )
-        .bind(("id", id.to_string()))
-        .bind(("recipient", recipient_str))
-        .await?;
-
+    sqlx::query(
+        "UPDATE notifications SET is_read = true
+         WHERE id = $1 AND user_id = $2",
+    )
+    .bind(id)
+    .bind(recipient_id.to_string())
+    .execute(db)
+    .await?;
     Ok(())
 }
 
-pub async fn mark_all_notifications_as_read(
-    client: &SurrealClient,
-    recipient_id: &ActorId,
-) -> anyhow::Result<()> {
-    let recipient_str = recipient_id.to_string();
-
-    client
-        .query(
-            "
-            UPDATE notification SET is_read = true WHERE user_id = type::record('user', $recipient) AND is_read = false;
-            ",
-        )
-        .bind(("recipient", recipient_str))
-        .await?;
-
+pub async fn mark_all_notifications_as_read(db: &Db, recipient_id: &ActorId) -> anyhow::Result<()> {
+    sqlx::query(
+        "UPDATE notifications SET is_read = true
+         WHERE user_id = $1 AND is_read = false",
+    )
+    .bind(recipient_id.to_string())
+    .execute(db)
+    .await?;
     Ok(())
 }

@@ -1,44 +1,29 @@
-use crate::db::SurrealClient;
+use crate::db::Db;
 use crate::models::actor::ActorId;
 use crate::models::file::{DriveFile, FileId, FileType};
+use chrono::{DateTime, Utc};
+use sqlx::FromRow;
 
-/// SurrealDB はレコード ID を `table:id` 文字列で返すので ULID 部分だけ取り出す
-fn record_tail(v: &serde_json::Value) -> String {
-    let s = v
-        .as_str()
-        .or_else(|| v.get("id").or_else(|| v.get("tb")).and_then(|x| x.as_str()))
-        .unwrap_or_default();
-    s.rsplit(':').next().unwrap_or(s).to_string()
+/// drive_files の取得カラム。`map_row_to_file` はこの行 1 件を `DriveFile` に変換する。
+pub(crate) const DRIVE_FILE_COLUMNS: &str = "
+    id, created_at, owner_id, name, mime_type, size, hash, url, thumbnail_url
+";
+
+#[derive(Debug, FromRow)]
+pub(crate) struct DriveFileRow {
+    pub id: String,
+    pub created_at: DateTime<Utc>,
+    pub owner_id: String,
+    pub name: String,
+    pub mime_type: String,
+    pub size: i64,
+    pub hash: String,
+    pub url: Option<String>,
+    pub thumbnail_url: Option<String>,
 }
 
-pub fn map_row_to_file(val: serde_json::Value) -> Option<DriveFile> {
-    let id_str = record_tail(val.get("id")?);
-    let id = id_str.parse::<FileId>().ok()?;
-    let created_at_str = val.get("created_at")?.as_str()?;
-    let created_at = chrono::DateTime::parse_from_rfc3339(created_at_str)
-        .ok()?
-        .with_timezone(&chrono::Utc);
-
-    let name = val.get("name")?.as_str()?.to_string();
-    let mime_type = val.get("mime_type")?.as_str()?.to_string();
-    let size = val.get("size")?.as_i64()?;
-
-    let owner_id_str = record_tail(val.get("owner_id")?);
-    let owner_id = owner_id_str.parse::<ActorId>().ok()?;
-
-    let hash = val
-        .get("hash")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-    let url = val
-        .get("url")
-        .and_then(|v| v.as_str().map(|s| s.to_string()));
-    let thumbnail_url = val
-        .get("thumbnail_url")
-        .and_then(|v| v.as_str().map(|s| s.to_string()));
-
-    let file_type = if mime_type.starts_with("image/") {
+fn detect_file_type(mime_type: &str) -> FileType {
+    if mime_type.starts_with("image/") {
         FileType::Image
     } else if mime_type.starts_with("video/") {
         FileType::Video
@@ -46,213 +31,120 @@ pub fn map_row_to_file(val: serde_json::Value) -> Option<DriveFile> {
         FileType::Audio
     } else {
         FileType::Other
-    };
+    }
+}
+
+/// drive_files 1 行を `DriveFile` に変換する (routes/v1/drive.rs からも再利用)
+pub(crate) fn map_row_to_file(row: DriveFileRow) -> Option<DriveFile> {
+    let id = row.id.parse::<FileId>().ok()?;
+    let owner_id = row.owner_id.parse::<ActorId>().ok()?;
 
     Some(DriveFile {
         id,
-        created_at,
+        created_at: row.created_at,
         updated_at: None,
-        name,
-        mime_type,
-        file_type,
-        size,
+        name: row.name,
+        file_type: detect_file_type(&row.mime_type),
+        mime_type: row.mime_type,
+        size: row.size,
         owner_id,
-        path: "".to_string(),
+        path: String::new(),
         thumbnail_path: None,
-        url,
-        thumbnail_url,
+        url: row.url,
+        thumbnail_url: row.thumbnail_url,
         width: None,
         height: None,
         duration: None,
-        hash,
+        hash: row.hash,
         is_public: true,
         comment: None,
     })
 }
 
-pub async fn create_drive_file(client: &SurrealClient, file: &DriveFile) -> anyhow::Result<()> {
-    let id_str = file.id.to_string();
-    let owner_str = file.owner_id.to_string();
+fn rows_to_files(rows: Vec<DriveFileRow>) -> Vec<DriveFile> {
+    rows.into_iter().filter_map(map_row_to_file).collect()
+}
 
-    client
-        .query(
-            "
-            INSERT INTO drive_file {
-                id: $id,
-                user_id: type::record('user', $owner),
-                name: $name,
-                mime_type: $mime_type,
-                size: $size,
-                md5: $hash,
-                url: $url,
-                thumbnail_url: $thumbnail_url,
-                created_at: $created_at
-            };
-            ",
-        )
-        .bind(("id", id_str))
-        .bind(("owner", owner_str))
-        .bind(("name", file.name.clone()))
-        .bind(("mime_type", file.mime_type.clone()))
-        .bind(("size", file.size))
-        .bind(("hash", file.hash.clone()))
-        .bind(("url", file.url.clone()))
-        .bind(("thumbnail_url", file.thumbnail_url.clone()))
-        .bind(("created_at", file.created_at))
-        .await?;
+pub async fn create_drive_file(db: &Db, file: &DriveFile) -> anyhow::Result<()> {
+    sqlx::query(
+        "INSERT INTO drive_files (
+            id, created_at, owner_id, name, mime_type, size, hash, url, thumbnail_url
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+    )
+    .bind(file.id.to_string())
+    .bind(file.created_at)
+    .bind(file.owner_id.to_string())
+    .bind(&file.name)
+    .bind(&file.mime_type)
+    .bind(file.size)
+    .bind(&file.hash)
+    .bind(&file.url)
+    .bind(&file.thumbnail_url)
+    .execute(db)
+    .await?;
 
     Ok(())
 }
 
-pub async fn get_drive_file(
-    client: &SurrealClient,
-    id: &FileId,
-) -> anyhow::Result<Option<DriveFile>> {
-    let id_str = id.to_string();
+pub async fn get_drive_file(db: &Db, id: &FileId) -> anyhow::Result<Option<DriveFile>> {
+    let row = sqlx::query_as::<_, DriveFileRow>(&format!(
+        "SELECT {DRIVE_FILE_COLUMNS} FROM drive_files WHERE id = $1"
+    ))
+    .bind(id.to_string())
+    .fetch_optional(db)
+    .await?;
 
-    let mut response = client
-        .query(
-            "
-            SELECT 
-                id,
-                created_at,
-                name,
-                mime_type,
-                size,
-                user_id.id AS owner_id,
-                md5 AS hash,
-                url,
-                thumbnail_url
-            FROM type::record('drive_file', $id);
-            ",
-        )
-        .bind(("id", id_str))
-        .await?;
-
-    let rows: Vec<serde_json::Value> = response.take(0)?;
-    if let Some(row) = rows.into_iter().next() {
-        Ok(map_row_to_file(row))
-    } else {
-        Ok(None)
-    }
+    Ok(row.and_then(map_row_to_file))
 }
 
-pub async fn get_drive_files_by_ids(
-    client: &SurrealClient,
-    ids: &[String],
-) -> anyhow::Result<Vec<DriveFile>> {
+pub async fn get_drive_files_by_ids(db: &Db, ids: &[String]) -> anyhow::Result<Vec<DriveFile>> {
     if ids.is_empty() {
         return Ok(Vec::new());
     }
-    let id_records: Vec<String> = ids.iter().map(|id| format!("drive_file:{id}")).collect();
-    let mut response = client
-        .query(
-            "
-            SELECT
-                id,
-                created_at,
-                name,
-                mime_type,
-                size,
-                user_id.id AS owner_id,
-                md5 AS hash,
-                url,
-                thumbnail_url
-            FROM drive_file
-            WHERE <string> id IN $ids;
-            ",
-        )
-        .bind(("ids", id_records))
-        .await?;
+    let rows = sqlx::query_as::<_, DriveFileRow>(&format!(
+        "SELECT {DRIVE_FILE_COLUMNS} FROM drive_files WHERE id = ANY($1)"
+    ))
+    .bind(ids)
+    .fetch_all(db)
+    .await?;
 
-    let rows: Vec<serde_json::Value> = response.take(0)?;
-    Ok(rows.into_iter().filter_map(map_row_to_file).collect())
+    Ok(rows_to_files(rows))
 }
 
 pub async fn get_user_drive_files(
-    client: &SurrealClient,
+    db: &Db,
     owner_id: &ActorId,
     limit: usize,
 ) -> anyhow::Result<Vec<DriveFile>> {
-    let owner_str = owner_id.to_string();
+    let rows = sqlx::query_as::<_, DriveFileRow>(&format!(
+        "SELECT {DRIVE_FILE_COLUMNS} FROM drive_files
+         WHERE owner_id = $1
+         ORDER BY created_at DESC
+         LIMIT $2"
+    ))
+    .bind(owner_id.to_string())
+    .bind(limit as i64)
+    .fetch_all(db)
+    .await?;
 
-    let mut response = client
-        .query(
-            "
-            SELECT 
-                id,
-                created_at,
-                name,
-                mime_type,
-                size,
-                user_id.id AS owner_id,
-                md5 AS hash,
-                url,
-                thumbnail_url
-            FROM drive_file
-            WHERE user_id = type::record('user', $owner)
-            ORDER BY created_at DESC
-            LIMIT $limit;
-            ",
-        )
-        .bind(("owner", owner_str))
-        .bind(("limit", limit))
-        .await?;
-
-    let rows: Vec<serde_json::Value> = response.take(0)?;
-    let mut files = Vec::new();
-    for row in rows {
-        if let Some(file) = map_row_to_file(row) {
-            files.push(file);
-        }
-    }
-    Ok(files)
+    Ok(rows_to_files(rows))
 }
 
-pub async fn delete_drive_file(client: &SurrealClient, id: &FileId) -> anyhow::Result<()> {
-    let id_str = id.to_string();
-
-    client
-        .query(
-            "
-            DELETE drive_file WHERE id = type::record('drive_file', $id);
-            ",
-        )
-        .bind(("id", id_str))
+pub async fn delete_drive_file(db: &Db, id: &FileId) -> anyhow::Result<()> {
+    sqlx::query("DELETE FROM drive_files WHERE id = $1")
+        .bind(id.to_string())
+        .execute(db)
         .await?;
-
     Ok(())
 }
 
-pub async fn get_drive_file_by_hash(
-    client: &SurrealClient,
-    hash: &str,
-) -> anyhow::Result<Option<DriveFile>> {
-    let mut response = client
-        .query(
-            "
-            SELECT 
-                id,
-                created_at,
-                name,
-                mime_type,
-                size,
-                user_id.id AS owner_id,
-                md5 AS hash,
-                url,
-                thumbnail_url
-            FROM drive_file
-            WHERE md5 = $hash
-            LIMIT 1;
-            ",
-        )
-        .bind(("hash", hash.to_string()))
-        .await?;
+pub async fn get_drive_file_by_hash(db: &Db, hash: &str) -> anyhow::Result<Option<DriveFile>> {
+    let row = sqlx::query_as::<_, DriveFileRow>(&format!(
+        "SELECT {DRIVE_FILE_COLUMNS} FROM drive_files WHERE hash = $1 LIMIT 1"
+    ))
+    .bind(hash)
+    .fetch_optional(db)
+    .await?;
 
-    let rows: Vec<serde_json::Value> = response.take(0)?;
-    if let Some(row) = rows.into_iter().next() {
-        Ok(map_row_to_file(row))
-    } else {
-        Ok(None)
-    }
+    Ok(row.and_then(map_row_to_file))
 }

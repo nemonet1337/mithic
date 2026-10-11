@@ -1,62 +1,45 @@
-use crate::db::SurrealClient;
-use crate::db::queries::rows_to;
-use crate::db::queries::timeline::NOTE_WITH_AUTHOR_FIELDS;
-use crate::db::queries::timeline::NoteWithAuthor;
+use crate::db::Db;
+use crate::db::queries::notes::{NOTE_COLUMNS, NoteRow};
+use crate::db::queries::timeline::{NoteWithAuthor, attach_authors};
 use anyhow::Result;
 
-pub async fn get_notes_by_tag(
-    client: &SurrealClient,
-    tag: &str,
-    limit: usize,
-) -> Result<Vec<NoteWithAuthor>> {
+pub async fn get_notes_by_tag(db: &Db, tag: &str, limit: usize) -> Result<Vec<NoteWithAuthor>> {
     let tag_str = tag.to_lowercase();
-    let limit = limit.min(100);
+    let limit = limit.min(100) as i64;
 
-    let mut response = client
-        .query(format!(
-            "
-            SELECT {NOTE_WITH_AUTHOR_FIELDS}
-            FROM note
-            WHERE tags CONTAINS $tag
-            ORDER BY id DESC
-            LIMIT $limit;
-            "
-        ))
-        .bind(("tag", tag_str))
-        .bind(("limit", limit))
-        .await?;
+    let notes = sqlx::query_as::<_, NoteRow>(&format!(
+        "SELECT {NOTE_COLUMNS} FROM notes
+         WHERE $1 = ANY(tags)
+         ORDER BY id DESC
+         LIMIT $2"
+    ))
+    .bind(tag_str)
+    .bind(limit)
+    .fetch_all(db)
+    .await?;
 
-    let rows: Vec<surrealdb::types::Value> = response.take(0)?;
-    rows_to::<NoteWithAuthor>(rows)
+    let notes = notes
+        .into_iter()
+        .map(crate::models::note::Note::try_from)
+        .collect::<Result<Vec<_>, _>>()?;
+    attach_authors(db, notes).await
 }
 
 /// (tag, count) — count は使用回数
-pub async fn get_trending_tags(client: &SurrealClient, limit: usize) -> Result<Vec<(String, u64)>> {
-    let mut response = client
-        .query(
-            "
-            SELECT tags FROM note
-            WHERE array::len(tags) > 0
-            LIMIT 1000;
-            ",
-        )
-        .await?;
+pub async fn get_trending_tags(db: &Db, limit: usize) -> Result<Vec<(String, u64)>> {
+    let rows: Vec<Vec<String>> = sqlx::query_scalar(
+        "SELECT tags FROM notes
+         WHERE array_length(tags, 1) > 0
+         ORDER BY id DESC
+         LIMIT 1000",
+    )
+    .fetch_all(db)
+    .await?;
 
-    let rows: Vec<surrealdb::types::Value> = response.take(0)?;
     let mut counts: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
-    for row in rows {
-        let Some(tags) = row
-            .into_json_value()
-            .get("tags")
-            .and_then(|v| v.as_array())
-            .map(|a| a.to_vec())
-        else {
-            continue;
-        };
-        for tag in tags {
-            if let Some(tag) = tag.as_str().filter(|t| !t.is_empty()) {
-                *counts.entry(tag.to_string()).or_insert(0) += 1;
-            }
+    for tags in rows {
+        for tag in tags.iter().filter(|t| !t.is_empty()) {
+            *counts.entry(tag.clone()).or_insert(0) += 1;
         }
     }
 

@@ -1,79 +1,114 @@
-use crate::db::SurrealClient;
-use crate::db::queries::rows_to;
-use crate::models::relay::{Relay, RelayStatus};
+use crate::db::Db;
+use crate::models::relay::{Relay, RelayStatus, relay_status_from_str};
+use chrono::{DateTime, Utc};
+use sqlx::FromRow;
 
-pub async fn create_relay(client: &SurrealClient, inbox: &str) -> anyhow::Result<()> {
-    let id = ulid::Ulid::generate().to_string();
-    client
-        .query(
-            "INSERT INTO relay { id: $id, inbox: $inbox, status: 'requesting', created_at: time::now() };",
-        )
-        .bind(("id", id))
-        .bind(("inbox", inbox.to_string()))
-        .await?;
+#[derive(Debug, FromRow)]
+struct RelayRow {
+    id: String,
+    inbox: String,
+    status: String,
+    created_at: DateTime<Utc>,
+    updated_at: Option<DateTime<Utc>>,
+}
+
+impl TryFrom<RelayRow> for Relay {
+    type Error = anyhow::Error;
+
+    fn try_from(row: RelayRow) -> anyhow::Result<Self> {
+        Ok(Relay {
+            id: row
+                .id
+                .parse()
+                .map_err(|e| anyhow::anyhow!("invalid relay id '{}': {e}", row.id))?,
+            inbox: row.inbox,
+            status: relay_status_from_str(&row.status)?,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+        })
+    }
+}
+
+fn rows_to_relays(rows: Vec<RelayRow>) -> anyhow::Result<Vec<Relay>> {
+    rows.into_iter().map(Relay::try_from).collect()
+}
+
+pub async fn create_relay(db: &Db, inbox: &str) -> anyhow::Result<()> {
+    sqlx::query(
+        "INSERT INTO relays (id, inbox, status, created_at) VALUES ($1, $2, 'requesting', now())",
+    )
+    .bind(ulid::Ulid::generate().to_string())
+    .bind(inbox)
+    .execute(db)
+    .await?;
     Ok(())
 }
 
-pub async fn get_relay_by_id(client: &SurrealClient, id: &str) -> anyhow::Result<Option<Relay>> {
-    let mut response = client
-        .query("SELECT * FROM type::record('relay', $id);")
-        .bind(("id", id.to_string()))
-        .await?;
-    let rows: Vec<surrealdb::types::Value> = response.take(0)?;
-    Ok(rows_to::<Relay>(rows)?.into_iter().next())
+pub async fn get_relay_by_id(db: &Db, id: &str) -> anyhow::Result<Option<Relay>> {
+    let row = sqlx::query_as::<_, RelayRow>(
+        "SELECT id, inbox, status, created_at, updated_at FROM relays WHERE id = $1",
+    )
+    .bind(id)
+    .fetch_optional(db)
+    .await?;
+
+    row.map(Relay::try_from).transpose()
 }
 
-pub async fn get_relay_by_inbox(
-    client: &SurrealClient,
-    inbox: &str,
-) -> anyhow::Result<Option<Relay>> {
-    let mut response = client
-        .query("SELECT * FROM relay WHERE inbox = $inbox LIMIT 1;")
-        .bind(("inbox", inbox.to_string()))
-        .await?;
-    let rows: Vec<surrealdb::types::Value> = response.take(0)?;
-    Ok(rows_to::<Relay>(rows)?.into_iter().next())
+pub async fn get_relay_by_inbox(db: &Db, inbox: &str) -> anyhow::Result<Option<Relay>> {
+    let row = sqlx::query_as::<_, RelayRow>(
+        "SELECT id, inbox, status, created_at, updated_at FROM relays WHERE inbox = $1 LIMIT 1",
+    )
+    .bind(inbox)
+    .fetch_optional(db)
+    .await?;
+
+    row.map(Relay::try_from).transpose()
 }
 
-pub async fn list_relays(client: &SurrealClient, limit: usize) -> anyhow::Result<Vec<Relay>> {
-    let mut response = client
-        .query("SELECT * FROM relay ORDER BY created_at DESC LIMIT $limit;")
-        .bind(("limit", limit.min(100)))
-        .await?;
-    let rows: Vec<surrealdb::types::Value> = response.take(0)?;
-    rows_to::<Relay>(rows)
+pub async fn list_relays(db: &Db, limit: usize) -> anyhow::Result<Vec<Relay>> {
+    let rows = sqlx::query_as::<_, RelayRow>(
+        "SELECT id, inbox, status, created_at, updated_at FROM relays
+         ORDER BY created_at DESC LIMIT $1",
+    )
+    .bind(limit.min(100) as i64)
+    .fetch_all(db)
+    .await?;
+
+    rows_to_relays(rows)
 }
 
-pub async fn update_relay_status(
-    client: &SurrealClient,
-    id: &str,
-    status: RelayStatus,
-) -> anyhow::Result<()> {
-    let status_str = match status {
+fn relay_status_str(status: RelayStatus) -> &'static str {
+    match status {
         RelayStatus::Requesting => "requesting",
         RelayStatus::Accepted => "accepted",
         RelayStatus::Rejected => "rejected",
-    };
-    client
-        .query("UPDATE type::record('relay', $id) SET status = $status, updated_at = time::now();")
-        .bind(("status", status_str))
-        .bind(("id", id.to_string()))
+    }
+}
+
+pub async fn update_relay_status(db: &Db, id: &str, status: RelayStatus) -> anyhow::Result<()> {
+    sqlx::query("UPDATE relays SET status = $1, updated_at = now() WHERE id = $2")
+        .bind(relay_status_str(status))
+        .bind(id)
+        .execute(db)
         .await?;
     Ok(())
 }
 
-pub async fn delete_relay(client: &SurrealClient, id: &str) -> anyhow::Result<()> {
-    client
-        .query("DELETE type::record('relay', $id);")
-        .bind(("id", id.to_string()))
+pub async fn delete_relay(db: &Db, id: &str) -> anyhow::Result<()> {
+    sqlx::query("DELETE FROM relays WHERE id = $1")
+        .bind(id)
+        .execute(db)
         .await?;
     Ok(())
 }
 
-pub async fn get_accepted_relays(client: &SurrealClient) -> anyhow::Result<Vec<Relay>> {
-    let mut response = client
-        .query("SELECT * FROM relay WHERE status = 'accepted';")
-        .await?;
-    let rows: Vec<surrealdb::types::Value> = response.take(0)?;
-    rows_to::<Relay>(rows)
+pub async fn get_accepted_relays(db: &Db) -> anyhow::Result<Vec<Relay>> {
+    let rows = sqlx::query_as::<_, RelayRow>(
+        "SELECT id, inbox, status, created_at, updated_at FROM relays WHERE status = 'accepted'",
+    )
+    .fetch_all(db)
+    .await?;
+
+    rows_to_relays(rows)
 }

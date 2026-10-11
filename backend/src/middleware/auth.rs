@@ -19,7 +19,7 @@ pub async fn resolve_bearer(state: &AppState, token: &str) -> Result<AuthUser, A
         .parse::<ulid::Ulid>()
         .map_err(|_| AppError::Unauthorized("Invalid user ID".to_string()))?;
 
-    let actor = get_actor_by_id(state.surreal(), &user_id)
+    let actor = get_actor_by_id(state.db(), &user_id)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?
         .ok_or_else(|| AppError::Unauthorized("User not found".to_string()))?;

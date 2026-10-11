@@ -43,7 +43,7 @@ pub fn apply_my_reactions(summaries: &mut [ReactionSummary], mine: Option<&str>)
 }
 
 pub async fn apply_viewer_reaction(state: &AppState, dto: &mut NoteDto, viewer_id: &str) {
-    let mine = get_reaction_by_actor(state.surreal(), &dto.id, viewer_id)
+    let mine = get_reaction_by_actor(state.db(), &dto.id, viewer_id)
         .await
         .ok()
         .flatten();
@@ -64,7 +64,7 @@ async fn load_files_map(state: &AppState, file_ids: &[String]) -> HashMap<String
     if file_ids.is_empty() {
         return HashMap::new();
     }
-    let files = get_drive_files_by_ids(state.surreal(), file_ids)
+    let files = get_drive_files_by_ids(state.db(), file_ids)
         .await
         .unwrap_or_default();
     files.into_iter().map(|f| (f.id.to_string(), f)).collect()
@@ -84,7 +84,7 @@ pub async fn notes_to_dtos(
         .iter()
         .filter_map(|r| r.note.renote_id.map(|id| id.to_string()))
         .collect();
-    let renotes = get_notes_with_authors_by_ids(state.surreal(), &renote_ids)
+    let renotes = get_notes_with_authors_by_ids(state.db(), &renote_ids)
         .await
         .unwrap_or_default();
     let renote_map: HashMap<String, NoteWithAuthor> = renotes
@@ -105,7 +105,7 @@ pub async fn notes_to_dtos(
 
     let note_ids: Vec<String> = rows.iter().map(|r| r.note.id.to_string()).collect();
     let mine = match viewer_id {
-        Some(vid) => get_reactions_by_actor_for_notes(state.surreal(), vid, &note_ids)
+        Some(vid) => get_reactions_by_actor_for_notes(state.db(), vid, &note_ids)
             .await
             .unwrap_or_default(),
         None => HashMap::new(),
@@ -200,7 +200,7 @@ pub fn note_to_dto(note: &Note, author: User) -> NoteDto {
 pub async fn note_to_dto_full(state: &AppState, note: &Note, author: User) -> NoteDto {
     let mut files: Vec<String> = note.file_ids.clone();
     let renotes = if let Some(rid) = note.renote_id {
-        get_notes_with_authors_by_ids(state.surreal(), &[rid.to_string()])
+        get_notes_with_authors_by_ids(state.db(), &[rid.to_string()])
             .await
             .unwrap_or_default()
     } else {
@@ -231,17 +231,18 @@ pub async fn note_to_dto_full(state: &AppState, note: &Note, author: User) -> No
     dto
 }
 
-fn record_tail(v: &serde_json::Value) -> Option<String> {
-    let s = v
-        .as_str()
-        .or_else(|| v.get("id").or_else(|| v.get("tb")).and_then(|x| x.as_str()))?;
-    Some(s.rsplit(':').next().unwrap_or(s).to_string())
-}
-
 fn votes_u64(v: &serde_json::Value) -> u64 {
     v.as_u64()
         .or_else(|| v.as_i64().map(|n| n.max(0) as u64))
         .unwrap_or(0)
+}
+
+#[derive(sqlx::FromRow)]
+struct PollRow {
+    id: String,
+    note_id: String,
+    choices: sqlx::types::Json<Vec<serde_json::Value>>,
+    multiple: bool,
 }
 
 async fn load_polls(
@@ -252,94 +253,71 @@ async fn load_polls(
     if note_ids.is_empty() {
         return HashMap::new();
     }
-    let records: Vec<String> = note_ids.iter().map(|id| format!("note:{id}")).collect();
-    let Ok(mut res) = state
-        .surreal()
-        .query("SELECT * FROM poll WHERE <string> note_id IN $ids;")
-        .bind(("ids", records))
-        .await
+
+    let Ok(rows) = sqlx::query_as::<_, PollRow>(
+        "SELECT id, note_id, choices, multiple FROM polls WHERE note_id = ANY($1)",
+    )
+    .bind(note_ids)
+    .fetch_all(state.db())
+    .await
     else {
         return HashMap::new();
     };
-    let rows: Vec<surrealdb::types::Value> = res.take(0).unwrap_or_default();
+
     let mut by_note: HashMap<String, (String, Poll)> = HashMap::new();
     for row in rows {
-        let json = row.into_json_value();
-        let Some(note_id) = json.get("note_id").and_then(record_tail) else {
-            continue;
-        };
-        let Some(poll_id) = json.get("id").and_then(record_tail) else {
-            continue;
-        };
-        let choices = json
-            .get("choices")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|c| {
-                        let text = c.get("text").and_then(|t| t.as_str())?.to_string();
-                        Some(PollChoice {
-                            text,
-                            votes: c.get("votes").map(votes_u64).unwrap_or(0),
-                            voted_by_me: false,
-                        })
-                    })
-                    .collect()
+        let choices = row
+            .choices
+            .0
+            .iter()
+            .filter_map(|c| {
+                let text = c.get("text").and_then(|t| t.as_str())?.to_string();
+                Some(PollChoice {
+                    text,
+                    votes: c.get("votes").map(votes_u64).unwrap_or(0),
+                    voted_by_me: false,
+                })
             })
-            .unwrap_or_default();
+            .collect();
         by_note.insert(
-            note_id,
+            row.note_id,
             (
-                poll_id,
+                row.id,
                 Poll {
                     choices,
-                    multiple: json
-                        .get("multiple")
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(false),
+                    multiple: row.multiple,
                 },
             ),
         );
     }
+
     if let Some(vid) = viewer_id
         && !by_note.is_empty()
     {
-        let poll_records: Vec<String> = by_note
-            .values()
-            .map(|(id, _)| format!("poll:{id}"))
-            .collect();
-        if let Ok(mut vote_res) = state
-                .surreal()
-                .query(
-                    "SELECT poll_id, choice_index FROM poll_vote WHERE actor_id = type::record('user', $actor) AND <string> poll_id IN $polls;",
-                )
-                .bind(("actor", vid.to_string()))
-                .bind(("polls", poll_records))
-                .await
-            {
-                let vote_rows: Vec<surrealdb::types::Value> = vote_res.take(0).unwrap_or_default();
-                let mut voted: HashMap<String, usize> = HashMap::new();
-                for row in vote_rows {
-                    let json = row.into_json_value();
-                    let Some(pid) = json.get("poll_id").and_then(record_tail) else {
-                        continue;
-                    };
-                    let Some(idx) = json.get("choice_index").and_then(|v| {
-                        v.as_u64()
-                            .or_else(|| v.as_i64().map(|n| n.max(0) as u64))
-                    }) else {
-                        continue;
-                    };
-                    voted.insert(pid, idx as usize);
-                }
-                for (poll_id, poll) in by_note.values_mut() {
-                    if let Some(idx) = voted.get(poll_id)
-                        && let Some(choice) = poll.choices.get_mut(*idx) {
-                            choice.voted_by_me = true;
-                        }
+        let poll_ids: Vec<String> = by_note.values().map(|(id, _)| id.clone()).collect();
+        if let Ok(rows) = sqlx::query_as::<_, (String, i32)>(
+            "SELECT poll_id, choice_index FROM poll_votes
+             WHERE actor_id = $1 AND poll_id = ANY($2)",
+        )
+        .bind(vid)
+        .bind(&poll_ids)
+        .fetch_all(state.db())
+        .await
+        {
+            let voted: HashMap<String, usize> = rows
+                .into_iter()
+                .map(|(pid, idx)| (pid, idx.max(0) as usize))
+                .collect();
+            for (poll_id, poll) in by_note.values_mut() {
+                if let Some(idx) = voted.get(poll_id)
+                    && let Some(choice) = poll.choices.get_mut(*idx)
+                {
+                    choice.voted_by_me = true;
                 }
             }
+        }
     }
+
     by_note
         .into_iter()
         .map(|(nid, (_, poll))| (nid, poll))

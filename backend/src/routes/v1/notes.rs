@@ -1,6 +1,7 @@
 //! Notes CRUD / reactions / renote / favorite / pin / polls / search
 
 use crate::db::cache;
+use crate::db::queries::notes::{NOTE_COLUMNS, NoteRow};
 use crate::db::queries::{
     add_favorite, add_reaction, create_note, delete_note, get_actor_by_id, get_note_by_id,
     get_note_quotes, get_note_replies, get_reaction_by_actor, is_following,
@@ -44,7 +45,7 @@ async fn ensure_note_visible(
             if viewer_id == note.actor_id {
                 return Ok(());
             }
-            let follows = is_following(state.surreal(), &viewer_id, &note.actor_id)
+            let follows = is_following(state.db(), &viewer_id, &note.actor_id)
                 .await
                 .map_err(|e| AppError::Internal(e.to_string()))?;
             if follows {
@@ -67,11 +68,11 @@ async fn ensure_note_visible(
 }
 
 pub async fn fetch_note_dto(state: &AppState, note_id: &NoteId) -> Result<(Note, NoteDto)> {
-    let note = get_note_by_id(state.surreal(), note_id)
+    let note = get_note_by_id(state.db(), note_id)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?
         .ok_or_else(|| AppError::NotFound("Note not found".to_string()))?;
-    let author = get_actor_by_id(state.surreal(), &note.actor_id)
+    let author = get_actor_by_id(state.db(), &note.actor_id)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?
         .ok_or_else(|| AppError::NotFound("Author not found".to_string()))?;
@@ -99,7 +100,7 @@ pub async fn show_note(
     let note_id = parse_note_id(&id)?;
     let viewer = auth.map(|Extension(a)| a.user_id);
 
-    let note = get_note_by_id(state.surreal(), &note_id)
+    let note = get_note_by_id(state.db(), &note_id)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?
         .ok_or_else(|| AppError::NotFound("Note not found".to_string()))?;
@@ -122,7 +123,7 @@ pub async fn show_note(
         }
     }
 
-    let author = get_actor_by_id(state.surreal(), &note.actor_id)
+    let author = get_actor_by_id(state.db(), &note.actor_id)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?
         .ok_or_else(|| AppError::NotFound("Author not found".to_string()))?;
@@ -149,7 +150,7 @@ pub async fn delete_note_route(
     Path(id): Path<String>,
 ) -> Result<Json<Value>> {
     let note_id = parse_note_id(&id)?;
-    let note = get_note_by_id(state.surreal(), &note_id)
+    let note = get_note_by_id(state.db(), &note_id)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?
         .ok_or_else(|| AppError::NotFound("Note not found".to_string()))?;
@@ -158,20 +159,22 @@ pub async fn delete_note_route(
             "You can only delete your own notes".to_string(),
         ));
     }
-    delete_note(state.surreal(), &note_id)
+    delete_note(state.db(), &note_id)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
     let _ = cache::delete(state.redis(), &format!("note:{note_id}")).await;
     state.publish_stream(StreamBroadcast::NoteDeleted {
         id: note_id.to_string(),
     });
-    let _ = state
-        .surreal()
-        .query(
-            "UPDATE user SET notes_count = <int>(notes_count OR 1) - 1 WHERE id = type::record('user', $id);",
-        )
-        .bind(("id", auth.user_id.to_string()))
-        .await;
+    sqlx::query(
+        "UPDATE users
+         SET notes_count = GREATEST(notes_count - 1, 0)
+         WHERE id = $1",
+    )
+    .bind(auth.user_id.to_string())
+    .execute(state.db())
+    .await
+    .ok();
     Ok(ok_null())
 }
 
@@ -180,7 +183,7 @@ pub async fn note_replies(
     Path(id): Path<String>,
 ) -> Result<Json<Vec<NoteDto>>> {
     let note_id = parse_note_id(&id)?;
-    let rows = get_note_replies(state.surreal(), &note_id, 100)
+    let rows = get_note_replies(state.db(), &note_id, 100)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
     Ok(Json(
@@ -193,7 +196,7 @@ pub async fn note_quotes(
     Path(id): Path<String>,
 ) -> Result<Json<Vec<NoteDto>>> {
     let note_id = parse_note_id(&id)?;
-    let rows = get_note_quotes(state.surreal(), &note_id, 100)
+    let rows = get_note_quotes(state.db(), &note_id, 100)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
     Ok(Json(
@@ -220,7 +223,7 @@ pub async fn add_reaction_route(
     if emoji.is_empty() {
         return Err(AppError::Validation("Reaction is required".to_string()));
     }
-    if let Ok(Some(author)) = get_actor_by_id(state.surreal(), &note.actor_id).await
+    if let Ok(Some(author)) = get_actor_by_id(state.db(), &note.actor_id).await
         && author.reaction_acceptance.as_deref() == Some("likeOnly")
         && emoji.starts_with(':')
         && emoji.ends_with(':')
@@ -231,15 +234,12 @@ pub async fn add_reaction_route(
         ));
     }
 
-    let existing = get_reaction_by_actor(
-        state.surreal(),
-        &note_id.to_string(),
-        &auth.user_id.to_string(),
-    )
-    .await
-    .map_err(|e| AppError::Internal(e.to_string()))?;
+    let existing =
+        get_reaction_by_actor(state.db(), &note_id.to_string(), &auth.user_id.to_string())
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?;
 
-    let sender = get_actor_by_id(state.surreal(), &auth.user_id)
+    let sender = get_actor_by_id(state.db(), &auth.user_id)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
@@ -247,7 +247,7 @@ pub async fn add_reaction_route(
     match existing {
         Some(prev) if prev == emoji => {
             remove_reaction(
-                state.surreal(),
+                state.db(),
                 &note_id.to_string(),
                 &auth.user_id.to_string(),
                 &emoji,
@@ -260,7 +260,7 @@ pub async fn add_reaction_route(
         }
         Some(prev) => {
             let _ = remove_all_reactions_by_actor(
-                state.surreal(),
+                state.db(),
                 &note_id.to_string(),
                 &auth.user_id.to_string(),
             )
@@ -275,7 +275,7 @@ pub async fn add_reaction_route(
 
     if added {
         add_reaction(
-            state.surreal(),
+            state.db(),
             &note_id.to_string(),
             &auth.user_id.to_string(),
             &emoji,
@@ -294,15 +294,11 @@ pub async fn add_reaction_route(
     }
 
     let _ = cache::delete(state.redis(), &format!("note:{note_id}")).await;
-    let mine = get_reaction_by_actor(
-        state.surreal(),
-        &note_id.to_string(),
-        &auth.user_id.to_string(),
-    )
-    .await
-    .ok()
-    .flatten();
-    let note = get_note_by_id(state.surreal(), &note_id)
+    let mine = get_reaction_by_actor(state.db(), &note_id.to_string(), &auth.user_id.to_string())
+        .await
+        .ok()
+        .flatten();
+    let note = get_note_by_id(state.db(), &note_id)
         .await
         .ok()
         .flatten()
@@ -319,12 +315,12 @@ pub async fn remove_reaction_route(
     Path((id, emoji)): Path<(String, String)>,
 ) -> Result<Json<Value>> {
     let note_id = parse_note_id(&id)?;
-    let note = get_note_by_id(state.surreal(), &note_id)
+    let note = get_note_by_id(state.db(), &note_id)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?
         .ok_or_else(|| AppError::NotFound("Note not found".to_string()))?;
     remove_reaction(
-        state.surreal(),
+        state.db(),
         &note_id.to_string(),
         &auth.user_id.to_string(),
         &emoji,
@@ -332,7 +328,7 @@ pub async fn remove_reaction_route(
     .await
     .map_err(|e| AppError::Internal(e.to_string()))?;
 
-    if let Ok(Some(reactor)) = get_actor_by_id(state.surreal(), &auth.user_id).await {
+    if let Ok(Some(reactor)) = get_actor_by_id(state.db(), &auth.user_id).await {
         crate::services::note::deliver_reaction(&state, &reactor, &note, &emoji, true).await;
     }
 
@@ -360,18 +356,17 @@ pub async fn renote_route(
     let mut renote = Note::new(auth.user_id, None, NoteVisibility::Public);
     renote.renote_id = Some(target_note_id);
 
-    let created = create_note(state.surreal(), &renote)
+    let created = create_note(state.db(), &renote)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
-    state
-        .surreal()
-        .query("UPDATE note SET renote_count += 1 WHERE id = type::record('note', $id);")
-        .bind(("id", target_note_id.to_string()))
+    sqlx::query("UPDATE notes SET renote_count = renote_count + 1 WHERE id = $1")
+        .bind(target_note_id.to_string())
+        .execute(state.db())
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
-    let author = get_actor_by_id(state.surreal(), &auth.user_id)
+    let author = get_actor_by_id(state.db(), &auth.user_id)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?
         .ok_or_else(|| AppError::NotFound("Author not found".to_string()))?;
@@ -397,33 +392,30 @@ pub async fn unrenote_route(
     Path(id): Path<String>,
 ) -> Result<Json<Value>> {
     let target_note_id = parse_note_id(&id)?;
-    let mut del = state
-        .surreal()
-        .query(
-            "
-        DELETE note WHERE actor_id = type::record('user', $my_id)
-          AND renote_id = type::record('note', $target_id) RETURN BEFORE;
-        ",
-        )
-        .bind(("my_id", auth.user_id.to_string()))
-        .bind(("target_id", target_note_id.to_string()))
-        .await
-        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let deleted: Vec<String> = sqlx::query_scalar(
+        "DELETE FROM notes
+         WHERE actor_id = $1 AND renote_id = $2
+         RETURNING id",
+    )
+    .bind(auth.user_id.to_string())
+    .bind(target_note_id.to_string())
+    .fetch_all(state.db())
+    .await
+    .map_err(|e| AppError::Internal(e.to_string()))?;
 
-    let deleted_rows: Vec<surrealdb::types::Value> =
-        del.take(0).map_err(|e| AppError::Internal(e.to_string()))?;
-    let deleted_count = deleted_rows.len() as i64;
+    let deleted_count = deleted.len() as i64;
 
     if deleted_count > 0 {
-        state
-            .surreal()
-            .query(
-                "UPDATE note SET renote_count = math::max(renote_count - $n, 0) WHERE id = type::record('note', $id);",
-            )
-            .bind(("id", target_note_id.to_string()))
-            .bind(("n", deleted_count))
-            .await
-            .map_err(|e| AppError::Internal(e.to_string()))?;
+        sqlx::query(
+            "UPDATE notes
+             SET renote_count = GREATEST(renote_count - $2, 0)
+             WHERE id = $1",
+        )
+        .bind(target_note_id.to_string())
+        .bind(deleted_count)
+        .execute(state.db())
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
     }
     Ok(ok_null())
 }
@@ -434,11 +426,11 @@ pub async fn favorite_route(
     Path(id): Path<String>,
 ) -> Result<Json<Value>> {
     let note_id = parse_note_id(&id)?;
-    let _ = get_note_by_id(state.surreal(), &note_id)
+    let _ = get_note_by_id(state.db(), &note_id)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?
         .ok_or_else(|| AppError::NotFound("Note not found".to_string()))?;
-    add_favorite(state.surreal(), &auth.user_id, &note_id)
+    add_favorite(state.db(), &auth.user_id, &note_id)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
     Ok(ok_null())
@@ -450,7 +442,7 @@ pub async fn unfavorite_route(
     Path(id): Path<String>,
 ) -> Result<Json<Value>> {
     let note_id = parse_note_id(&id)?;
-    remove_favorite(state.surreal(), &auth.user_id, &note_id)
+    remove_favorite(state.db(), &auth.user_id, &note_id)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
     Ok(ok_null())
@@ -462,48 +454,31 @@ pub async fn pin_route(
     Path(id): Path<String>,
 ) -> Result<Json<Value>> {
     let note_id = parse_note_id(&id)?;
-    let _ = get_note_by_id(state.surreal(), &note_id)
+    let _ = get_note_by_id(state.db(), &note_id)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?
         .ok_or_else(|| AppError::NotFound("Note not found".to_string()))?;
 
-    let mut count_res = state
-        .surreal()
-        .query(
-            "SELECT count() AS c FROM user_note_pining WHERE in = type::record('user', $user) GROUP ALL;",
-        )
-        .bind(("user", auth.user_id.to_string()))
+    let pinned: i64 = sqlx::query_scalar("SELECT count(*) FROM user_note_pins WHERE user_id = $1")
+        .bind(auth.user_id.to_string())
+        .fetch_one(state.db())
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
-
-    #[derive(serde::Deserialize)]
-    struct CountRow {
-        c: i64,
-    }
-    let rows: Vec<CountRow> = {
-        let raw: Vec<surrealdb::types::Value> = count_res
-            .take(0)
-            .map_err(|e| AppError::Internal(e.to_string()))?;
-        crate::db::queries::rows_to(raw).map_err(|e| AppError::Internal(e.to_string()))?
-    };
-    let pinned = rows.first().map(|r| r.c).unwrap_or(0);
     if pinned >= 5 {
         return Err(AppError::Validation(
             "Maximum of 5 pinned notes".to_string(),
         ));
     }
 
-    state
-        .surreal()
-        .query(
-            "
-        RELATE (type::record('user', $user)) -> user_note_pining -> (type::record('note', $note));
-        ",
-        )
-        .bind(("user", auth.user_id.to_string()))
-        .bind(("note", note_id.to_string()))
-        .await
-        .map_err(|e| AppError::Internal(e.to_string()))?;
+    sqlx::query(
+        "INSERT INTO user_note_pins (user_id, note_id) VALUES ($1, $2)
+         ON CONFLICT (user_id, note_id) DO NOTHING",
+    )
+    .bind(auth.user_id.to_string())
+    .bind(note_id.to_string())
+    .execute(state.db())
+    .await
+    .map_err(|e| AppError::Internal(e.to_string()))?;
     Ok(ok_null())
 }
 
@@ -513,16 +488,12 @@ pub async fn unpin_route(
     Path(id): Path<String>,
 ) -> Result<Json<Value>> {
     let note_id = parse_note_id(&id)?;
-    let _ = state
-        .surreal()
-        .query(
-            "
-        DELETE user_note_pining WHERE in = type::record('user', $user) AND out = type::record('note', $note);
-        ",
-        )
-        .bind(("user", auth.user_id.to_string()))
-        .bind(("note", note_id.to_string()))
-        .await;
+    sqlx::query("DELETE FROM user_note_pins WHERE user_id = $1 AND note_id = $2")
+        .bind(auth.user_id.to_string())
+        .bind(note_id.to_string())
+        .execute(state.db())
+        .await
+        .ok();
     Ok(ok_null())
 }
 
@@ -538,7 +509,7 @@ pub async fn vote_route(
     Json(body): Json<VoteBody>,
 ) -> Result<Json<Value>> {
     let note_id = parse_note_id(&id)?;
-    let note = get_note_by_id(state.surreal(), &note_id)
+    let note = get_note_by_id(state.db(), &note_id)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?
         .ok_or_else(|| AppError::NotFound("Note not found".to_string()))?;
@@ -547,59 +518,41 @@ pub async fn vote_route(
         return Err(AppError::Validation("Note is not a poll".to_string()));
     }
 
-    let mut res = state
-        .surreal()
-        .query("SELECT * FROM poll WHERE note_id = type::record('note', $nid) LIMIT 1;")
-        .bind(("nid", note_id.to_string()))
-        .await
-        .map_err(|e| AppError::Internal(e.to_string()))?;
-    let rows: Vec<surrealdb::types::Value> =
-        res.take(0).map_err(|e| AppError::Internal(e.to_string()))?;
-    let poll = rows
-        .into_iter()
-        .next()
-        .map(|v| v.into_json_value())
-        .ok_or_else(|| AppError::Validation("Note is not a poll".to_string()))?;
-    let poll_id = poll
-        .get("id")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .rsplit(':')
-        .next()
-        .unwrap_or("")
-        .to_string();
-    let n = poll
-        .get("choices")
-        .and_then(|v| v.as_array())
-        .map(|a| a.len())
-        .unwrap_or(0);
+    #[derive(sqlx::FromRow)]
+    struct PollRow {
+        id: String,
+        choices: sqlx::types::Json<Vec<serde_json::Value>>,
+    }
+
+    let poll =
+        sqlx::query_as::<_, PollRow>("SELECT id, choices FROM polls WHERE note_id = $1 LIMIT 1")
+            .bind(note_id.to_string())
+            .fetch_optional(state.db())
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?
+            .ok_or_else(|| AppError::Validation("Note is not a poll".to_string()))?;
+
+    let poll_id = poll.id;
+    let n = poll.choices.0.len();
     if body.choice >= n {
         return Err(AppError::Validation("Choice out of range".to_string()));
     }
-    let mut existing = state
-        .surreal()
-        .query(
-            "SELECT id FROM poll_vote WHERE poll_id = type::record('poll', $pid) AND actor_id = type::record('user', $aid) LIMIT 1;",
-        )
-        .bind(("pid", poll_id.clone()))
-        .bind(("aid", auth.user_id.to_string()))
-        .await
-        .map_err(|e| AppError::Internal(e.to_string()))?;
-    let already: Vec<surrealdb::types::Value> = existing
-        .take(0)
-        .map_err(|e| AppError::Internal(e.to_string()))?;
-    if !already.is_empty() {
+
+    let already: Option<String> = sqlx::query_scalar(
+        "SELECT id FROM poll_votes WHERE poll_id = $1 AND actor_id = $2 LIMIT 1",
+    )
+    .bind(&poll_id)
+    .bind(auth.user_id.to_string())
+    .fetch_optional(state.db())
+    .await
+    .map_err(|e| AppError::Internal(e.to_string()))?;
+    if already.is_some() {
         return Err(AppError::Validation("Already voted".to_string()));
     }
 
-    crate::db::queries::vote_poll(
-        state.surreal(),
-        &poll_id,
-        &auth.user_id.to_string(),
-        body.choice,
-    )
-    .await
-    .map_err(|e| AppError::Internal(e.to_string()))?;
+    crate::db::queries::vote_poll(state.db(), &poll_id, &auth.user_id.to_string(), body.choice)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
     Ok(ok_null())
 }
 
@@ -623,35 +576,31 @@ async fn query_search_notes(
     visibility: &str,
 ) -> Result<Vec<NoteDto>> {
     let sql = format!(
-        "
-        SELECT
-            *,
-            actor_id.id AS actor_id,
-            reply_id.id AS reply_id,
-            renote_id.id AS renote_id,
-            actor_id.* AS author
-        FROM note
-        WHERE text CONTAINS $query
-          AND {visibility}
-        ORDER BY id DESC
-        LIMIT $limit;
-        "
+        "SELECT {NOTE_COLUMNS} FROM notes
+         WHERE text ILIKE '%' || $1 || '%'
+           AND {visibility}
+         ORDER BY id DESC
+         LIMIT $2"
     );
-    let mut response = state
-        .surreal()
-        .query(&sql)
-        .bind(("query", q.to_string()))
-        .bind(("limit", limit as i64))
+    let rows = sqlx::query_as::<_, NoteRow>(&sql)
+        .bind(q)
+        .bind(limit as i64)
+        .fetch_all(state.db())
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
-    let rows: Vec<surrealdb::types::Value> = response
-        .take(0)
+
+    let notes: Vec<Note> = rows
+        .into_iter()
+        .map(|row| row.try_into())
+        .collect::<std::result::Result<_, _>>()
+        .map_err(|e: anyhow::Error| AppError::Internal(e.to_string()))?;
+
+    let rows = crate::db::queries::timeline::attach_authors(state.db(), notes)
+        .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
-    let notes: Vec<crate::db::queries::NoteWithAuthor> =
-        crate::db::queries::rows_to(rows).map_err(|e| AppError::Internal(e.to_string()))?;
-    Ok(crate::routes::v1::common::rows_to_dtos(state, notes).await)
+    Ok(crate::routes::v1::common::rows_to_dtos(state, rows).await)
 }
-/// 公開 TL がページに収まる間は Redis を先に見る。空の q は従来の SurrealDB。
+/// 公開 TL がページに収まる間は Redis を先に見る。空の q は DB の ILIKE。
 // ponytail: 公開TLがページに収まる間だけ Redis を正にする。ページが満杯なら SurrealDB。CONTAINS が遅くなったら SurrealDB FULLTEXT。Meilisearch/ES は足さない。
 pub async fn search_notes(
     State(state): State<AppState>,

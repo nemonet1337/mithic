@@ -64,7 +64,7 @@ pub async fn create_note_service(
         note.reply_id = Some(parse_note_id(reply_id)?);
     }
 
-    let created = create_note(state.surreal(), &note)
+    let created = create_note(state.db(), &note)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
@@ -73,39 +73,31 @@ pub async fn create_note_service(
             .into_iter()
             .map(|text| serde_json::json!({ "text": text, "votes": 0 }))
             .collect();
-        state
-            .surreal()
-            .query(
-                "
-                INSERT INTO poll {
-                    id: $id,
-                    note_id: type::record('note', $note_id),
-                    created_at: time::now(),
-                    multiple: false,
-                    choices: $choices
-                };
-                ",
-            )
-            .bind(("id", ulid::Ulid::generate().to_string()))
-            .bind(("note_id", created.id.to_string()))
-            .bind(("choices", choice_objs))
-            .await
-            .map_err(|e| AppError::Internal(e.to_string()))?;
+        sqlx::query(
+            "INSERT INTO polls (id, note_id, created_at, multiple, choices)
+             VALUES ($1, $2, now(), false, $3)",
+        )
+        .bind(ulid::Ulid::generate().to_string())
+        .bind(created.id.to_string())
+        .bind(sqlx::types::Json(choice_objs))
+        .execute(state.db())
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
     }
 
-    let author = get_actor_by_id(state.surreal(), &author_id)
+    let author = get_actor_by_id(state.db(), &author_id)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?
         .ok_or_else(|| AppError::NotFound("Author not found".to_string()))?;
 
     // 投稿数カウンタ更新 (レスポンスに不要 → バックグラウンド)
     {
-        let surreal = state.surreal().clone();
+        let db = state.db().clone();
         let id = author_id.to_string();
         tokio::spawn(async move {
-            let _ = surreal
-                .query("UPDATE user SET notes_count += 1 WHERE id = type::record('user', $id);")
-                .bind(("id", id))
+            let _ = sqlx::query("UPDATE users SET notes_count = notes_count + 1 WHERE id = $1")
+                .bind(id)
+                .execute(&db)
                 .await;
         });
     }
@@ -165,7 +157,7 @@ pub async fn create_note_service(
 async fn spawn_note_notifications(state: AppState, author: Actor, created: Note, dto: NoteDto) {
     // 返信通知
     if let Some(reply_id) = created.reply_id
-        && let Ok(Some(parent)) = get_note_by_id(state.surreal(), &reply_id).await
+        && let Ok(Some(parent)) = get_note_by_id(state.db(), &reply_id).await
         && parent.actor_id != author.id
     {
         let notif = Notification::new(
@@ -189,36 +181,17 @@ async fn spawn_note_notifications(state: AppState, author: Actor, created: Note,
             }
         }
         if !names.is_empty() {
-            // 1 クエリで解決 (username_lower IN)
-            let mut response = match state
-                .surreal()
-                .query("SELECT * FROM user WHERE username_lower IN $names AND host = NONE;")
-                .bind((
-                    "names",
-                    names.iter().map(|n| n.to_lowercase()).collect::<Vec<_>>(),
-                ))
-                .await
-            {
-                Ok(r) => r,
-                Err(e) => {
-                    tracing::warn!("Failed to resolve mentions: {e}");
-                    return;
-                }
-            };
-            let rows: Vec<surrealdb::types::Value> = match response.take(0) {
-                Ok(r) => r,
-                Err(e) => {
-                    tracing::warn!("Failed to take mention rows: {e}");
-                    return;
-                }
-            };
-            let actors: Vec<Actor> = match crate::db::queries::rows_to(rows) {
-                Ok(a) => a,
-                Err(e) => {
-                    tracing::warn!("Failed to deserialize mentioned actors: {e}");
-                    return;
-                }
-            };
+            // 1 クエリで解決 (username_lower = ANY)
+            let lowered: Vec<String> = names.iter().map(|n| n.to_lowercase()).collect();
+            let actors: Vec<Actor> =
+                match crate::db::queries::get_actors_by_username_lowers(state.db(), &lowered).await
+                {
+                    Ok(a) => a,
+                    Err(e) => {
+                        tracing::warn!("Failed to resolve mentions: {e}");
+                        return;
+                    }
+                };
             for mentioned in actors {
                 if mentioned.id != author.id {
                     let notif = Notification::new(
@@ -241,7 +214,7 @@ pub async fn publish_notification(
     sender: Option<&Actor>,
     note: Option<NoteDto>,
 ) {
-    if let Err(e) = create_notification(state.surreal(), notif).await {
+    if let Err(e) = create_notification(state.db(), notif).await {
         tracing::warn!("Failed to persist notification: {}", e);
         return;
     }
@@ -424,19 +397,14 @@ pub async fn deliver_reaction(
 
     let custom_url = if reaction.starts_with(':') && reaction.ends_with(':') {
         let name = reaction.trim_matches(':');
-        let mut res = state
-            .surreal()
-            .query("SELECT url FROM emoji WHERE name = $name AND is_public = true LIMIT 1;")
-            .bind(("name", name.to_string()))
-            .await
-            .ok();
-        res.as_mut()
-            .and_then(|r| r.take::<Vec<surrealdb::types::Value>>(0).ok())
-            .and_then(|rows| rows.into_iter().next())
-            .and_then(|v| {
-                let j = v.into_json_value();
-                j.get("url").and_then(|u| u.as_str()).map(String::from)
-            })
+        sqlx::query_scalar::<_, String>(
+            "SELECT url FROM emojis WHERE name = $1 AND is_public LIMIT 1",
+        )
+        .bind(name)
+        .fetch_optional(state.db())
+        .await
+        .ok()
+        .flatten()
     } else {
         None
     };
@@ -456,11 +424,11 @@ pub async fn deliver_reaction(
     let federation = state.federation_service().clone();
     let reactor = reactor.clone();
     let note_author_id = note.actor_id;
-    let surreal = state.surreal().clone();
+    let db = state.db().clone();
 
     tokio::spawn(async move {
         // リモート著者の inbox へ直接
-        if let Ok(Some(author)) = get_actor_by_id(&surreal, &note_author_id).await
+        if let Ok(Some(author)) = get_actor_by_id(&db, &note_author_id).await
             && author.host.is_some()
             && let Some(inbox) = author.shared_inbox.or(author.inbox)
             && let Err(e) = federation

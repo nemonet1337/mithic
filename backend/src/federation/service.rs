@@ -12,7 +12,7 @@ use tracing::{error, info, warn};
 
 use crate::federation::http_sig;
 
-use crate::db::{RedisClient, SurrealClient};
+use crate::db::{Db, RedisClient};
 use crate::models::Actor;
 
 /// 最終的に断念した配送 (LPUSH 先)
@@ -26,7 +26,7 @@ pub struct ActivityDelivery {
 
 #[derive(Debug, Clone)]
 pub struct FederationService {
-    surreal: Arc<SurrealClient>,
+    db: Db,
     redis: RedisClient,
     storage: apalis_redis::RedisStorage<ActivityDelivery>,
     http_client: Client,
@@ -39,14 +39,14 @@ pub struct FederationService {
 
 impl FederationService {
     pub fn new(
-        surreal: SurrealClient,
+        db: Db,
         redis: RedisClient,
         storage: apalis_redis::RedisStorage<ActivityDelivery>,
         http_client: Client,
         instance_url: String,
     ) -> Self {
         Self {
-            surreal: Arc::new(surreal),
+            db,
             redis,
             storage,
             http_client,
@@ -185,45 +185,27 @@ impl FederationService {
 
         // フォローグラフからリモートフォロワーの inbox を取得し、
         // sharedInbox 単位でグルーピングして同一インスタンスへは1回だけ配送する
-        let query = r#"
-            SELECT in.inbox AS inbox, in.shared_inbox AS shared_inbox
-            FROM follow
-            WHERE out = type::record('user', $actor_id)
-            AND in.host != None
-        "#;
+        let rows: Vec<(Option<String>, Option<String>)> = sqlx::query_as(
+            "SELECT u.inbox, u.shared_inbox
+             FROM follows f JOIN users u ON u.id = f.follower_id
+             WHERE f.followee_id = $1 AND u.host IS NOT NULL",
+        )
+        .bind(actor_id)
+        .fetch_all(&self.db)
+        .await
+        .map_err(|e| {
+            error!("Failed to fetch followers: {}", e);
+            anyhow::anyhow!("Database error: {}", e)
+        })?;
 
-        let mut result = self
-            .surreal
-            .query(query)
-            .bind(("actor_id", actor_id.to_string()))
-            .await
-            .map_err(|e| {
-                error!("Failed to fetch followers: {}", e);
-                anyhow::anyhow!("Database error: {}", e)
-            })?;
-
-        let rows: Vec<surrealdb::types::Value> = result.take(0).unwrap_or_default();
-        let follower_data: Vec<(Option<String>, Option<String>)> = rows
-            .into_iter()
-            .map(|v| {
-                let json = v.into_json_value();
-                (
-                    json.get("inbox").and_then(|x| x.as_str()).map(String::from),
-                    json.get("shared_inbox")
-                        .and_then(|x| x.as_str())
-                        .map(String::from),
-                )
-            })
-            .collect();
-
-        if follower_data.is_empty() {
+        if rows.is_empty() {
             info!("No remote followers to broadcast to");
             return Ok(());
         }
 
         let mut unique_inboxes: std::collections::HashSet<String> =
             std::collections::HashSet::new();
-        for (inbox, shared_inbox) in follower_data {
+        for (inbox, shared_inbox) in rows {
             if let Some(target) = shared_inbox.or(inbox) {
                 unique_inboxes.insert(target);
             }
@@ -239,7 +221,7 @@ impl FederationService {
     pub async fn fanout_to_relays(&self, activity: &serde_json::Value) -> anyhow::Result<()> {
         info!("Fanning out activity to relays");
 
-        let accepted_relays = crate::db::queries::get_accepted_relays(&self.surreal)
+        let accepted_relays = crate::db::queries::get_accepted_relays(&self.db)
             .await
             .map_err(|e| anyhow::anyhow!("Failed to fetch accepted relays: {}", e))?;
 
@@ -270,44 +252,29 @@ impl FederationService {
                 .iter()
                 .map(|u| u.trim_start_matches('@').to_lowercase())
                 .collect();
-            let mut res = self
-                .surreal
-                .query(
-                    "SELECT count() AS c FROM user WHERE username_lower IN $names AND host = NONE GROUP ALL;",
-                )
-                .bind(("names", lowers))
-                .await?;
-            #[derive(serde::Deserialize)]
-            struct C {
-                c: i64,
-            }
-            let rows: Vec<surrealdb::types::Value> = res.take(0)?;
-            let counts: Vec<C> = crate::db::queries::rows_to(rows).unwrap_or_default();
-            if counts.first().map(|r| r.c).unwrap_or(0) > 0 {
+            let c: i64 = sqlx::query_scalar(
+                "SELECT count(*) FROM users WHERE username_lower = ANY($1) AND host IS NULL",
+            )
+            .bind(&lowers)
+            .fetch_one(&self.db)
+            .await?;
+            if c > 0 {
                 return Ok(true);
             }
         }
 
         // ローカル誰かがこのリモートアクターをフォローしているか
-        let mut res = self
-            .surreal
-            .query(
-                r#"
-                SELECT count() AS c FROM follow
-                WHERE out.uri = $uri
-                  AND in.host = NONE
-                GROUP ALL;
-                "#,
-            )
-            .bind(("uri", remote_actor_uri.to_string()))
-            .await?;
-        #[derive(serde::Deserialize)]
-        struct C {
-            c: i64,
-        }
-        let rows: Vec<surrealdb::types::Value> = res.take(0)?;
-        let counts: Vec<C> = crate::db::queries::rows_to(rows).unwrap_or_default();
-        Ok(counts.first().map(|r| r.c).unwrap_or(0) > 0)
+        let c: i64 = sqlx::query_scalar(
+            "SELECT count(*)
+             FROM follows f
+             JOIN users follower ON follower.id = f.follower_id
+             JOIN users followee ON followee.id = f.followee_id
+             WHERE followee.uri = $1 AND follower.host IS NULL",
+        )
+        .bind(remote_actor_uri)
+        .fetch_one(&self.db)
+        .await?;
+        Ok(c > 0)
     }
 
     /// 長期稼働時のメモリ成長を抑えるため、鍵キャッシュとホストセマフォを定期クリアする。
@@ -452,19 +419,10 @@ impl FederationService {
             .and_then(|v| v.as_str())
             .ok_or_else(|| self.to_apalis_error(anyhow::anyhow!("Missing actor in activity")))?;
 
-        let actor_result: Option<Actor> = self
-            .surreal
-            .query("SELECT * FROM user WHERE uri = $actor_id LIMIT 1")
-            .bind(("actor_id", actor_id.to_string()))
+        let actor_result: Option<Actor> = crate::db::queries::get_actor_by_uri(&self.db, actor_id)
             .await
             .ok()
-            .and_then(|mut res| res.take::<Vec<surrealdb::types::Value>>(0).ok())
-            .and_then(|v| v.into_iter().next())
-            .and_then(|v| {
-                let mut json = v.into_json_value();
-                crate::db::queries::strip_record_prefixes(&mut json);
-                serde_json::from_value::<Actor>(json).ok()
-            });
+            .flatten();
 
         let actor = actor_result.ok_or_else(|| {
             self.to_apalis_error(anyhow::anyhow!("Actor not found: {}", actor_id))

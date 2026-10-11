@@ -2,7 +2,7 @@ use object_store::ObjectStore;
 use std::sync::Arc;
 
 use crate::config::AppConfig;
-use crate::db::{RedisClient, SurrealClient};
+use crate::db::{Db, RedisClient};
 use crate::federation::{ActivityDelivery, FederationService};
 use apalis_redis::RedisStorage;
 use base64::Engine;
@@ -17,7 +17,7 @@ pub struct AppState {
 }
 
 struct AppStateInner {
-    pub surreal: SurrealClient,
+    pub db: Db,
     pub redis: RedisClient,
     pub config: AppConfig,
     pub http_client: reqwest::Client,
@@ -32,7 +32,7 @@ struct AppStateInner {
 impl std::fmt::Debug for AppStateInner {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AppStateInner")
-            .field("surreal", &self.surreal)
+            .field("db", &self.db)
             .field("redis", &self.redis)
             .field("config", &self.config)
             .field("vapid_public_key", &self.vapid_public_key)
@@ -64,7 +64,7 @@ fn parse_vapid_key(private_b64: &str) -> Option<(ES256KeyPair, String)> {
 
 impl AppState {
     pub fn new(
-        surreal: SurrealClient,
+        db: Db,
         redis: RedisClient,
         queue_storage: RedisStorage<ActivityDelivery>,
         config: AppConfig,
@@ -75,7 +75,7 @@ impl AppState {
             .build()?;
 
         let federation_service = FederationService::new(
-            surreal.clone(),
+            db.clone(),
             redis.clone(),
             queue_storage,
             http_client.clone(),
@@ -103,7 +103,7 @@ impl AppState {
 
         Ok(Self {
             inner: Arc::new(AppStateInner {
-                surreal,
+                db,
                 redis,
                 config,
                 http_client,
@@ -116,8 +116,8 @@ impl AppState {
         })
     }
 
-    pub fn surreal(&self) -> &SurrealClient {
-        &self.inner.surreal
+    pub fn db(&self) -> &Db {
+        &self.inner.db
     }
     pub fn redis(&self) -> &RedisClient {
         &self.inner.redis

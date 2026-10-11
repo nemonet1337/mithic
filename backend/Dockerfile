@@ -65,8 +65,9 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=shared \
 # Stage 5: Backend runtime image (API + delivery worker in one process)
 # =============================================================================
 FROM alpine:3.24 AS backend
-# curl は healthcheck 用、ca-certificates は TLS（連合・SurrealDB）用、
-# libgcc は musl バイナリの実行に必要
+# curl は healthcheck 用、ca-certificates は TLS (連合・他インスタンスへの HTTPS) 用、
+# libgcc は musl バイナリの実行に必要。
+# PostgreSQL 接続は TCP (非 TLS) なので追加ランタイムは不要。
 RUN apk add --no-cache ca-certificates curl libgcc
 
 COPY --from=backend-builder /app/mithic-server /usr/local/bin/

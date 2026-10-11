@@ -26,7 +26,7 @@ ulid = { workspace = true }
 url = { workspace = true }
 tokio = { workspace = true }
 futures-util = { workspace = true }
-surrealdb = { workspace = true }
+sqlx = { workspace = true }
 redis = { workspace = true }
 object_store = { workspace = true }
 anyhow = { workspace = true }

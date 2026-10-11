@@ -1,7 +1,6 @@
 //! GET /api/v1/instance — メタ + カスタム絵文字一覧
 
 use crate::db::cache;
-use crate::db::queries::rows_to;
 use crate::{AppError, Result};
 use axum::{extract::State, http::HeaderMap, response::Response};
 use serde::Serialize;
@@ -59,30 +58,25 @@ pub async fn get_instance(State(state): State<AppState>, headers: HeaderMap) -> 
 }
 
 async fn load_public_emojis(state: &AppState) -> Result<Vec<CustomEmoji>> {
-    let mut response = state
-        .surreal()
-        .query(
-            "SELECT name, url, category, aliases FROM emoji WHERE is_public = true ORDER BY name ASC LIMIT 500;",
-        )
-        .await
-        .map_err(|e| AppError::Internal(e.to_string()))?;
-
-    let rows: Vec<surrealdb::types::Value> = response
-        .take(0)
-        .map_err(|e| AppError::Internal(e.to_string()))?;
-
-    #[derive(serde::Deserialize)]
+    #[derive(sqlx::FromRow)]
     struct Row {
         name: String,
         url: String,
-        #[serde(default)]
         category: Option<String>,
-        #[serde(default)]
         aliases: Vec<String>,
     }
 
-    let parsed: Vec<Row> = rows_to(rows).map_err(|e| AppError::Internal(e.to_string()))?;
-    Ok(parsed
+    let rows: Vec<Row> = sqlx::query_as(
+        "SELECT name, url, category, aliases FROM emojis
+         WHERE is_public
+         ORDER BY name ASC
+         LIMIT 500",
+    )
+    .fetch_all(state.db())
+    .await
+    .map_err(|e| AppError::Internal(e.to_string()))?;
+
+    Ok(rows
         .into_iter()
         .map(|r| CustomEmoji {
             name: r.name,

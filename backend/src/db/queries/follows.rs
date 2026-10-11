@@ -1,294 +1,223 @@
-use crate::db::SurrealClient;
-use crate::db::queries::rows_to;
+use crate::db::Db;
+use crate::db::queries::actors::ActorRow;
 use crate::models::actor::{Actor, ActorId};
-use serde::Deserialize;
-
-#[derive(Deserialize)]
-struct ActorEdge {
-    actor: Actor,
-}
 
 pub async fn follow_user(
-    client: &SurrealClient,
+    db: &Db,
     follower_id: &ActorId,
     followee_id: &ActorId,
     accepted: bool,
 ) -> anyhow::Result<()> {
-    let follower_str = follower_id.to_string();
-    let followee_str = followee_id.to_string();
     let created_at = chrono::Utc::now();
+    let follower = follower_id.to_string();
+    let followee = followee_id.to_string();
 
-    let counts = if accepted {
-        "
-            UPDATE user SET following_count += 1 WHERE id = type::record('user', $follower);
-            UPDATE user SET followers_count += 1 WHERE id = type::record('user', $followee);
-        "
-    } else {
-        ""
-    };
+    let mut tx = db.begin().await?;
 
-    client
-        .query(format!(
-            "
-            DELETE follow WHERE in = type::record('user', $follower) AND out = type::record('user', $followee);
-            RELATE (type::record('user', $follower)) -> follow -> (type::record('user', $followee))
-            SET created_at = $created_at, is_accepted = $accepted;
-            {counts}
-            "
-        ))
-        .bind(("follower", follower_str))
-        .bind(("followee", followee_str))
-        .bind(("created_at", created_at))
-        .bind(("accepted", accepted))
-        .await?;
+    sqlx::query(
+        "INSERT INTO follows (follower_id, followee_id, created_at, is_accepted)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (follower_id, followee_id)
+         DO UPDATE SET created_at = EXCLUDED.created_at, is_accepted = EXCLUDED.is_accepted",
+    )
+    .bind(&follower)
+    .bind(&followee)
+    .bind(created_at)
+    .bind(accepted)
+    .execute(&mut *tx)
+    .await?;
 
+    if accepted {
+        sqlx::query("UPDATE users SET following_count = following_count + 1 WHERE id = $1")
+            .bind(&follower)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("UPDATE users SET followers_count = followers_count + 1 WHERE id = $1")
+            .bind(&followee)
+            .execute(&mut *tx)
+            .await?;
+    }
+
+    tx.commit().await?;
     Ok(())
 }
 
 pub async fn unfollow_user(
-    client: &SurrealClient,
+    db: &Db,
     follower_id: &ActorId,
     followee_id: &ActorId,
 ) -> anyhow::Result<()> {
-    let follower_str = follower_id.to_string();
-    let followee_str = followee_id.to_string();
+    let follower = follower_id.to_string();
+    let followee = followee_id.to_string();
 
-    client
-        .query(
-            "
-            LET $accepted = (SELECT VALUE is_accepted FROM follow
-                WHERE in = type::record('user', $follower) AND out = type::record('user', $followee)
-                LIMIT 1)[0];
-            DELETE follow WHERE in = type::record('user', $follower) AND out = type::record('user', $followee);
-            IF $accepted = true {
-                UPDATE user SET following_count = <int>(following_count OR 1) - 1 WHERE id = type::record('user', $follower);
-                UPDATE user SET followers_count = <int>(followers_count OR 1) - 1 WHERE id = type::record('user', $followee);
-            };
-            ",
-        )
-        .bind(("follower", follower_str))
-        .bind(("followee", followee_str))
+    let mut tx = db.begin().await?;
+
+    let accepted: Option<bool> = sqlx::query_scalar(
+        "SELECT is_accepted FROM follows WHERE follower_id = $1 AND followee_id = $2",
+    )
+    .bind(&follower)
+    .bind(&followee)
+    .fetch_optional(&mut *tx)
+    .await?;
+
+    sqlx::query("DELETE FROM follows WHERE follower_id = $1 AND followee_id = $2")
+        .bind(&follower)
+        .bind(&followee)
+        .execute(&mut *tx)
         .await?;
 
+    if accepted == Some(true) {
+        sqlx::query(
+            "UPDATE users SET following_count = GREATEST(following_count - 1, 0) WHERE id = $1",
+        )
+        .bind(&follower)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query(
+            "UPDATE users SET followers_count = GREATEST(followers_count - 1, 0) WHERE id = $1",
+        )
+        .bind(&followee)
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    tx.commit().await?;
     Ok(())
 }
 
-pub async fn block_user(
-    client: &SurrealClient,
-    blocker_id: &ActorId,
-    blocked_id: &ActorId,
-) -> anyhow::Result<()> {
-    let blocker_str = blocker_id.to_string();
-    let blocked_str = blocked_id.to_string();
-    let created_at = chrono::Utc::now();
-
-    client
-        .query(
-            "
-            RELATE (type::record('user', $blocker)) -> block -> (type::record('user', $blocked))
-            SET created_at = $created_at;
-            ",
-        )
-        .bind(("blocker", blocker_str))
-        .bind(("blocked", blocked_str))
-        .bind(("created_at", created_at))
-        .await?;
-
+pub async fn block_user(db: &Db, blocker_id: &ActorId, blocked_id: &ActorId) -> anyhow::Result<()> {
+    sqlx::query(
+        "INSERT INTO blocks (blocker_id, blocked_id, created_at) VALUES ($1, $2, $3)
+         ON CONFLICT (blocker_id, blocked_id) DO NOTHING",
+    )
+    .bind(blocker_id.to_string())
+    .bind(blocked_id.to_string())
+    .bind(chrono::Utc::now())
+    .execute(db)
+    .await?;
     Ok(())
 }
 
 pub async fn unblock_user(
-    client: &SurrealClient,
+    db: &Db,
     blocker_id: &ActorId,
     blocked_id: &ActorId,
 ) -> anyhow::Result<()> {
-    let blocker_str = blocker_id.to_string();
-    let blocked_str = blocked_id.to_string();
-
-    client
-        .query(
-            "
-            DELETE block WHERE in = type::record('user', $blocker) AND out = type::record('user', $blocked);
-            ",
-        )
-        .bind(("blocker", blocker_str))
-        .bind(("blocked", blocked_str))
+    sqlx::query("DELETE FROM blocks WHERE blocker_id = $1 AND blocked_id = $2")
+        .bind(blocker_id.to_string())
+        .bind(blocked_id.to_string())
+        .execute(db)
         .await?;
-
     Ok(())
 }
 
-pub async fn mute_user(
-    client: &SurrealClient,
-    muter_id: &ActorId,
-    muted_id: &ActorId,
-) -> anyhow::Result<()> {
-    let muter_str = muter_id.to_string();
-    let muted_str = muted_id.to_string();
-    let created_at = chrono::Utc::now();
-
-    client
-        .query(
-            "
-            RELATE (type::record('user', $muter)) -> mute -> (type::record('user', $muted))
-            SET created_at = $created_at;
-            ",
-        )
-        .bind(("muter", muter_str))
-        .bind(("muted", muted_str))
-        .bind(("created_at", created_at))
-        .await?;
-
+pub async fn mute_user(db: &Db, muter_id: &ActorId, muted_id: &ActorId) -> anyhow::Result<()> {
+    sqlx::query(
+        "INSERT INTO mutes (muter_id, muted_id, created_at) VALUES ($1, $2, $3)
+         ON CONFLICT (muter_id, muted_id) DO NOTHING",
+    )
+    .bind(muter_id.to_string())
+    .bind(muted_id.to_string())
+    .bind(chrono::Utc::now())
+    .execute(db)
+    .await?;
     Ok(())
 }
 
-pub async fn unmute_user(
-    client: &SurrealClient,
-    muter_id: &ActorId,
-    muted_id: &ActorId,
-) -> anyhow::Result<()> {
-    let muter_str = muter_id.to_string();
-    let muted_str = muted_id.to_string();
-
-    client
-        .query(
-            "
-            DELETE mute WHERE in = type::record('user', $muter) AND out = type::record('user', $muted);
-            ",
-        )
-        .bind(("muter", muter_str))
-        .bind(("muted", muted_str))
+pub async fn unmute_user(db: &Db, muter_id: &ActorId, muted_id: &ActorId) -> anyhow::Result<()> {
+    sqlx::query("DELETE FROM mutes WHERE muter_id = $1 AND muted_id = $2")
+        .bind(muter_id.to_string())
+        .bind(muted_id.to_string())
+        .execute(db)
         .await?;
-
     Ok(())
 }
 
 pub async fn is_following(
-    client: &SurrealClient,
+    db: &Db,
     follower_id: &ActorId,
     followee_id: &ActorId,
 ) -> anyhow::Result<bool> {
-    let follower_str = follower_id.to_string();
-    let followee_str = followee_id.to_string();
-
-    let mut response = client
-        .query(
-            "
-            SELECT VALUE count() FROM follow WHERE in = type::record('user', $follower) AND out = type::record('user', $followee) AND is_accepted = true;
-            ",
-        )
-        .bind(("follower", follower_str))
-        .bind(("followee", followee_str))
-        .await?;
-
-    let counts: Vec<usize> = response.take(0)?;
-    Ok(counts.first().cloned().unwrap_or(0) > 0)
+    let exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS(
+            SELECT 1 FROM follows
+            WHERE follower_id = $1 AND followee_id = $2 AND is_accepted
+        )",
+    )
+    .bind(follower_id.to_string())
+    .bind(followee_id.to_string())
+    .fetch_one(db)
+    .await?;
+    Ok(exists)
 }
 
 /// フォローリクエストの状態。`None` = フォロー関係なし、`Some(false)` = 承認待ち
 pub async fn follow_request_state(
-    client: &SurrealClient,
+    db: &Db,
     follower_id: &ActorId,
     followee_id: &ActorId,
 ) -> anyhow::Result<Option<bool>> {
-    let mut response = client
-        .query(
-            "
-            SELECT VALUE is_accepted FROM follow
-            WHERE in = type::record('user', $follower) AND out = type::record('user', $followee)
-            LIMIT 1;
-            ",
-        )
-        .bind(("follower", follower_id.to_string()))
-        .bind(("followee", followee_id.to_string()))
-        .await?;
-
-    let rows: Vec<Option<bool>> = response.take(0)?;
-    Ok(rows.into_iter().next().flatten())
+    let state: Option<Option<bool>> = sqlx::query_scalar(
+        "SELECT is_accepted FROM follows
+         WHERE follower_id = $1 AND followee_id = $2 LIMIT 1",
+    )
+    .bind(follower_id.to_string())
+    .bind(followee_id.to_string())
+    .fetch_optional(db)
+    .await?;
+    Ok(state.flatten())
 }
 
 pub async fn is_blocking(
-    client: &SurrealClient,
+    db: &Db,
     blocker_id: &ActorId,
     blocked_id: &ActorId,
 ) -> anyhow::Result<bool> {
-    let blocker_str = blocker_id.to_string();
-    let blocked_str = blocked_id.to_string();
-
-    let mut response = client
-        .query(
-            "
-            SELECT VALUE count() FROM block WHERE in = type::record('user', $blocker) AND out = type::record('user', $blocked);
-            ",
-        )
-        .bind(("blocker", blocker_str))
-        .bind(("blocked", blocked_str))
-        .await?;
-
-    let counts: Vec<usize> = response.take(0)?;
-    Ok(counts.first().cloned().unwrap_or(0) > 0)
+    let exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM blocks WHERE blocker_id = $1 AND blocked_id = $2)",
+    )
+    .bind(blocker_id.to_string())
+    .bind(blocked_id.to_string())
+    .fetch_one(db)
+    .await?;
+    Ok(exists)
 }
 
-pub async fn is_muting(
-    client: &SurrealClient,
-    muter_id: &ActorId,
-    muted_id: &ActorId,
-) -> anyhow::Result<bool> {
-    let muter_str = muter_id.to_string();
-    let muted_str = muted_id.to_string();
-
-    let mut response = client
-        .query(
-            "
-            SELECT VALUE count() FROM mute WHERE in = type::record('user', $muter) AND out = type::record('user', $muted);
-            ",
-        )
-        .bind(("muter", muter_str))
-        .bind(("muted", muted_str))
-        .await?;
-
-    let counts: Vec<usize> = response.take(0)?;
-    Ok(counts.first().cloned().unwrap_or(0) > 0)
+pub async fn is_muting(db: &Db, muter_id: &ActorId, muted_id: &ActorId) -> anyhow::Result<bool> {
+    let exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM mutes WHERE muter_id = $1 AND muted_id = $2)",
+    )
+    .bind(muter_id.to_string())
+    .bind(muted_id.to_string())
+    .fetch_one(db)
+    .await?;
+    Ok(exists)
 }
 
-pub async fn get_following(
-    client: &SurrealClient,
-    user_id: &ActorId,
-) -> anyhow::Result<Vec<Actor>> {
-    let user_str = user_id.to_string();
-    let mut response = client
-        .query(
-            "
-            SELECT out.* AS actor FROM follow WHERE in = type::record('user', $user) AND is_accepted = true;
-            ",
-        )
-        .bind(("user", user_str))
-        .await?;
+pub async fn get_following(db: &Db, user_id: &ActorId) -> anyhow::Result<Vec<Actor>> {
+    let rows = sqlx::query_as::<_, ActorRow>(
+        "SELECT u.*
+         FROM users u
+         JOIN follows f ON u.id = f.followee_id
+         WHERE f.follower_id = $1 AND f.is_accepted",
+    )
+    .bind(user_id.to_string())
+    .fetch_all(db)
+    .await?;
 
-    let rows: Vec<surrealdb::types::Value> = response.take(0)?;
-    Ok(rows_to::<ActorEdge>(rows)?
-        .into_iter()
-        .map(|row| row.actor)
-        .collect())
+    rows.into_iter().map(Actor::try_from).collect()
 }
 
-pub async fn get_followers(
-    client: &SurrealClient,
-    user_id: &ActorId,
-) -> anyhow::Result<Vec<Actor>> {
-    let user_str = user_id.to_string();
-    let mut response = client
-        .query(
-            "
-            SELECT in.* AS actor FROM follow WHERE out = type::record('user', $user) AND is_accepted = true;
-            ",
-        )
-        .bind(("user", user_str))
-        .await?;
+pub async fn get_followers(db: &Db, user_id: &ActorId) -> anyhow::Result<Vec<Actor>> {
+    let rows = sqlx::query_as::<_, ActorRow>(
+        "SELECT u.*
+         FROM users u
+         JOIN follows f ON u.id = f.follower_id
+         WHERE f.followee_id = $1 AND f.is_accepted",
+    )
+    .bind(user_id.to_string())
+    .fetch_all(db)
+    .await?;
 
-    let rows: Vec<surrealdb::types::Value> = response.take(0)?;
-    Ok(rows_to::<ActorEdge>(rows)?
-        .into_iter()
-        .map(|row| row.actor)
-        .collect())
+    rows.into_iter().map(Actor::try_from).collect()
 }

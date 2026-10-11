@@ -49,7 +49,7 @@ pub async fn subscribe(
     }
 
     let sub = upsert_push_subscription(
-        state.surreal(),
+        state.db(),
         &auth.user_id,
         &request.endpoint,
         &request.keys.p256dh,
@@ -72,7 +72,7 @@ pub async fn get_subscription(
     Extension(auth): Extension<AuthUser>,
     State(state): State<AppState>,
 ) -> Result<Json<Vec<PushSubscriptionResponse>>> {
-    let subs = list_push_subscriptions(state.surreal(), &auth.user_id)
+    let subs = list_push_subscriptions(state.db(), &auth.user_id)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
@@ -94,7 +94,7 @@ pub async fn unsubscribe(
     Extension(auth): Extension<AuthUser>,
     State(state): State<AppState>,
 ) -> Result<StatusCode> {
-    delete_push_subscriptions_for_user(state.surreal(), &auth.user_id)
+    delete_push_subscriptions_for_user(state.db(), &auth.user_id)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
     Ok(StatusCode::NO_CONTENT)

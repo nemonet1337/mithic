@@ -120,7 +120,7 @@ pub async fn deliver_web_push(state: &AppState, recipient_id: ActorId, dto: &Not
         return;
     }
 
-    let subs = match list_push_subscriptions(state.surreal(), &recipient_id).await {
+    let subs = match list_push_subscriptions(state.db(), &recipient_id).await {
         Ok(s) if !s.is_empty() => s,
         Ok(_) => return,
         Err(e) => {
@@ -134,7 +134,7 @@ pub async fn deliver_web_push(state: &AppState, recipient_id: ActorId, dto: &Not
         match send_one(state, &sub, &payload).await {
             Ok(()) => debug!("Web push sent to {}", sub.endpoint),
             Err(PushSendError::Stale) => {
-                let _ = delete_push_subscription_by_endpoint(state.surreal(), &sub.endpoint).await;
+                let _ = delete_push_subscription_by_endpoint(state.db(), &sub.endpoint).await;
                 debug!("Removed stale push subscription {}", sub.endpoint);
             }
             Err(PushSendError::Other(e)) => warn!("Web push failed for {}: {e}", sub.endpoint),

@@ -18,7 +18,7 @@ use tracing::{info, warn};
 use crate::db::cache;
 use crate::db::queries::{
     add_reaction, block_user, create_actor, create_note, delete_note, follow_user,
-    get_actor_by_username, get_note_by_id, get_note_by_uri, is_following,
+    get_actor_by_uri, get_actor_by_username, get_note_by_id, get_note_by_uri, is_following,
     remove_all_reactions_by_actor, unfollow_user,
 };
 use crate::events::StreamBroadcast;
@@ -98,7 +98,7 @@ async fn webfinger(
         return Err(AppError::NotFound("Unknown host".to_string()));
     }
 
-    let actor = get_actor_by_username(state.surreal(), username)
+    let actor = get_actor_by_username(state.db(), username)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?
         .filter(|a| a.is_local())
@@ -142,31 +142,14 @@ async fn nodeinfo_discovery(State(state): State<AppState>) -> Json<Value> {
 }
 
 async fn nodeinfo(State(state): State<AppState>) -> Json<Value> {
-    let mut users_total: Option<i64> = None;
-    let mut notes_total: Option<i64> = None;
-
-    if let Ok(mut res) = state
-        .surreal()
-        .query("SELECT count() AS c FROM user WHERE host = None GROUP ALL;")
+    let users_total: i64 = sqlx::query_scalar("SELECT count(*) FROM users WHERE host IS NULL")
+        .fetch_one(state.db())
         .await
-        && let Ok(rows) = res.take::<Vec<surrealdb::types::Value>>(0)
-    {
-        users_total = rows
-            .into_iter()
-            .next()
-            .and_then(|v| v.into_json_value().get("c").and_then(|c| c.as_i64()));
-    }
-    if let Ok(mut res) = state
-        .surreal()
-        .query("SELECT count() AS c FROM note GROUP ALL;")
+        .unwrap_or(0);
+    let notes_total: i64 = sqlx::query_scalar("SELECT count(*) FROM notes")
+        .fetch_one(state.db())
         .await
-        && let Ok(rows) = res.take::<Vec<surrealdb::types::Value>>(0)
-    {
-        notes_total = rows
-            .into_iter()
-            .next()
-            .and_then(|v| v.into_json_value().get("c").and_then(|c| c.as_i64()));
-    }
+        .unwrap_or(0);
 
     Json(json!({
         "version": "2.0",
@@ -178,8 +161,8 @@ async fn nodeinfo(State(state): State<AppState>) -> Json<Value> {
         "services": { "inbound": [], "outbound": [] },
         "openRegistrations": true,
         "usage": {
-            "users": { "total": users_total.unwrap_or(0) },
-            "localPosts": notes_total.unwrap_or(0)
+            "users": { "total": users_total },
+            "localPosts": notes_total
         },
         "metadata": {
             "nodeName": state.config().instance_name
@@ -319,7 +302,7 @@ async fn actor_document(
     State(state): State<AppState>,
     Path(username): Path<String>,
 ) -> Result<Response> {
-    let actor = get_actor_by_username(state.surreal(), &username)
+    let actor = get_actor_by_username(state.db(), &username)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?
         .filter(|a| a.is_local())
@@ -342,7 +325,7 @@ async fn outbox(
     State(state): State<AppState>,
     Path(username): Path<String>,
 ) -> Result<Json<Value>> {
-    let actor = get_actor_by_username(state.surreal(), &username)
+    let actor = get_actor_by_username(state.db(), &username)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?
         .filter(|a| a.is_local())
@@ -359,7 +342,7 @@ async fn followers(
     State(state): State<AppState>,
     Path(username): Path<String>,
 ) -> Result<Json<Value>> {
-    let actor = get_actor_by_username(state.surreal(), &username)
+    let actor = get_actor_by_username(state.db(), &username)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?
         .filter(|a| a.is_local())
@@ -376,7 +359,7 @@ async fn following(
     State(state): State<AppState>,
     Path(username): Path<String>,
 ) -> Result<Json<Value>> {
-    let actor = get_actor_by_username(state.surreal(), &username)
+    let actor = get_actor_by_username(state.db(), &username)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?
         .filter(|a| a.is_local())
@@ -422,19 +405,10 @@ async fn inbox(
 /// リモートアクターを取得し、未知なら永続化する
 async fn resolve_remote_actor(state: &AppState, actor_uri: &str) -> Result<Actor> {
     // 既知のアクターか確認
-    let mut res = state
-        .surreal()
-        .query("SELECT * FROM user WHERE uri = $uri LIMIT 1;")
-        .bind(("uri", actor_uri.to_string()))
+    if let Some(actor) = get_actor_by_uri(state.db(), actor_uri)
         .await
-        .map_err(|e| AppError::Internal(e.to_string()))?;
-    let rows: Vec<surrealdb::types::Value> =
-        res.take(0).map_err(|e| AppError::Internal(e.to_string()))?;
-    if let Some(actor) = rows.into_iter().next().and_then(|v| {
-        let mut json = v.into_json_value();
-        crate::db::queries::strip_record_prefixes(&mut json);
-        serde_json::from_value::<Actor>(json).ok()
-    }) {
+        .map_err(|e| AppError::Internal(e.to_string()))?
+    {
         return Ok(actor);
     }
 
@@ -453,7 +427,7 @@ async fn resolve_remote_actor(state: &AppState, actor_uri: &str) -> Result<Actor
         ));
     }
 
-    create_actor(state.surreal(), &remote)
+    create_actor(state.db(), &remote)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))
 }
@@ -507,11 +481,11 @@ async fn resolve_note(state: &AppState, note_uri: &str) -> Result<Option<Note>> 
     if let Some(id_str) = note_uri.strip_prefix(&format!("{instance}/notes/"))
         && let Ok(id) = id_str.parse()
     {
-        return get_note_by_id(state.surreal(), &id)
+        return get_note_by_id(state.db(), &id)
             .await
             .map_err(|e| AppError::Internal(e.to_string()));
     }
-    get_note_by_uri(state.surreal(), note_uri)
+    get_note_by_uri(state.db(), note_uri)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))
 }
@@ -598,25 +572,18 @@ async fn cache_emoji_tags(state: &AppState, tags: &Value, host: Option<&str>) {
             continue;
         }
         let id = ulid::Ulid::generate().to_string();
-        let _ = state
-            .surreal()
-            .query(
-                "
-                INSERT INTO remote_emoji {
-                    id: $id,
-                    name: $name,
-                    url: $url,
-                    host: $host,
-                    created_at: time::now()
-                }
-                ON DUPLICATE KEY UPDATE url = $url;
-                ",
-            )
-            .bind(("id", id))
-            .bind(("name", name))
-            .bind(("url", url))
-            .bind(("host", host.map(String::from)))
-            .await;
+        sqlx::query(
+            "INSERT INTO remote_emojis (id, name, url, host, created_at)
+             VALUES ($1, $2, $3, $4, now())
+             ON CONFLICT (name, (COALESCE(host, ''))) DO UPDATE SET url = EXCLUDED.url",
+        )
+        .bind(id)
+        .bind(name)
+        .bind(url)
+        .bind(host.map(String::from))
+        .execute(state.db())
+        .await
+        .ok();
     }
 }
 
@@ -660,14 +627,14 @@ async fn handle_like(
 
     // 同一アクターの既存リアクションを置換
     let _ = remove_all_reactions_by_actor(
-        state.surreal(),
+        state.db(),
         &note.id.to_string(),
         &remote_actor.id.to_string(),
     )
     .await;
 
     if let Err(e) = add_reaction(
-        state.surreal(),
+        state.db(),
         &note.id.to_string(),
         &remote_actor.id.to_string(),
         &reaction,
@@ -738,7 +705,7 @@ async fn handle_create(
         .ok_or_else(|| AppError::Validation("Note missing id".to_string()))?;
 
     // 重複チェック
-    if get_note_by_uri(state.surreal(), note_uri)
+    if get_note_by_uri(state.db(), note_uri)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?
         .is_some()
@@ -842,13 +809,13 @@ async fn handle_create(
             .collect();
     }
 
-    let created = create_note(state.surreal(), &note)
+    let created = create_note(state.db(), &note)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
     // 通知
     if let Some(parent_id) = created.reply_id
-        && let Ok(Some(parent)) = get_note_by_id(state.surreal(), &parent_id).await
+        && let Ok(Some(parent)) = get_note_by_id(state.db(), &parent_id).await
         && parent.actor_id != remote_actor.id
     {
         let notif = Notification::new(
@@ -861,7 +828,7 @@ async fn handle_create(
     }
     if is_quote
         && let Some(qid) = created.renote_id
-        && let Ok(Some(target)) = get_note_by_id(state.surreal(), &qid).await
+        && let Ok(Some(target)) = get_note_by_id(state.db(), &qid).await
         && target.actor_id != remote_actor.id
     {
         let notif = Notification::new(
@@ -898,7 +865,7 @@ async fn handle_announce(
 
     // 重複: 同一 uri の renote があればスキップ
     if let Some(ref uri) = activity_id
-        && get_note_by_uri(state.surreal(), uri)
+        && get_note_by_uri(state.db(), uri)
             .await
             .ok()
             .flatten()
@@ -912,14 +879,13 @@ async fn handle_announce(
     renote.uri = activity_id;
     renote.host = remote_actor.host.clone();
 
-    let created = create_note(state.surreal(), &renote)
+    let created = create_note(state.db(), &renote)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
-    let _ = state
-        .surreal()
-        .query("UPDATE note SET renote_count += 1 WHERE id = type::record('note', $id);")
-        .bind(("id", target.id.to_string()))
+    let _ = sqlx::query("UPDATE notes SET renote_count = renote_count + 1 WHERE id = $1")
+        .bind(target.id.to_string())
+        .execute(state.db())
         .await;
 
     if target.actor_id != remote_actor.id {
@@ -946,7 +912,7 @@ async fn handle_question_create(
         .and_then(|v| v.as_str())
         .ok_or_else(|| AppError::Validation("Question missing id".to_string()))?;
 
-    if get_note_by_uri(state.surreal(), note_uri)
+    if get_note_by_uri(state.db(), note_uri)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?
         .is_some()
@@ -977,7 +943,7 @@ async fn handle_question_create(
         })
         .unwrap_or_default();
 
-    let created = create_note(state.surreal(), &note)
+    let created = create_note(state.db(), &note)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
@@ -986,25 +952,18 @@ async fn handle_question_create(
             .into_iter()
             .map(|name| json!({ "text": name, "votes": 0 }))
             .collect();
-        let poll_id = ulid::Ulid::generate().to_string();
-        let _ = state
-            .surreal()
-            .query(
-                "
-                INSERT INTO poll {
-                    id: $id,
-                    note_id: type::record('note', $note_id),
-                    created_at: time::now(),
-                    multiple: $multiple,
-                    choices: $choices
-                };
-                ",
-            )
-            .bind(("id", poll_id))
-            .bind(("note_id", created.id.to_string()))
-            .bind(("multiple", object.get("anyOf").is_some()))
-            .bind(("choices", choice_objs))
-            .await;
+        let multiple = object.get("anyOf").is_some();
+        sqlx::query(
+            "INSERT INTO polls (id, note_id, created_at, multiple, choices)
+             VALUES ($1, $2, now(), $3, $4)",
+        )
+        .bind(ulid::Ulid::generate().to_string())
+        .bind(created.id.to_string())
+        .bind(multiple)
+        .bind(sqlx::types::Json(choice_objs))
+        .execute(state.db())
+        .await
+        .ok();
     }
 
     Ok(StatusCode::ACCEPTED)
@@ -1032,29 +991,22 @@ async fn handle_poll_vote(
     let remote_actor = resolve_remote_actor(state, remote_actor_uri).await?;
 
     // poll の choices から index を解決
-    let mut res = state
-        .surreal()
-        .query("SELECT * FROM poll WHERE note_id = type::record('note', $nid) LIMIT 1;")
-        .bind(("nid", note.id.to_string()))
-        .await
-        .map_err(|e| AppError::Internal(e.to_string()))?;
-    let rows: Vec<surrealdb::types::Value> =
-        res.take(0).map_err(|e| AppError::Internal(e.to_string()))?;
-    let Some(poll_json) = rows.into_iter().next().map(|v| v.into_json_value()) else {
+    #[derive(sqlx::FromRow)]
+    struct PollRow {
+        id: String,
+        choices: sqlx::types::Json<Vec<serde_json::Value>>,
+    }
+    let Some(poll) =
+        sqlx::query_as::<_, PollRow>("SELECT id, choices FROM polls WHERE note_id = $1 LIMIT 1")
+            .bind(note.id.to_string())
+            .fetch_optional(state.db())
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?
+    else {
         return Ok(StatusCode::ACCEPTED);
     };
-    let poll_id = poll_json
-        .get("id")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .trim_start_matches("poll:")
-        .to_string();
-    let choices = poll_json
-        .get("choices")
-        .and_then(|v| v.as_array())
-        .cloned()
-        .unwrap_or_default();
-    let choice_index = choices.iter().position(|c| {
+    let poll_id = poll.id;
+    let choice_index = poll.choices.0.iter().position(|c| {
         c.get("text")
             .or_else(|| c.get("name"))
             .and_then(|n| n.as_str())
@@ -1065,8 +1017,7 @@ async fn handle_poll_vote(
     };
 
     if let Err(e) =
-        crate::db::queries::vote_poll(state.surreal(), &poll_id, &remote_actor.id.to_string(), idx)
-            .await
+        crate::db::queries::vote_poll(state.db(), &poll_id, &remote_actor.id.to_string(), idx).await
     {
         warn!("Remote poll vote failed: {e}");
     }
@@ -1081,7 +1032,7 @@ async fn resolve_local_object(state: &AppState, object_uri: &str) -> Result<Acto
         .strip_prefix(&format!("{instance_url}/users/"))
         .ok_or_else(|| AppError::NotFound("Object is not a local user".to_string()))?;
 
-    get_actor_by_username(state.surreal(), username)
+    get_actor_by_username(state.db(), username)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?
         .filter(|a| a.is_local())
@@ -1102,7 +1053,7 @@ async fn handle_follow(
     let remote_actor = resolve_remote_actor(state, remote_actor_uri).await?;
 
     let accepted = !local_actor.is_locked;
-    follow_user(state.surreal(), &remote_actor.id, &local_actor.id, accepted)
+    follow_user(state.db(), &remote_actor.id, &local_actor.id, accepted)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
@@ -1168,7 +1119,7 @@ async fn handle_undo(
             let local_actor = resolve_local_object(state, followee_uri).await?;
             let remote_actor = resolve_remote_actor(state, remote_actor_uri).await?;
 
-            unfollow_user(state.surreal(), &remote_actor.id, &local_actor.id)
+            unfollow_user(state.db(), &remote_actor.id, &local_actor.id)
                 .await
                 .map_err(|e| AppError::Internal(e.to_string()))?;
             Ok(StatusCode::ACCEPTED)
@@ -1184,7 +1135,7 @@ async fn handle_undo(
             let remote_actor = resolve_remote_actor(state, remote_actor_uri).await?;
             let reaction = extract_reaction(object);
             if let Err(e) = remove_all_reactions_by_actor(
-                state.surreal(),
+                state.db(),
                 &note.id.to_string(),
                 &remote_actor.id.to_string(),
             )
@@ -1220,36 +1171,44 @@ async fn handle_delete(
 
     if let Some(note) = resolve_note(state, object_uri).await? {
         if note.actor_id == remote_actor.id {
-            delete_note(state.surreal(), &note.id)
+            delete_note(state.db(), &note.id)
                 .await
                 .map_err(|e| AppError::Internal(e.to_string()))?;
             let _ = cache::delete(state.redis(), &format!("note:{}", note.id)).await;
             state.publish_stream(StreamBroadcast::NoteDeleted {
                 id: note.id.to_string(),
             });
-            let _ = state
-                .surreal()
-                .query(
-                    "UPDATE user SET notes_count = <int>(notes_count OR 1) - 1 WHERE id = type::record('user', $id);",
-                )
-                .bind(("id", remote_actor.id.to_string()))
-                .await;
+            sqlx::query(
+                "UPDATE users
+                 SET notes_count = GREATEST(notes_count - 1, 0)
+                 WHERE id = $1",
+            )
+            .bind(remote_actor.id.to_string())
+            .execute(state.db())
+            .await
+            .ok();
         }
         return Ok(StatusCode::ACCEPTED);
     }
 
     if object_uri == remote_actor_uri || remote_actor.uri.as_deref() == Some(object_uri) {
-        let _ = state
-            .surreal()
-            .query(
-                "
-                DELETE note WHERE actor_id = type::record('user', $id);
-                UPDATE user SET notes_count = 0, is_suspended = true, updated_at = time::now()
-                WHERE id = type::record('user', $id) AND host != None;
-                ",
+        let tx = state.db().begin().await.ok();
+        if let Some(mut tx) = tx {
+            sqlx::query("DELETE FROM notes WHERE actor_id = $1")
+                .bind(remote_actor.id.to_string())
+                .execute(&mut *tx)
+                .await
+                .ok();
+            sqlx::query(
+                "UPDATE users SET notes_count = 0, is_suspended = true, updated_at = now()
+                 WHERE id = $1 AND host IS NOT NULL",
             )
-            .bind(("id", remote_actor.id.to_string()))
-            .await;
+            .bind(remote_actor.id.to_string())
+            .execute(&mut *tx)
+            .await
+            .ok();
+            tx.commit().await.ok();
+        }
     }
 
     Ok(StatusCode::ACCEPTED)
@@ -1311,17 +1270,17 @@ async fn handle_update(
             if let Some(tags) = object.get("tag") {
                 cache_emoji_tags(state, tags, remote_actor.host.as_deref()).await;
             }
-            let _ = state
-                .surreal()
-                .query(
-                    "UPDATE note SET text = $text, cw = $cw, tags = $tags, emojis = $emojis WHERE id = type::record('note', $id);",
-                )
-                .bind(("id", note.id.to_string()))
-                .bind(("text", text))
-                .bind(("cw", cw))
-                .bind(("tags", tags))
-                .bind(("emojis", emojis))
-                .await;
+            sqlx::query(
+                "UPDATE notes SET text = $2, cw = $3, tags = $4, emojis = $5 WHERE id = $1",
+            )
+            .bind(note.id.to_string())
+            .bind(text)
+            .bind(cw)
+            .bind(tags)
+            .bind(emojis)
+            .execute(state.db())
+            .await
+            .ok();
             let _ = cache::delete(state.redis(), &format!("note:{}", note.id)).await;
         }
         "Person" | "Service" | "Application" => {
@@ -1374,48 +1333,43 @@ async fn handle_update(
                 .and_then(|v| v.as_str())
                 .map(String::from);
             let fields = profile_fields_from_ap(object);
-            let _ = state
-                .surreal()
-                .query(
-                    "
-                    UPDATE user SET
-                        name = $name,
-                        bio = $bio,
-                        avatar_url = $avatar_url,
-                        banner_url = $banner_url,
-                        inbox = $inbox,
-                        shared_inbox = $shared_inbox,
-                        public_key = $public_key,
-                        is_locked = $is_locked,
-                        is_bot = $is_bot,
-                        is_cat = $is_cat,
-                        location = $location,
-                        birthday = $birthday,
-                        followed_message = $followed_message,
-                        fields = $fields,
-                        updated_at = time::now()
-                    WHERE id = type::record('user', $id) AND host != None;
-                    ",
-                )
-                .bind(("id", remote_actor.id.to_string()))
-                .bind(("name", name))
-                .bind(("bio", bio))
-                .bind(("avatar_url", avatar_url))
-                .bind(("banner_url", banner_url))
-                .bind(("inbox", inbox))
-                .bind(("shared_inbox", shared_inbox))
-                .bind(("public_key", public_key))
-                .bind(("is_locked", is_locked))
-                .bind(("is_bot", is_bot))
-                .bind(("is_cat", is_cat))
-                .bind(("location", location))
-                .bind(("birthday", birthday))
-                .bind(("followed_message", followed_message))
-                .bind((
-                    "fields",
-                    serde_json::to_value(&fields).unwrap_or_else(|_| json!([])),
-                ))
-                .await;
+            sqlx::query(
+                "UPDATE users SET
+                    name = $2,
+                    bio = $3,
+                    avatar_url = $4,
+                    banner_url = $5,
+                    inbox = $6,
+                    shared_inbox = $7,
+                    public_key = $8,
+                    is_locked = $9,
+                    is_bot = $10,
+                    is_cat = $11,
+                    location = $12,
+                    birthday = $13,
+                    followed_message = $14,
+                    fields = $15,
+                    updated_at = now()
+                 WHERE id = $1 AND host IS NOT NULL",
+            )
+            .bind(remote_actor.id.to_string())
+            .bind(name)
+            .bind(bio)
+            .bind(avatar_url)
+            .bind(banner_url)
+            .bind(inbox)
+            .bind(shared_inbox)
+            .bind(public_key)
+            .bind(is_locked)
+            .bind(is_bot)
+            .bind(is_cat)
+            .bind(location)
+            .bind(birthday)
+            .bind(followed_message)
+            .bind(sqlx::types::Json(fields))
+            .execute(state.db())
+            .await
+            .ok();
         }
         other => warn!("Unhandled Update object type: {other}"),
     }
@@ -1437,22 +1391,23 @@ async fn handle_accept(
         return Ok(StatusCode::ACCEPTED);
     };
     let remote_actor = resolve_remote_actor(state, remote_actor_uri).await?;
-    if !is_following(state.surreal(), &local.id, &remote_actor.id)
+    if !is_following(state.db(), &local.id, &remote_actor.id)
         .await
         .unwrap_or(false)
-        && let Err(e) = follow_user(state.surreal(), &local.id, &remote_actor.id, false).await
+        && let Err(e) = follow_user(state.db(), &local.id, &remote_actor.id, false).await
     {
         warn!("Accept Follow: create follow failed: {e}");
         return Ok(StatusCode::ACCEPTED);
     }
-    let _ = state
-        .surreal()
-        .query(
-            "UPDATE follow SET is_accepted = true WHERE in = type::record('user', $from) AND out = type::record('user', $to);",
-        )
-        .bind(("from", local.id.to_string()))
-        .bind(("to", remote_actor.id.to_string()))
-        .await;
+    sqlx::query(
+        "UPDATE follows SET is_accepted = true
+         WHERE follower_id = $1 AND followee_id = $2",
+    )
+    .bind(local.id.to_string())
+    .bind(remote_actor.id.to_string())
+    .execute(state.db())
+    .await
+    .ok();
     Ok(StatusCode::ACCEPTED)
 }
 
@@ -1471,10 +1426,10 @@ async fn handle_reject(
         return Ok(StatusCode::ACCEPTED);
     };
     let remote_actor = resolve_remote_actor(state, remote_actor_uri).await?;
-    if is_following(state.surreal(), &local.id, &remote_actor.id)
+    if is_following(state.db(), &local.id, &remote_actor.id)
         .await
         .unwrap_or(false)
-        && let Err(e) = unfollow_user(state.surreal(), &local.id, &remote_actor.id).await
+        && let Err(e) = unfollow_user(state.db(), &local.id, &remote_actor.id).await
     {
         warn!("Reject Follow: unfollow failed: {e}");
     }
@@ -1493,9 +1448,9 @@ async fn handle_block(
         return Ok(StatusCode::ACCEPTED);
     };
     let remote_actor = resolve_remote_actor(state, remote_actor_uri).await?;
-    let _ = unfollow_user(state.surreal(), &local.id, &remote_actor.id).await;
-    let _ = unfollow_user(state.surreal(), &remote_actor.id, &local.id).await;
-    if let Err(e) = block_user(state.surreal(), &remote_actor.id, &local.id).await {
+    let _ = unfollow_user(state.db(), &local.id, &remote_actor.id).await;
+    let _ = unfollow_user(state.db(), &remote_actor.id, &local.id).await;
+    if let Err(e) = block_user(state.db(), &remote_actor.id, &local.id).await {
         warn!("Remote Block failed: {e}");
     }
     Ok(StatusCode::ACCEPTED)

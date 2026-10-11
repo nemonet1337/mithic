@@ -8,6 +8,27 @@ use super::actor::ActorId;
 pub type NoteId = Ulid;
 pub use shared::NoteVisibility;
 
+/// TEXT カラム → `NoteVisibility`。DB には小文字 1 語で保存する。
+pub fn visibility_str(visibility: NoteVisibility) -> &'static str {
+    match visibility {
+        NoteVisibility::Public => "public",
+        NoteVisibility::Home => "home",
+        NoteVisibility::Followers => "followers",
+        NoteVisibility::Specified => "specified",
+    }
+}
+
+/// TEXT カラム → `NoteVisibility` (`shared` 型のため `FromStr` は直接 implant できない)
+pub fn visibility_from_str(s: &str) -> anyhow::Result<NoteVisibility> {
+    match s {
+        "public" => Ok(NoteVisibility::Public),
+        "home" => Ok(NoteVisibility::Home),
+        "followers" => Ok(NoteVisibility::Followers),
+        "specified" => Ok(NoteVisibility::Specified),
+        other => Err(anyhow::anyhow!("unknown note visibility: {other}")),
+    }
+}
+
 // DB の snake_case フィールドと一致させるため rename しない
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Note {

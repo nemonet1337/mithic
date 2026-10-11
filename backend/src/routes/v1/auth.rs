@@ -48,7 +48,7 @@ async fn token_pair(state: &AppState, actor: &crate::models::actor::Actor) -> Re
         state.config().jwt_expiry_hours,
     )?;
     let refresh = generate_refresh_token(&actor.id.to_string(), &state.config().jwt_secret)?;
-    update_actor_token(state.surreal(), &actor.id, Some(access.clone()))
+    update_actor_token(state.db(), &actor.id, Some(access.clone()))
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
     Ok(TokenPair {
@@ -63,7 +63,7 @@ pub async fn login(
     Json(request): Json<LoginRequest>,
 ) -> Result<Json<TokenPair>> {
     let actor = authenticate_user(
-        state.surreal(),
+        state.db(),
         &normalize_handle(&request.handle),
         &request.password,
     )
@@ -106,7 +106,7 @@ pub async fn register(
         name: request.display_name,
         email: request.email,
     };
-    let actor = register_user(state.surreal(), signup, &state.config().instance_url).await?;
+    let actor = register_user(state.db(), signup, &state.config().instance_url).await?;
     Ok(Json(token_pair(&state, &actor).await?))
 }
 
@@ -142,7 +142,7 @@ pub async fn refresh(
         .parse::<ActorId>()
         .map_err(|_| AppError::Unauthorized("Invalid user ID".to_string()))?;
 
-    let actor = get_actor_by_id(state.surreal(), &user_id)
+    let actor = get_actor_by_id(state.db(), &user_id)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?
         .ok_or_else(|| AppError::Unauthorized("User not found".to_string()))?;
@@ -154,7 +154,7 @@ pub async fn logout(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthUser>,
 ) -> Result<Json<Value>> {
-    update_actor_token(state.surreal(), &auth.user_id, None)
+    update_actor_token(state.db(), &auth.user_id, None)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
     Ok(ok_null())

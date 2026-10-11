@@ -67,7 +67,7 @@ pub async fn note_ogp(
         .parse::<NoteId>()
         .map_err(|_| AppError::Validation("Invalid note id".to_string()))?;
 
-    let note = get_note_by_id(state.surreal(), &note_id)
+    let note = get_note_by_id(state.db(), &note_id)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?
         .ok_or_else(|| AppError::NotFound("Note not found".to_string()))?;
@@ -80,7 +80,7 @@ pub async fn note_ogp(
         return Err(AppError::NotFound("Note not found".to_string()));
     }
 
-    let author = get_actor_by_id(state.surreal(), &note.actor_id)
+    let author = get_actor_by_id(state.db(), &note.actor_id)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?
         .ok_or_else(|| AppError::NotFound("Author not found".to_string()))?;
@@ -112,7 +112,7 @@ pub async fn profile_ogp(
     Path(username): Path<String>,
 ) -> Result<impl IntoResponse> {
     let normalized = username.trim().trim_start_matches('@').to_string();
-    let author = get_actor_by_username(state.surreal(), &normalized)
+    let author = get_actor_by_username(state.db(), &normalized)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?
         .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;

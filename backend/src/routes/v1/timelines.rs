@@ -30,7 +30,7 @@ pub async fn timeline_home(
     let since_id = parse_optional_note_id(&paging.since_id)?;
     let until_id = parse_optional_note_id(&paging.until_id)?;
 
-    let rows = get_home_timeline(state.surreal(), &auth.user_id, limit, since_id, until_id)
+    let rows = get_home_timeline(state.db(), &auth.user_id, limit, since_id, until_id)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
@@ -90,8 +90,8 @@ async fn load_public_timeline(
     }
 
     let rows = match kind {
-        "local" => get_local_timeline(state.surreal(), limit, since_id, until_id).await,
-        "global" => get_global_timeline(state.surreal(), limit, since_id, until_id).await,
+        "local" => get_local_timeline(state.db(), limit, since_id, until_id).await,
+        "global" => get_global_timeline(state.db(), limit, since_id, until_id).await,
         _ => return Err(AppError::Validation(format!("Unknown timeline: {kind}"))),
     }
     .map_err(|e| AppError::Internal(e.to_string()))?;
@@ -111,7 +111,7 @@ pub async fn timeline_hashtag(
 ) -> Result<axum::Json<Vec<NoteDto>>> {
     let limit = paging.limit.unwrap_or(20).min(100);
     let tag = tag.trim_start_matches('#').to_string();
-    let rows = get_notes_by_tag(state.surreal(), &tag, limit)
+    let rows = get_notes_by_tag(state.db(), &tag, limit)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
     Ok(axum::Json(rows_to_dtos(&state, rows).await))
@@ -134,7 +134,7 @@ pub async fn trending_hashtags(
         return Ok(json_with_cache(&headers, hashtags, CC_TRENDING));
     }
 
-    let tags = get_trending_tags(state.surreal(), limit)
+    let tags = get_trending_tags(state.db(), limit)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
     let hashtags: Vec<Hashtag> = tags

@@ -1,35 +1,43 @@
-use crate::db::SurrealClient;
+use crate::db::Db;
 
 pub async fn vote_poll(
-    client: &SurrealClient,
+    db: &Db,
     poll_id: &str,
     actor_id: &str,
     choice_index: usize,
 ) -> anyhow::Result<()> {
     let id_str = ulid::Ulid::generate().to_string();
     let created_at = chrono::Utc::now();
+    let index = choice_index as i32;
 
-    client
-        .query(
-            "
-        BEGIN TRANSACTION;
-        INSERT INTO poll_vote {
-            id: $id,
-            poll_id: type::record('poll', $poll_id),
-            actor_id: type::record('user', $actor_id),
-            choice_index: $choice_index,
-            created_at: $created_at
-        };
-        UPDATE poll SET choices[$choice_index].votes = <int>(choices[$choice_index].votes OR 0) + 1 WHERE id = type::record('poll', $poll_id);
-        COMMIT TRANSACTION;
-        ",
-        )
-        .bind(("id", id_str))
-        .bind(("poll_id", poll_id.to_string()))
-        .bind(("actor_id", actor_id.to_string()))
-        .bind(("choice_index", choice_index as i32))
-        .bind(("created_at", created_at))
-        .await?;
+    let mut tx = db.begin().await?;
 
+    sqlx::query(
+        "INSERT INTO poll_votes (id, poll_id, actor_id, choice_index, created_at)
+         VALUES ($1, $2, $3, $4, $5)",
+    )
+    .bind(&id_str)
+    .bind(poll_id)
+    .bind(actor_id)
+    .bind(index)
+    .bind(created_at)
+    .execute(&mut *tx)
+    .await?;
+
+    sqlx::query(
+        "UPDATE polls
+         SET choices = jsonb_set(
+                choices,
+                ARRAY[$2::text, 'votes'],
+                to_jsonb(COALESCE((choices->($2::int))->>'votes', '0')::int + 1)
+             )
+         WHERE id = $1",
+    )
+    .bind(poll_id)
+    .bind(index)
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
     Ok(())
 }

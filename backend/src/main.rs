@@ -3,7 +3,7 @@ mod worker;
 use anyhow::Result;
 use apalis_redis::RedisStorage;
 use mithic_server::config::AppConfig;
-use mithic_server::db::{self, SurrealConfig};
+use mithic_server::db;
 use mithic_server::{AppState, routes};
 use tracing::info;
 
@@ -24,26 +24,17 @@ async fn main() -> Result<()> {
     let config = AppConfig::from_env()?;
 
     info!(
-        "Connecting to SurrealDB at {} (pool size {})",
-        config.surrealdb_endpoint, config.surrealdb_pool_size
+        "Connecting to PostgreSQL (pool max {})",
+        config.database_pool_max
     );
-    let surreal_config = SurrealConfig::from(&config);
-    let surreal_client = db::create_pool(&surreal_config, config.surrealdb_pool_size).await?;
-
-    info!("Initializing SurrealDB schema");
-    db::init_schema(surreal_client.get()).await?;
+    let db = db::create_pool(&config.database_url, config.database_pool_max).await?;
 
     info!("Connecting to Redis at {}", config.redis_url);
     let redis_client = db::create_redis_client(&config.redis_url).await?;
     let apalis_conn = apalis_redis::connect(config.redis_url.clone()).await?;
     let queue_storage = RedisStorage::new(apalis_conn);
 
-    let state = AppState::new(
-        surreal_client,
-        redis_client,
-        queue_storage.clone(),
-        config.clone(),
-    )?;
+    let state = AppState::new(db, redis_client, queue_storage.clone(), config.clone())?;
 
     // 連合配送ワーカーを同一プロセスで並走
     let federation_service = state.federation_service().clone();

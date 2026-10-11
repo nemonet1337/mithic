@@ -1,74 +1,44 @@
-use crate::db::SurrealClient;
+use crate::db::Db;
 
 pub async fn get_reaction_by_actor(
-    client: &SurrealClient,
+    db: &Db,
     note_id: &str,
     actor_id: &str,
 ) -> anyhow::Result<Option<String>> {
-    let mut response = client
-        .query(
-            "
-            SELECT reaction FROM note_reaction
-            WHERE note_id = type::record('note', $note_id)
-              AND actor_id = type::record('user', $actor_id)
-            LIMIT 1;
-            ",
-        )
-        .bind(("note_id", note_id.to_string()))
-        .bind(("actor_id", actor_id.to_string()))
-        .await?;
-    let rows: Vec<surrealdb::types::Value> = response.take(0).unwrap_or_default();
-    for row in rows {
-        let json = row.into_json_value();
-        if let Some(r) = json.get("reaction").and_then(|v| v.as_str()) {
-            return Ok(Some(r.to_string()));
-        }
-    }
-    Ok(None)
+    let reaction: Option<String> = sqlx::query_scalar(
+        "SELECT reaction FROM note_reactions
+         WHERE note_id = $1 AND actor_id = $2 LIMIT 1",
+    )
+    .bind(note_id)
+    .bind(actor_id)
+    .fetch_optional(db)
+    .await?;
+    Ok(reaction)
 }
 
 /// 閲覧者のリアクションをノート ID の集合に対して一括取得する (note_id → emoji)
 pub async fn get_reactions_by_actor_for_notes(
-    client: &SurrealClient,
+    db: &Db,
     actor_id: &str,
     note_ids: &[String],
 ) -> anyhow::Result<std::collections::HashMap<String, String>> {
     if note_ids.is_empty() {
         return Ok(std::collections::HashMap::new());
     }
-    let id_records: Vec<String> = note_ids.iter().map(|id| format!("note:{id}")).collect();
-    let mut response = client
-        .query(
-            "
-            SELECT note_id.id AS note_id, reaction FROM note_reaction
-            WHERE actor_id = type::record('user', $actor_id)
-              AND <string> note_id IN $note_ids;
-            ",
-        )
-        .bind(("actor_id", actor_id.to_string()))
-        .bind(("note_ids", id_records))
-        .await?;
-    let rows: Vec<surrealdb::types::Value> = response.take(0).unwrap_or_default();
-    let mut out = std::collections::HashMap::with_capacity(rows.len());
-    for row in rows {
-        let json = row.into_json_value();
-        let Some(note_id) = json.get("note_id").and_then(|v| v.as_str()) else {
-            continue;
-        };
-        let Some(reaction) = json.get("reaction").and_then(|v| v.as_str()) else {
-            continue;
-        };
-        let note_id = note_id
-            .rsplit_once(':')
-            .map(|(_, id)| id)
-            .unwrap_or(note_id);
-        out.insert(note_id.to_string(), reaction.to_string());
-    }
-    Ok(out)
+    let rows: Vec<(String, String)> = sqlx::query_as(
+        "SELECT note_id, reaction FROM note_reactions
+         WHERE actor_id = $1 AND note_id = ANY($2)",
+    )
+    .bind(actor_id)
+    .bind(note_ids)
+    .fetch_all(db)
+    .await?;
+
+    Ok(rows.into_iter().collect())
 }
 
 pub async fn add_reaction(
-    client: &SurrealClient,
+    db: &Db,
     note_id: &str,
     actor_id: &str,
     reaction: &str,
@@ -76,90 +46,112 @@ pub async fn add_reaction(
     let id_str = ulid::Ulid::generate().to_string();
     let created_at = chrono::Utc::now();
 
-    client
-        .query(
-            "
-            BEGIN TRANSACTION;
-            INSERT INTO note_reaction {
-                id: $id,
-                note_id: type::record('note', $note_id),
-                actor_id: type::record('user', $actor_id),
-                reaction: $reaction,
-                created_at: $created_at
-            };
-            UPDATE note SET reactions[$reaction] = <int>(reactions[$reaction] OR 0) + 1 WHERE id = type::record('note', $note_id);
-            COMMIT TRANSACTION;
-            ",
-        )
-        .bind(("id", id_str))
-        .bind(("note_id", note_id.to_string()))
-        .bind(("actor_id", actor_id.to_string()))
-        .bind(("reaction", reaction.to_string()))
-        .bind(("created_at", created_at))
-        .await?;
+    let mut tx = db.begin().await?;
 
+    sqlx::query(
+        "INSERT INTO note_reactions (id, note_id, actor_id, reaction, created_at)
+         VALUES ($1, $2, $3, $4, $5)",
+    )
+    .bind(&id_str)
+    .bind(note_id)
+    .bind(actor_id)
+    .bind(reaction)
+    .bind(created_at)
+    .execute(&mut *tx)
+    .await?;
+
+    sqlx::query(
+        "UPDATE notes
+         SET reactions = jsonb_set(
+                COALESCE(reactions, '{}'),
+                ARRAY[$3],
+                to_jsonb(COALESCE((reactions->>$3)::int, 0) + 1)
+             )
+         WHERE id = $1",
+    )
+    .bind(note_id)
+    .bind(actor_id)
+    .bind(reaction)
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
     Ok(())
 }
 
 pub async fn remove_reaction(
-    client: &SurrealClient,
+    db: &Db,
     note_id: &str,
     actor_id: &str,
     reaction: &str,
 ) -> anyhow::Result<()> {
-    client
-        .query(
-            "
-            BEGIN TRANSACTION;
-            DELETE note_reaction WHERE note_id = type::record('note', $note_id) AND actor_id = type::record('user', $actor_id) AND reaction = $reaction;
-            UPDATE note SET reactions[$reaction] = <int>(reactions[$reaction] OR 1) - 1 WHERE id = type::record('note', $note_id);
-            UPDATE note SET reactions = object::remove(reactions, $reaction) WHERE id = type::record('note', $note_id) AND <int>(reactions[$reaction] OR 0) <= 0;
-            COMMIT TRANSACTION;
-            ",
-        )
-        .bind(("note_id", note_id.to_string()))
-        .bind(("actor_id", actor_id.to_string()))
-        .bind(("reaction", reaction.to_string()))
-        .await?;
+    let mut tx = db.begin().await?;
 
+    sqlx::query(
+        "DELETE FROM note_reactions
+         WHERE note_id = $1 AND actor_id = $2 AND reaction = $3",
+    )
+    .bind(note_id)
+    .bind(actor_id)
+    .bind(reaction)
+    .execute(&mut *tx)
+    .await?;
+
+    // 0 以下になるキーは jsonb から除去する (`object::remove` 相当)
+    sqlx::query(
+        "UPDATE notes
+         SET reactions = CASE
+                WHEN COALESCE((reactions->>$3)::int, 1) - 1 <= 0 THEN reactions - $3
+                ELSE jsonb_set(reactions, ARRAY[$3], to_jsonb((reactions->>$3)::int - 1))
+             END
+         WHERE id = $1",
+    )
+    .bind(note_id)
+    .bind(actor_id)
+    .bind(reaction)
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
     Ok(())
 }
 
 /// アクターの当該ノートへのリアクションをすべて削除 (Undo(Like) 用)
 pub async fn remove_all_reactions_by_actor(
-    client: &SurrealClient,
+    db: &Db,
     note_id: &str,
     actor_id: &str,
 ) -> anyhow::Result<Vec<String>> {
-    let mut del = client
-        .query(
-            "
-            DELETE note_reaction
-            WHERE note_id = type::record('note', $note_id)
-              AND actor_id = type::record('user', $actor_id)
-            RETURN BEFORE;
-            ",
-        )
-        .bind(("note_id", note_id.to_string()))
-        .bind(("actor_id", actor_id.to_string()))
-        .await?;
+    let removed: Vec<String> = sqlx::query_scalar(
+        "DELETE FROM note_reactions
+         WHERE note_id = $1 AND actor_id = $2
+         RETURNING reaction",
+    )
+    .bind(note_id)
+    .bind(actor_id)
+    .fetch_all(db)
+    .await?;
 
-    let rows: Vec<surrealdb::types::Value> = del.take(0).unwrap_or_default();
-    let mut removed = Vec::new();
-    for row in rows {
-        let json = row.into_json_value();
-        if let Some(r) = json.get("reaction").and_then(|v| v.as_str()) {
-            let reaction = r.to_string();
-            let _ = client
-                .query(
-                    "UPDATE note SET reactions[$reaction] = <int>(reactions[$reaction] OR 1) - 1 WHERE id = type::record('note', $note_id);
-                     UPDATE note SET reactions = object::remove(reactions, $reaction) WHERE id = type::record('note', $note_id) AND <int>(reactions[$reaction] OR 0) <= 0;",
-                )
-                .bind(("note_id", note_id.to_string()))
-                .bind(("reaction", reaction.clone()))
-                .await;
-            removed.push(reaction);
-        }
+    if removed.is_empty() {
+        return Ok(removed);
     }
+
+    let mut tx = db.begin().await?;
+    for reaction in &removed {
+        sqlx::query(
+            "UPDATE notes
+             SET reactions = CASE
+                    WHEN COALESCE((reactions->>$2)::int, 1) - 1 <= 0 THEN reactions - $2
+                    ELSE jsonb_set(reactions, ARRAY[$2], to_jsonb((reactions->>$2)::int - 1))
+                 END
+             WHERE id = $1",
+        )
+        .bind(note_id)
+        .bind(reaction)
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await?;
+
     Ok(removed)
 }

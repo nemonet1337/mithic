@@ -4,13 +4,8 @@ use std::env;
 /// アプリケーション設定
 #[derive(Debug, Clone, Deserialize)]
 pub struct AppConfig {
-    pub surrealdb_endpoint: String,
-    pub surrealdb_namespace: String,
-    pub surrealdb_database: String,
-    pub surrealdb_username: String,
-    pub surrealdb_password: String,
-
-    pub surrealdb_pool_size: usize,
+    pub database_url: String,
+    pub database_pool_max: u32,
 
     pub redis_url: String,
 
@@ -54,6 +49,15 @@ impl AppConfig {
             );
         }
 
+        let database_url = env::var("DATABASE_URL").map_err(|_| {
+            anyhow::anyhow!(
+                "DATABASE_URL must be set (e.g. postgres://mithic:pass@localhost:5432/mithic)"
+            )
+        })?;
+        if database_url.trim().is_empty() {
+            anyhow::bail!("DATABASE_URL must be set to a non-empty value");
+        }
+
         // 信頼済みリバースプロキシ経由時のみ true にする。ヘッダ偽装でレート制限を回避されないよう既定は false。
         let trust_proxy = env::var("TRUST_PROXY")
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
@@ -73,21 +77,11 @@ impl AppConfig {
         }
 
         Ok(Self {
-            surrealdb_endpoint: env::var("SURREALDB_ENDPOINT")
-                .unwrap_or_else(|_| "ws://localhost:8000".to_string()),
-            surrealdb_namespace: env::var("SURREALDB_NAMESPACE")
-                .unwrap_or_else(|_| "mithic".to_string()),
-            surrealdb_database: env::var("SURREALDB_DATABASE")
-                .unwrap_or_else(|_| "main".to_string()),
-            surrealdb_username: env::var("SURREALDB_USERNAME")
-                .unwrap_or_else(|_| "root".to_string()),
-            surrealdb_password: env::var("SURREALDB_PASSWORD")
-                .unwrap_or_else(|_| "root".to_string()),
-
-            surrealdb_pool_size: env::var("SURREALDB_POOL_SIZE")
+            database_url,
+            database_pool_max: env::var("DATABASE_POOL_MAX")
                 .ok()
                 .and_then(|s| s.parse().ok())
-                .unwrap_or(4),
+                .unwrap_or(10),
 
             redis_url: env::var("REDIS_URL")
                 .unwrap_or_else(|_| "redis://localhost:6379".to_string()),

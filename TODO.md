@@ -15,7 +15,7 @@
 ### バックエンド基盤
 
 - [x] Axum サーバ + 連合配送ワーカー同一プロセス (`mithic-server`)
-- [x] SurrealDB スキーマ初期化 / Redis 接続
+- [x] PostgreSQL スキーマ初期化 (マイグレーション) / Redis 接続
 - [x] JWT 認証 + トークン失効（actor.token 突合）+ サスペンド拒否
 - [x] CORS / 圧縮 / Trace（許可オリジンに `localhost:3000` / `127.0.0.1:3000` / Trunk `:1420`。CorsLayer は最外層）
 - [x] レート制限: Redis `INCR` + `EXPIRE`（auth 系）
@@ -141,7 +141,7 @@
 - [ ] メトリクス / Prometheus（依存は落としたまま）
 - [ ] 本番向け監視・バックアップ手順ドキュメント
 - [x] MSRV / toolchain 文書の実態合わせ（`rust-version` 1.88。jsonwebtoken 11 が要求）
-- [x] ノート検索は Redis の global TL が全件入っているときそこを先に見て、home とキャッシュ外だけ SurrealDB。Meilisearch / Elasticsearch は入れない。
+- [x] ノート検索は Redis の global TL が全件入っているときそこを先に見て、home とキャッシュ外だけ PostgreSQL (ILIKE)。Meilisearch / Elasticsearch は入れない。
 - [ ] 水平スケール時のストリーム: 現状 process-local broadcast のみ（複数 `mithic-server` では WS が共有されない）
 - [x] Docker: `mithic-server` のコンパイル落ち修正。BuildKit cache を backend/frontend で分離、mold + cargo-chef バイナリ、コンテナ内 LTO オフで再ビルド短縮。Dockerfile は `backend/Dockerfile` と `frontend/Dockerfile` に分割（コンテキストはリポジトリルートのまま）
 - [x] Docker: backend を musl/Alpine 化（`rust:1.99-alpine` + `alpine:3.24` 実行時、mold 外し）。frontend はビルダー bookworm 維持（Trunk の Tailwind CLI が glibc 固定）で最終段だけ Alpine の dist 専用に変更
@@ -153,13 +153,13 @@
 - [x] 依存とツールチェーンの更新（2026-10）: Rust stable 1.99.0、Docker base `rust:1.99-bookworm`、`cargo update`（surrealdb 3.3.0 / reqwest 0.13.5 / axum 0.8.9 など）、comrak 0.55、Tailwind CLI 4.3.3。clippy 1.99 の新 lint（`collapsible_if` の let チェーン化など）にも対応
 - [x] Dependabot を有効化（`package-ecosystem: ""` のテンプレートのまま無効だった）。cargo / docker / github-actions を weekly で追跡
 - [ ] future-incompat 警告が 2 残存: `apalis-redis 0.7.4` と `proc-macro-error2 2.0.1`（推移依存）。上位版が出るまで保留
-- [x] データベース選定: **SurrealDB 3 を維持**。PostgreSQL / MongoDB への移行は行わない（退行させない）
-  - **決定**: SurrealDB 3 現状維持。移行コスト 0 を最優先。
-  - **比較根拠**（現行コードに対する親和性）:
-    - SurrealDB: `record<>` リンク + `TYPE RELATION IN/OUT` が follow / block / mute / ピンをそのまま表現。`db/queries/*.rs` 16 モジュールが SurrealQL 前提。
-    - PostgreSQL (sqlx): SQL エコシステムは最も成熟し compile-time 検証もあるが、RELATION グラフを JOIN / 再帰 CTE に置き換える必要があり、スキーマ定義・全クエリ書き換え・データ移行が発生。型は強いが現行の JSON ドキュメント的モデル（Actor / Note）には正規化コストが上回る。
-    - MongoDB: ドキュメントモデルは親和性が高いが、Rust 公式ドライバは Serde 動的寄りでグラフ探索は `$graphLookup` 非効率。SurrealDB に対して優位がほぼない。
-  - **再評価トリガー**（いずれかが発生したら再検討）: SurrealDB の本番障害・データ消失・クラスタ不安定 / 複雑な集計・レポートクエリが増え SurrealQL で非効率 / 水平スケールで SurrealDB がボトルネックと測定される / 運用 SQL スキルのあるメンバーが参加し PostgreSQL 運用コストが学習コストを下回る
+- [x] データベースを SurrealDB 3 から **PostgreSQL 16** へリプレース。以下が確定事項:
+  - **アクセス方式**: `sqlx` 0.8 の runtime `query_as`。`query!` マクロ (`SQLX_OFFLINE` / `.sqlx`) は採らない（docker build に DB が無いため）
+  - **マイグレーション**: `backend/migrations/0001_init.sql`。起動時に `sqlx::migrate!("./migrations")` を `create_pool` 内で自動適用
+  - **既存データ**: SurrealDB のデータは破棄しクリーン再構築。移行スクリプトは書かない
+  - **Redis**: PostgreSQL 移行後も据え置き（キャッシュ / キュー / レート制限のまま）
+  - **冗長構成**: primary + WAL archive。compose 単一ホスト内の standby は置かない（ホスト障害に対処できないため）。PITR は `pg_wal_archive` ボリュームを別ホストへ退避して pgBackRest / Barman を組む運用
+- [ ] PostgreSQL 運用: バックアップ（`pg_dump` + WAL archive）の世代管理、`pg_stat_statements` でのスロークエリ監視、standby を使ったフェイルオーバー手順書
 - [x] Redis 名称統一: `DRAGONFLY_URL` → `REDIS_URL`、`DragonflyClient` → `RedisClient`、`db::dragonfly` → `db::redis`。互換レイヤーは入れない（破壊的変更）。`.env` は未追跡なので手動で `REDIS_URL` に更新が必要（値は同一なので既定値にフォールバックしても実害なし）
 - [x] 依存整理: backend の `bytes` / `mime` / `futures` / `http` 削除（`axum::body::Bytes` / `axum::http::*` / `std::future` に置換）、重複 dev-dependency `rand` 削除、死コード `is_s3_storage` 削除
 - [x] feature 削減: `tokio` full → 実使用 6 種、`tower` full → `retry`、`surrealdb` `kv-mem` 削除、frontend `gloo-net/websocket` と web-sys 未使用 feature 削減、未使用 `ssr` feature 削除
