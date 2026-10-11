@@ -181,7 +181,7 @@ async fn fetch_actor_public_key(state: &AppState, key_id: &str) -> Result<String
     use redis::AsyncCommands;
 
     let cache_key = format!("actor_key:{key_id}");
-    let mut redis = state.dragonfly().clone();
+    let mut redis = state.redis().clone();
     let cached: Option<String> = redis.get(&cache_key).await.ok();
     if let Some(public_key_pem) = cached {
         info!("Cache hit for public key: {key_id}");

@@ -132,9 +132,9 @@ pub async fn create_note_service(
     }
 
     if created.visibility == NoteVisibility::Public {
-        let dragonfly = state.dragonfly().clone();
+        let redis = state.redis().clone();
         tokio::spawn(async move {
-            crate::db::cache::invalidate_public_timelines(&dragonfly).await;
+            crate::db::cache::invalidate_public_timelines(&redis).await;
         });
     }
 

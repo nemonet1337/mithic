@@ -12,7 +12,7 @@ use tracing::{error, info, warn};
 
 use crate::federation::http_sig;
 
-use crate::db::{DragonflyClient, SurrealClient};
+use crate::db::{RedisClient, SurrealClient};
 use crate::models::Actor;
 
 /// 最終的に断念した配送 (LPUSH 先)
@@ -27,7 +27,7 @@ pub struct ActivityDelivery {
 #[derive(Debug, Clone)]
 pub struct FederationService {
     surreal: Arc<SurrealClient>,
-    dragonfly: DragonflyClient,
+    redis: RedisClient,
     storage: apalis_redis::RedisStorage<ActivityDelivery>,
     http_client: Client,
     instance_url: String,
@@ -40,14 +40,14 @@ pub struct FederationService {
 impl FederationService {
     pub fn new(
         surreal: SurrealClient,
-        dragonfly: DragonflyClient,
+        redis: RedisClient,
         storage: apalis_redis::RedisStorage<ActivityDelivery>,
         http_client: Client,
         instance_url: String,
     ) -> Self {
         Self {
             surreal: Arc::new(surreal),
-            dragonfly,
+            redis,
             storage,
             http_client,
             instance_url,
@@ -489,7 +489,7 @@ impl FederationService {
 
     /// 配送を諦めたジョブを DLQ へ残す
     pub async fn push_dlq(&self, job: &ActivityDelivery) {
-        let mut conn = self.dragonfly.manager();
+        let mut conn = self.redis.manager();
         let payload = match serde_json::to_string(job) {
             Ok(s) => s,
             Err(e) => {
@@ -510,7 +510,7 @@ impl FederationService {
     }
 
     async fn is_inbox_dead(&self, host: &str) -> bool {
-        let mut conn = self.dragonfly.manager();
+        let mut conn = self.redis.manager();
         let key = format!("dead_inbox:{}", host);
         redis::cmd("EXISTS")
             .arg(&key)
@@ -521,7 +521,7 @@ impl FederationService {
     }
 
     async fn clear_inbox_dead(&self, host: &str) {
-        let mut conn = self.dragonfly.manager();
+        let mut conn = self.redis.manager();
         let key_dead = format!("dead_inbox:{}", host);
         let key_fail = format!("inbox_failures:{}", host);
         let _: Result<(), _> = redis::cmd("DEL")
@@ -532,7 +532,7 @@ impl FederationService {
     }
 
     async fn handle_delivery_failure(&self, host: &str) {
-        let mut conn = self.dragonfly.manager();
+        let mut conn = self.redis.manager();
         let key_fail = format!("inbox_failures:{}", host);
         let key_dead = format!("dead_inbox:{}", host);
 

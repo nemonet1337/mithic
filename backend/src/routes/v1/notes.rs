@@ -86,7 +86,7 @@ pub async fn create_note_route(
 ) -> Result<Json<NoteDto>> {
     let dto = create_note_service(&state, auth.user_id, request).await?;
     let note_key = format!("note:{}", dto.id);
-    let _ = cache::set_json(state.dragonfly(), &note_key, &dto, NOTE_CACHE_TTL).await;
+    let _ = cache::set_json(state.redis(), &note_key, &dto, NOTE_CACHE_TTL).await;
     Ok(Json(dto))
 }
 
@@ -113,7 +113,7 @@ pub async fn show_note(
 
     if is_publicish {
         let note_key = format!("note:{note_id}");
-        if let Some(mut dto) = cache::get_json::<NoteDto>(state.dragonfly(), &note_key).await {
+        if let Some(mut dto) = cache::get_json::<NoteDto>(state.redis(), &note_key).await {
             if let Some(vid) = viewer {
                 apply_viewer_reaction(&state, &mut dto, &vid.to_string()).await;
                 return Ok(Json(dto).into_response());
@@ -130,7 +130,7 @@ pub async fn show_note(
     let mut dto = note_to_dto_full(&state, &note, actor_to_user(&author)).await;
     if is_publicish {
         let note_key = format!("note:{note_id}");
-        let _ = cache::set_json(state.dragonfly(), &note_key, &dto, NOTE_CACHE_TTL).await;
+        let _ = cache::set_json(state.redis(), &note_key, &dto, NOTE_CACHE_TTL).await;
         if let Some(vid) = viewer {
             apply_viewer_reaction(&state, &mut dto, &vid.to_string()).await;
             return Ok(Json(dto).into_response());
@@ -161,7 +161,7 @@ pub async fn delete_note_route(
     delete_note(state.surreal(), &note_id)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
-    let _ = cache::delete(state.dragonfly(), &format!("note:{note_id}")).await;
+    let _ = cache::delete(state.redis(), &format!("note:{note_id}")).await;
     state.publish_stream(StreamBroadcast::NoteDeleted {
         id: note_id.to_string(),
     });
@@ -293,7 +293,7 @@ pub async fn add_reaction_route(
         }
     }
 
-    let _ = cache::delete(state.dragonfly(), &format!("note:{note_id}")).await;
+    let _ = cache::delete(state.redis(), &format!("note:{note_id}")).await;
     let mine = get_reaction_by_actor(
         state.surreal(),
         &note_id.to_string(),
@@ -336,7 +336,7 @@ pub async fn remove_reaction_route(
         crate::services::note::deliver_reaction(&state, &reactor, &note, &emoji, true).await;
     }
 
-    let _ = cache::delete(state.dragonfly(), &format!("note:{note_id}")).await;
+    let _ = cache::delete(state.redis(), &format!("note:{note_id}")).await;
     Ok(ok_null())
 }
 
@@ -651,9 +651,8 @@ async fn query_search_notes(
         crate::db::queries::rows_to(rows).map_err(|e| AppError::Internal(e.to_string()))?;
     Ok(crate::routes::v1::common::rows_to_dtos(state, notes).await)
 }
-
-/// 公開 TL がページに収まる間は Dragonfly を先に見る。空の q は従来の SurrealDB。
-// ponytail: 公開TLがページに収まる間だけ Dragonfly を正にする。ページが満杯なら SurrealDB。CONTAINS が遅くなったら SurrealDB FULLTEXT。Meilisearch/ES は足さない。
+/// 公開 TL がページに収まる間は Redis を先に見る。空の q は従来の SurrealDB。
+// ponytail: 公開TLがページに収まる間だけ Redis を正にする。ページが満杯なら SurrealDB。CONTAINS が遅くなったら SurrealDB FULLTEXT。Meilisearch/ES は足さない。
 pub async fn search_notes(
     State(state): State<AppState>,
     Query(query): Query<SearchNotesQuery>,
@@ -668,7 +667,7 @@ pub async fn search_notes(
 
     for page_limit in [100usize, 50, 40, 20, 10] {
         let key = cache::timeline_json_key("global", page_limit);
-        let Some(page) = cache::get_json::<Vec<NoteDto>>(state.dragonfly(), &key).await else {
+        let Some(page) = cache::get_json::<Vec<NoteDto>>(state.redis(), &key).await else {
             continue;
         };
         // 大きい limit が満杯なら、より小さいキーは全件ではない。短いページを正にしない。

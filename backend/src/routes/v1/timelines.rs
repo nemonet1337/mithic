@@ -81,10 +81,10 @@ async fn load_public_timeline(
     since_id: Option<crate::models::note::NoteId>,
     until_id: Option<crate::models::note::NoteId>,
 ) -> Result<Vec<NoteDto>> {
-    // 先頭ページのみ Dragonfly JSON キャッシュ
+    // 先頭ページのみ Redis JSON キャッシュ
     if since_id.is_none() && until_id.is_none() {
         let key = cache::timeline_json_key(kind, limit);
-        if let Some(dtos) = cache::get_json::<Vec<NoteDto>>(state.dragonfly(), &key).await {
+        if let Some(dtos) = cache::get_json::<Vec<NoteDto>>(state.redis(), &key).await {
             return Ok(dtos);
         }
     }
@@ -99,13 +99,7 @@ async fn load_public_timeline(
     let dtos = rows_to_dtos(state, rows).await;
     if since_id.is_none() && until_id.is_none() {
         let key = cache::timeline_json_key(kind, limit);
-        let _ = cache::set_json(
-            state.dragonfly(),
-            &key,
-            &dtos,
-            cache::TIMELINE_JSON_TTL_SECS,
-        )
-        .await;
+        let _ = cache::set_json(state.redis(), &key, &dtos, cache::TIMELINE_JSON_TTL_SECS).await;
     }
     Ok(dtos)
 }
@@ -136,7 +130,7 @@ pub async fn trending_hashtags(
     let limit = query.limit.unwrap_or(10).min(50);
     let key = cache::trending_json_key(limit);
 
-    if let Some(hashtags) = cache::get_json::<Vec<Hashtag>>(state.dragonfly(), &key).await {
+    if let Some(hashtags) = cache::get_json::<Vec<Hashtag>>(state.redis(), &key).await {
         return Ok(json_with_cache(&headers, hashtags, CC_TRENDING));
     }
 
@@ -156,7 +150,7 @@ pub async fn trending_hashtags(
         .collect();
 
     let _ = cache::set_json(
-        state.dragonfly(),
+        state.redis(),
         &key,
         &hashtags,
         cache::TRENDING_JSON_TTL_SECS,

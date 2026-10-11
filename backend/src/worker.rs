@@ -1,10 +1,11 @@
 //! 連合配送ワーカー（同一プロセス内で HTTP と並走）
 
+use std::future::Future;
+use std::pin::Pin;
 use std::time::Duration;
 
 use apalis::prelude::*;
 use apalis_redis::RedisStorage;
-use futures::future;
 use mithic_server::federation::{ActivityDelivery, DLQ_KEY, FederationService};
 use tower::retry::Policy;
 use tracing::{info, warn};
@@ -37,7 +38,7 @@ where
     T: Clone + Send + 'static,
     Ctx: Clone + Send + 'static,
 {
-    type Future = future::BoxFuture<'static, ()>;
+    type Future = Pin<Box<dyn Future<Output = ()> + Send>>;
 
     fn retry(
         &mut self,

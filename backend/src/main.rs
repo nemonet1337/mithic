@@ -33,14 +33,14 @@ async fn main() -> Result<()> {
     info!("Initializing SurrealDB schema");
     db::init_schema(surreal_client.get()).await?;
 
-    info!("Connecting to Dragonfly at {}", config.dragonfly_url);
-    let dragonfly_client = db::create_dragonfly_client(&config.dragonfly_url).await?;
-    let apalis_conn = apalis_redis::connect(config.dragonfly_url.clone()).await?;
+    info!("Connecting to Redis at {}", config.redis_url);
+    let redis_client = db::create_redis_client(&config.redis_url).await?;
+    let apalis_conn = apalis_redis::connect(config.redis_url.clone()).await?;
     let queue_storage = RedisStorage::new(apalis_conn);
 
     let state = AppState::new(
         surreal_client,
-        dragonfly_client,
+        redis_client,
         queue_storage.clone(),
         config.clone(),
     )?;

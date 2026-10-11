@@ -37,8 +37,7 @@ pub struct InstanceInfo {
 }
 
 pub async fn get_instance(State(state): State<AppState>, headers: HeaderMap) -> Result<Response> {
-    if let Some(mut info) =
-        cache::get_json::<InstanceInfo>(state.dragonfly(), INSTANCE_CACHE_KEY).await
+    if let Some(mut info) = cache::get_json::<InstanceInfo>(state.redis(), INSTANCE_CACHE_KEY).await
     {
         // VAPID is process config, not in DB — always overlay from live state
         info.vapid_public_key = state.vapid_public_key().map(|s| s.to_string());
@@ -54,13 +53,7 @@ pub async fn get_instance(State(state): State<AppState>, headers: HeaderMap) -> 
         emojis,
         vapid_public_key: state.vapid_public_key().map(|s| s.to_string()),
     };
-    let _ = cache::set_json(
-        state.dragonfly(),
-        INSTANCE_CACHE_KEY,
-        &info,
-        INSTANCE_CACHE_TTL,
-    )
-    .await;
+    let _ = cache::set_json(state.redis(), INSTANCE_CACHE_KEY, &info, INSTANCE_CACHE_TTL).await;
 
     Ok(json_with_cache(&headers, info, CC_INSTANCE))
 }

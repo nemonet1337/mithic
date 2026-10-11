@@ -1223,7 +1223,7 @@ async fn handle_delete(
             delete_note(state.surreal(), &note.id)
                 .await
                 .map_err(|e| AppError::Internal(e.to_string()))?;
-            let _ = cache::delete(state.dragonfly(), &format!("note:{}", note.id)).await;
+            let _ = cache::delete(state.redis(), &format!("note:{}", note.id)).await;
             state.publish_stream(StreamBroadcast::NoteDeleted {
                 id: note.id.to_string(),
             });
@@ -1322,7 +1322,7 @@ async fn handle_update(
                 .bind(("tags", tags))
                 .bind(("emojis", emojis))
                 .await;
-            let _ = cache::delete(state.dragonfly(), &format!("note:{}", note.id)).await;
+            let _ = cache::delete(state.redis(), &format!("note:{}", note.id)).await;
         }
         "Person" | "Service" | "Application" => {
             let Some(id) = object.get("id").and_then(|v| v.as_str()) else {

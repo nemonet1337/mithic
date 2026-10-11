@@ -1,10 +1,10 @@
 pub mod cache;
-pub mod dragonfly;
 pub mod queries;
+pub mod redis;
 pub mod storage;
 pub mod surreal;
 
-pub use dragonfly::create_client as create_dragonfly_client;
+pub use self::redis::{RedisClient, create_client as create_redis_client};
 pub use storage::create_storage_client;
 pub use surreal::{
     SurrealConfig, create_client as create_surreal_client, create_pool, init_schema,
@@ -13,7 +13,6 @@ pub use surreal::{
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use redis::aio::ConnectionManager;
 use surrealdb::Surreal;
 use surrealdb::engine::any::Any;
 
@@ -60,51 +59,5 @@ impl std::ops::Deref for SurrealClient {
 
     fn deref(&self) -> &Self::Target {
         self.get()
-    }
-}
-
-/// Dragonfly クライアントラッパー。
-///
-/// `ConnectionManager` は切断時に自動再接続する。
-#[derive(Clone)]
-pub struct DragonflyClient {
-    manager: ConnectionManager,
-}
-
-impl std::fmt::Debug for DragonflyClient {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("DragonflyClient").finish_non_exhaustive()
-    }
-}
-
-impl DragonflyClient {
-    pub fn new(manager: ConnectionManager) -> Self {
-        Self { manager }
-    }
-
-    pub fn manager(&self) -> ConnectionManager {
-        self.manager.clone()
-    }
-}
-
-impl redis::aio::ConnectionLike for DragonflyClient {
-    fn req_packed_command<'a>(
-        &'a mut self,
-        cmd: &'a redis::Cmd,
-    ) -> redis::RedisFuture<'a, redis::Value> {
-        self.manager.req_packed_command(cmd)
-    }
-
-    fn req_packed_commands<'a>(
-        &'a mut self,
-        cmd: &'a redis::Pipeline,
-        offset: usize,
-        count: usize,
-    ) -> redis::RedisFuture<'a, Vec<redis::Value>> {
-        self.manager.req_packed_commands(cmd, offset, count)
-    }
-
-    fn get_db(&self) -> i64 {
-        self.manager.get_db()
     }
 }

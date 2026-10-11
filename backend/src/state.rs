@@ -2,7 +2,7 @@ use object_store::ObjectStore;
 use std::sync::Arc;
 
 use crate::config::AppConfig;
-use crate::db::{DragonflyClient, SurrealClient};
+use crate::db::{RedisClient, SurrealClient};
 use crate::federation::{ActivityDelivery, FederationService};
 use apalis_redis::RedisStorage;
 use base64::Engine;
@@ -18,7 +18,7 @@ pub struct AppState {
 
 struct AppStateInner {
     pub surreal: SurrealClient,
-    pub dragonfly: DragonflyClient,
+    pub redis: RedisClient,
     pub config: AppConfig,
     pub http_client: reqwest::Client,
     pub federation_service: FederationService,
@@ -33,7 +33,7 @@ impl std::fmt::Debug for AppStateInner {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AppStateInner")
             .field("surreal", &self.surreal)
-            .field("dragonfly", &self.dragonfly)
+            .field("redis", &self.redis)
             .field("config", &self.config)
             .field("vapid_public_key", &self.vapid_public_key)
             .finish_non_exhaustive()
@@ -65,7 +65,7 @@ fn parse_vapid_key(private_b64: &str) -> Option<(ES256KeyPair, String)> {
 impl AppState {
     pub fn new(
         surreal: SurrealClient,
-        dragonfly: DragonflyClient,
+        redis: RedisClient,
         queue_storage: RedisStorage<ActivityDelivery>,
         config: AppConfig,
     ) -> anyhow::Result<Self> {
@@ -76,7 +76,7 @@ impl AppState {
 
         let federation_service = FederationService::new(
             surreal.clone(),
-            dragonfly.clone(),
+            redis.clone(),
             queue_storage,
             http_client.clone(),
             config.instance_url.clone(),
@@ -104,7 +104,7 @@ impl AppState {
         Ok(Self {
             inner: Arc::new(AppStateInner {
                 surreal,
-                dragonfly,
+                redis,
                 config,
                 http_client,
                 federation_service,
@@ -119,8 +119,8 @@ impl AppState {
     pub fn surreal(&self) -> &SurrealClient {
         &self.inner.surreal
     }
-    pub fn dragonfly(&self) -> &DragonflyClient {
-        &self.inner.dragonfly
+    pub fn redis(&self) -> &RedisClient {
+        &self.inner.redis
     }
     pub fn config(&self) -> &AppConfig {
         &self.inner.config

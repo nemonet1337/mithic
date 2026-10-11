@@ -242,7 +242,7 @@ async fn check_blocking_cached(
     blocked_id: &ActorId,
 ) -> anyhow::Result<bool> {
     if cache::block_set_contains(
-        state.dragonfly(),
+        state.redis(),
         &blocker_id.to_string(),
         &blocked_id.to_string(),
     )
@@ -258,13 +258,7 @@ async fn check_muting_cached(
     muter_id: &ActorId,
     muted_id: &ActorId,
 ) -> anyhow::Result<bool> {
-    if cache::mute_set_contains(
-        state.dragonfly(),
-        &muter_id.to_string(),
-        &muted_id.to_string(),
-    )
-    .await
-    {
+    if cache::mute_set_contains(state.redis(), &muter_id.to_string(), &muted_id.to_string()).await {
         return Ok(true);
     }
     is_muting(state.surreal(), muter_id, muted_id).await
@@ -399,7 +393,7 @@ pub async fn block_user(
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
     let _ = cache::block_set_add(
-        state.dragonfly(),
+        state.redis(),
         &auth.user_id.to_string(),
         &target_id.to_string(),
         cache::BLOCK_MUTE_SET_TTL,
@@ -418,7 +412,7 @@ pub async fn unblock_user(
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
     let _ = cache::block_set_remove(
-        state.dragonfly(),
+        state.redis(),
         &auth.user_id.to_string(),
         &target_id.to_string(),
     )
@@ -436,7 +430,7 @@ pub async fn mute_user(
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
     let _ = cache::mute_set_add(
-        state.dragonfly(),
+        state.redis(),
         &auth.user_id.to_string(),
         &target_id.to_string(),
         cache::BLOCK_MUTE_SET_TTL,
@@ -455,7 +449,7 @@ pub async fn unmute_user(
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
     let _ = cache::mute_set_remove(
-        state.dragonfly(),
+        state.redis(),
         &auth.user_id.to_string(),
         &target_id.to_string(),
     )

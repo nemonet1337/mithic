@@ -69,7 +69,7 @@ async fn send_one(
         return Ok(());
     };
 
-    let endpoint: http::Uri = sub
+    let endpoint: axum::http::Uri = sub
         .endpoint
         .parse()
         .map_err(|e| PushSendError::Other(anyhow::anyhow!("invalid endpoint: {e}")))?;
@@ -178,15 +178,12 @@ mod tests {
                 .with_vapid(&key_pair, "mailto:admin@example.com")
                 .build(b"hello".as_slice())
                 .unwrap();
-        assert_eq!(request.method(), http::Method::POST);
+        assert_eq!(request.method().as_str(), "POST");
         assert_eq!(
-            request
-                .headers()
-                .get(http::header::CONTENT_ENCODING)
-                .unwrap(),
+            request.headers().get("content-encoding").unwrap(),
             "aes128gcm"
         );
-        assert!(request.headers().get(http::header::AUTHORIZATION).is_some());
+        assert!(request.headers().get("authorization").is_some());
         assert!(!request.body().is_empty());
     }
 }

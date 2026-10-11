@@ -12,7 +12,7 @@ pub struct AppConfig {
 
     pub surrealdb_pool_size: usize,
 
-    pub dragonfly_url: String,
+    pub redis_url: String,
 
     pub jwt_secret: String,
     pub jwt_expiry_hours: i64,
@@ -89,7 +89,7 @@ impl AppConfig {
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(4),
 
-            dragonfly_url: env::var("DRAGONFLY_URL")
+            redis_url: env::var("REDIS_URL")
                 .unwrap_or_else(|_| "redis://localhost:6379".to_string()),
 
             jwt_secret,

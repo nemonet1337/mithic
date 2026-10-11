@@ -9,7 +9,7 @@ rust-version.workspace = true
 [dependencies]
 leptos = { version = "0.8", default-features = false, features = ["csr"] }
 leptos_router = { version = "0.8", default-features = false }
-gloo-net = { version = "0.7", features = ["http", "websocket"] }
+gloo-net = { version = "0.7", features = ["http"] }
 gloo-timers = { version = "0.4", features = ["futures"] }
 gloo-storage = "0.4"
 leptos_icons = "0.7"
@@ -22,11 +22,9 @@ wasm-bindgen-futures = "0.4"
 js-sys = "0.3"
 web-sys = { version = "0.3", features = [
     "console",
-    "Blob",
     "CloseEvent",
     "DataTransfer",
     "Document",
-    "DomTokenList",
     "DragEvent",
     "Element",
     "Event",
@@ -34,18 +32,13 @@ web-sys = { version = "0.3", features = [
     "FileList",
     "FormData",
     "Headers",
-    "HtmlBodyElement",
     "HtmlInputElement",
-    "HtmlSelectElement",
-    "HtmlTextAreaElement",
     "IntersectionObserver",
     "IntersectionObserverEntry",
-    "IntersectionObserverInit",
     "KeyboardEvent",
     "MessageEvent",
     "Navigator",
     "Notification",
-    "NotificationPermission",
     "PushEncryptionKeyName",
     "PushManager",
     "PushSubscription",
@@ -57,18 +50,14 @@ web-sys = { version = "0.3", features = [
     "ServiceWorker",
     "ServiceWorkerContainer",
     "ServiceWorkerRegistration",
-    "Url",
     "WebSocket",
     "Window",
     "MediaQueryList",
-    "Touch",
-    "TouchEvent",
-    "TouchList",
 ] }
 console_error_panic_hook = "0.1"
+# 直接使用はないが、推移依存 (shared → ulid → rand → getrandom 0.4) の
+# wasm バックエンド選択に必要。無いと wasm32-unknown-unknown でコンパイルエラーになる。
 getrandom = { version = "0.4", features = ["wasm_js"] }
-
 [features]
 default = ["csr"]
 csr = ["leptos/csr"]
-ssr = ["leptos/ssr", "leptos_router/ssr"]

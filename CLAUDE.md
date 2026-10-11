@@ -7,7 +7,7 @@
 - **言語**: Rust (edition 2024)
 - **Webフレームワーク**: Axum 0.8
 - **データベース**: SurrealDB 3.0
-- **キャッシュ/キュー**: Dragonfly (Redis互換)
+- **キャッシュ/キュー**: Redis (8)
 - **非同期ランタイム**: Tokio 1.0
 - **認証**: JWT (`jsonwebtoken`) + Argon2 (パスワードハッシュ)
 - **ActivityPub**: HTTP Signatures (`mithic_server::federation::http_sig` — RSA-SHA256 sign/verify 共通)
@@ -28,14 +28,14 @@
 - **トークン保管**: gloo-storage 経由の LocalStorage (`store/auth.rs`)
 - **WebSocket**: gloo-net 0.6 (WebSocket) + gloo-timers 0.3 (再接続タイマー)
 - **アイコン**: icondata + leptos_icons (Feather / Lucide Icons)
-- **型シリアライズ**: serde + serde-wasm-bindgen
+- **型シリアライズ**: serde + serde_json (gloo-net の JSON fetch)
 
 ### インフラ
 
 - **コンテナ**: Docker + Docker Compose
 - **リバースプロキシ**: Nginx
 - **データベース**: SurrealDB (コンテナ)
-- **キャッシュ**: Dragonfly (コンテナ)
+- **キャッシュ**: Redis (コンテナ)
 
 ## 2. ディレクトリ構成
 
@@ -63,7 +63,7 @@ mithic/
 │   └── src/
 │       ├── main.rs          # HTTP + 連合配送ワーカー起動
 │       ├── models/          # DB エンティティ
-│       ├── db/              # SurrealDB / Dragonfly / クエリ
+│       ├── db/              # SurrealDB / Redis / クエリ
 │       ├── federation/      # 配送 + HTTP Signature
 │       ├── routes/          # REST / ActivityPub / OGP
 │       ├── services/
@@ -107,7 +107,7 @@ note.rs, user.rs, push.rs。関係操作は `db/queries/follows.rs` をルート
 
 ### `backend/src/db/` — データベース層 (実装済み)
 
-SurrealDB / Dragonfly クライアントラッパー。クエリモジュール (actors, drive, favorites, follows, hashtags, notes, notifications, polls, timeline 等)。
+SurrealDB / Redis クライアントラッパー。クエリモジュール (actors, drive, favorites, follows, hashtags, notes, notifications, polls, timeline 等)。
 
 ### `backend/src/federation/` — ActivityPub 配送
 
@@ -157,7 +157,7 @@ auth.rs, compose.rs, notifications.rs, stream.rs, mod.rs で状態管理実装�
 - **アクティビティ対応**:
   - Create, Delete, Follow, Undo
   - Accept, Reject, Announce, Like, Update
-- **非同期配送**: Dragonfly を使用したアクティビティのキューイング
+- **非同期配送**: Redis を使用したアクティビティのキューイング
 - **リトライ機構**: 指数バックオフによる失敗時の再試行
 
 ## 6. SNSとして過不足のないパフォーマンスを実現すること
@@ -165,7 +165,7 @@ auth.rs, compose.rs, notifications.rs, stream.rs, mod.rs で状態管理実装�
 ### パフォーマンス対策
 
 - **データベース**: SurrealDB の高パフォーマンスを活用
-- **キャッシュ**: Dragonfly による積極的なキャッシュ
+- **キャッシュ**: Redis による積極的なキャッシュ
 - **非同期処理**: Tokio による完全非同期設計
 - **ストリーミング**: WebSocket によるリアルタイム更新 (gloo-net / tokio-tungstenite)
 - **WASM最適化**: `opt-level = "z"` + LTO によるバイナリサイズ最小化

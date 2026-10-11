@@ -1,5 +1,5 @@
-//! Fixed-window rate limit via Dragonfly (INCR + EXPIRE).
-//! Works across multiple server instances sharing the same Dragonfly.
+//! Fixed-window rate limit via Redis (INCR + EXPIRE).
+//! Works across multiple server instances sharing the same Redis.
 
 use axum::{
     extract::{ConnectInfo, Request, State},
@@ -57,12 +57,12 @@ fn client_key(request: &Request, trust_proxy: bool) -> String {
 
 /// Returns true if the request is allowed.
 async fn check_rate_limit(
-    dragonfly: &crate::db::DragonflyClient,
+    redis: &crate::db::RedisClient,
     key: &str,
     limit_per_minute: u32,
 ) -> bool {
-    let redis_key = crate::db::dragonfly::rate_limit_key(key, "auth");
-    let mut conn = dragonfly.clone();
+    let redis_key = crate::db::redis::rate_limit_key(key, "auth");
+    let mut conn = redis.clone();
 
     let count: u64 = match conn.incr(&redis_key, 1u64).await {
         Ok(n) => n,
@@ -89,7 +89,7 @@ pub async fn rate_limit_middleware(
     let config = AUTH_RATE_LIMIT;
     let key = client_key(&request, state.config().trust_proxy);
 
-    if !check_rate_limit(state.dragonfly(), &key, config.requests_per_minute).await {
+    if !check_rate_limit(state.redis(), &key, config.requests_per_minute).await {
         return Err(StatusCode::TOO_MANY_REQUESTS);
     }
 

@@ -47,7 +47,7 @@ services:
         required: false
     environment:
       SURREALDB_ENDPOINT: ws://surrealdb:8000
-      DRAGONFLY_URL: redis://redis:6379
+      REDIS_URL: redis://redis:6379
       STORAGE_S3_ENABLED: ${STORAGE_S3_ENABLED:-false}
       LOCAL_STORAGE_PATH: \
     volumes:

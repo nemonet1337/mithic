@@ -4,11 +4,6 @@ use object_store::aws::AmazonS3Builder;
 use object_store::local::LocalFileSystem;
 use std::sync::Arc;
 
-/// `STORAGE_TYPE=s3`。互換実装 (RustFS 等) も endpoint を指す同じクライアント。
-pub fn is_s3_storage(storage_type: &str) -> bool {
-    storage_type.trim().eq_ignore_ascii_case("s3")
-}
-
 fn nonempty(value: &Option<String>) -> Option<&str> {
     value.as_deref().filter(|s| !s.is_empty())
 }
@@ -74,7 +69,7 @@ mod tests {
             surrealdb_username: "root".into(),
             surrealdb_password: "root".into(),
             surrealdb_pool_size: 1,
-            dragonfly_url: "redis://localhost:6379".into(),
+            redis_url: "redis://localhost:6379".into(),
             jwt_secret: "test".into(),
             jwt_expiry_hours: 1,
             server_port: 3000,

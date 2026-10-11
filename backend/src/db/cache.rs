@@ -1,4 +1,4 @@
-//! Dragonfly キャッシュヘルパ
+//! Redis キャッシュヘルパ
 //!
 //! JSON キャッシュ (TTL 付き) と block/mute Set。
 
@@ -6,7 +6,7 @@ use redis::AsyncCommands;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
-use crate::db::DragonflyClient;
+use crate::db::RedisClient;
 
 /// 公開タイムライン JSON レスポンスの短命 TTL (秒)
 pub const TIMELINE_JSON_TTL_SECS: u64 = 15;
@@ -23,7 +23,7 @@ pub fn trending_json_key(limit: usize) -> String {
 }
 
 /// 公開タイムライン JSON キャッシュを無効化 (投稿時)
-pub async fn invalidate_public_timelines(client: &DragonflyClient) {
+pub async fn invalidate_public_timelines(client: &RedisClient) {
     let mut conn = client.manager();
     let mut pipe = redis::pipe();
     for kind in ["local", "global"] {
@@ -39,7 +39,7 @@ pub async fn invalidate_public_timelines(client: &DragonflyClient) {
 
 /// JSON 値を TTL 付きでキャッシュする
 pub async fn set_json<T: Serialize>(
-    client: &DragonflyClient,
+    client: &RedisClient,
     key: &str,
     value: &T,
     ttl_secs: u64,
@@ -51,14 +51,14 @@ pub async fn set_json<T: Serialize>(
 }
 
 /// キャッシュから JSON 値を取得する。ミスやデコード失敗は `None`。
-pub async fn get_json<T: DeserializeOwned>(client: &DragonflyClient, key: &str) -> Option<T> {
+pub async fn get_json<T: DeserializeOwned>(client: &RedisClient, key: &str) -> Option<T> {
     let mut conn = client.manager();
     let raw: Option<String> = conn.get(key).await.ok()?;
     serde_json::from_str(&raw?).ok()
 }
 
 /// キャッシュキーを削除する
-pub async fn delete(client: &DragonflyClient, key: &str) -> anyhow::Result<()> {
+pub async fn delete(client: &RedisClient, key: &str) -> anyhow::Result<()> {
     let mut conn = client.manager();
     let _: () = conn.del(key).await?;
     Ok(())
@@ -73,7 +73,7 @@ pub const BLOCK_MUTE_SET_TTL: i64 = 10 * 60;
 
 /// ユーザーのブロックセットにユーザーIDを追加する
 pub async fn block_set_add(
-    client: &DragonflyClient,
+    client: &RedisClient,
     user_id: &str,
     target_id: &str,
     ttl_secs: i64,
@@ -87,7 +87,7 @@ pub async fn block_set_add(
 
 /// ユーザーのミュートセットにユーザーIDを追加する
 pub async fn mute_set_add(
-    client: &DragonflyClient,
+    client: &RedisClient,
     user_id: &str,
     target_id: &str,
     ttl_secs: i64,
@@ -101,7 +101,7 @@ pub async fn mute_set_add(
 
 /// ユーザーのブロックセットからユーザーIDを削除する
 pub async fn block_set_remove(
-    client: &DragonflyClient,
+    client: &RedisClient,
     user_id: &str,
     target_id: &str,
 ) -> anyhow::Result<()> {
@@ -113,7 +113,7 @@ pub async fn block_set_remove(
 
 /// ユーザーのミュートセットからユーザーIDを削除する
 pub async fn mute_set_remove(
-    client: &DragonflyClient,
+    client: &RedisClient,
     user_id: &str,
     target_id: &str,
 ) -> anyhow::Result<()> {
@@ -124,14 +124,14 @@ pub async fn mute_set_remove(
 }
 
 /// ユーザーのブロックセットにユーザーIDが含まれるか確認する
-pub async fn block_set_contains(client: &DragonflyClient, user_id: &str, target_id: &str) -> bool {
+pub async fn block_set_contains(client: &RedisClient, user_id: &str, target_id: &str) -> bool {
     let key = format!("block_set:{user_id}");
     let mut conn = client.manager();
     conn.sismember(&key, target_id).await.unwrap_or(false)
 }
 
 /// ユーザーのミュートセットにユーザーIDが含まれるか確認する
-pub async fn mute_set_contains(client: &DragonflyClient, user_id: &str, target_id: &str) -> bool {
+pub async fn mute_set_contains(client: &RedisClient, user_id: &str, target_id: &str) -> bool {
     let key = format!("mute_set:{user_id}");
     let mut conn = client.manager();
     conn.sismember(&key, target_id).await.unwrap_or(false)
