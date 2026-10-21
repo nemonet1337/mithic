@@ -33,7 +33,7 @@ tower = { version = "0.5", features = ["retry"] }
 tower-http = { version = "0.7", features = ["cors", "trace", "compression-gzip"] }
 
 # Database
-sqlx = { version = "0.8", default-features = false, features = [
+sqlx = { version = "0.9", default-features = false, features = [
     "runtime-tokio",
     "postgres",
     "json",
