@@ -153,12 +153,13 @@
 - [x] 依存とツールチェーンの更新（2026-10）: Rust stable 1.99.0、Docker base `rust:1.99-bookworm`、`cargo update`（surrealdb 3.3.0 / reqwest 0.13.5 / axum 0.8.9 など）、comrak 0.55、Tailwind CLI 4.3.3。clippy 1.99 の新 lint（`collapsible_if` の let チェーン化など）にも対応
 - [x] Dependabot を有効化（`package-ecosystem: ""` のテンプレートのまま無効だった）。cargo / docker / github-actions を weekly で追跡
 - [ ] future-incompat 警告が 2 残存: `apalis-redis 0.7.4` と `proc-macro-error2 2.0.1`（推移依存）。上位版が出るまで保留
-- [x] データベースを SurrealDB 3 から **PostgreSQL 16** へリプレース。以下が確定事項:
+- [x] データベースを SurrealDB 3 から **PostgreSQL 18** へリプレース。以下が確定事項:
   - **アクセス方式**: `sqlx` 0.8 の runtime `query_as`。`query!` マクロ (`SQLX_OFFLINE` / `.sqlx`) は採らない（docker build に DB が無いため）
   - **マイグレーション**: `backend/migrations/0001_init.sql`。起動時に `sqlx::migrate!("./migrations")` を `create_pool` 内で自動適用
   - **既存データ**: SurrealDB のデータは破棄しクリーン再構築。移行スクリプトは書かない
   - **Redis**: PostgreSQL 移行後も据え置き（キャッシュ / キュー / レート制限のまま）
   - **冗長構成**: primary + WAL archive。compose 単一ホスト内の standby は置かない（ホスト障害に対処できないため）。PITR は `pg_wal_archive` ボリュームを別ホストへ退避して pgBackRest / Barman を組む運用
+  - **PG18 イメージのデータ配置**: `postgres:18` イメージは `PGDATA=/var/lib/postgresql/18/docker` に変わった。 compose では `db_data` を `/var/lib/postgresql` に張る（`/var/lib/postgresql/data` へ直接張ると entrypoint が起動エラーになる）。WAL archive は `/var/lib/postgresql/wal-archive` を別ボリュームに張り、`command` の前処理で `chown postgres:postgres` してから `docker-entrypoint.sh` を実行する（このパスはイメージに存在しないため Docker が root:root で作成し postgres が書けない）
 - [ ] PostgreSQL 運用: バックアップ（`pg_dump` + WAL archive）の世代管理、`pg_stat_statements` でのスロークエリ監視、standby を使ったフェイルオーバー手順書
 - [x] Redis 名称統一: `DRAGONFLY_URL` → `REDIS_URL`、`DragonflyClient` → `RedisClient`、`db::dragonfly` → `db::redis`。互換レイヤーは入れない（破壊的変更）。`.env` は未追跡なので手動で `REDIS_URL` に更新が必要（値は同一なので既定値にフォールバックしても実害なし）
 - [x] 依存整理: backend の `bytes` / `mime` / `futures` / `http` 削除（`axum::body::Bytes` / `axum::http::*` / `std::future` に置換）、重複 dev-dependency `rand` 削除、死コード `is_s3_storage` 削除

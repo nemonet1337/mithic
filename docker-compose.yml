@@ -2,33 +2,37 @@
 name: mithic
 
 services:
-  # PostgreSQL 16 + WAL archive。
+  # PostgreSQL 18 + WAL archive。
   # 冗長構成は primary + WAL archive とし、compose 同一ホスト内に standby は置かない
-  # (ホスト障害に対処できないため)。PITR は pg_wal_archive を別ホストへ退避して
+  # (ホスト障害に対処できないため)。PITR は wal-archive を別ホストへ退避して
   # pgBackRest / Barman を組む運用を想定する。
+  #
+  # PG18 のイメージはデータ配置が変わった (PGDATA=/var/lib/postgresql/18/docker)。
+  # /var/lib/postgresql/data へ直接ボリュームを置くと entrypoint がエラーで起動しないため、
+  # ボリュームは /var/lib/postgresql に張る。
+  # WAL archive 用ボリュームは /var/lib/postgresql/wal-archive に張るが、このパスは
+  # イメージに存在しないため Docker が root:root で作成し postgres が書けない。
+  # command の前処理で所有権を直してから entrypoint を実行する。
   db:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     container_name: mithic-db
     restart: unless-stopped
     command:
-      - postgres
+      - sh
       - -c
-      - listen_addresses=*
-      - -c
-      - archive_mode=on
-      - -c
-      - archive_command=test ! -f /var/lib/postgresql/data/pg_wal_archive/%f && cp %p /var/lib/postgresql/data/pg_wal_archive/%f
-      - -c
-      - wal_level=replica
-      - -c
-      - max_wal_senders=10
+      - mkdir -p /var/lib/postgresql/wal-archive && chown postgres:postgres
+        /var/lib/postgresql/wal-archive && exec docker-entrypoint.sh postgres
+        -c listen_addresses=* -c
+        'archive_mode=on' -c
+        'archive_command=test ! -f /var/lib/postgresql/wal-archive/%f && cp %p /var/lib/postgresql/wal-archive/%f'
+        -c wal_level=replica -c max_wal_senders=10
     environment:
       POSTGRES_USER: mithic
       POSTGRES_PASSWORD: mithic-dev-password
       POSTGRES_DB: mithic
     volumes:
-      - db_data:/var/lib/postgresql/data
-      - pg_wal_archive:/var/lib/postgresql/data/pg_wal_archive
+      - db_data:/var/lib/postgresql
+      - pg_wal_archive:/var/lib/postgresql/wal-archive
     ports:
       - '5432:5432'   # dual-stack (IPv4 限定だと localhost が [::1] のときに接続拒否になる)
     networks:

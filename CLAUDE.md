@@ -6,7 +6,7 @@
 
 - **言語**: Rust (edition 2024)
 - **Webフレームワーク**: Axum 0.8
-- **データベース**: PostgreSQL 16 (sqlx 0.8, runtime query_as / migrate!)
+- **データベース**: PostgreSQL 18 (sqlx 0.8, runtime query_as / migrate!)
 - **マイグレーション**: `backend/migrations/0001_init.sql` を起動時に自動適用
 - **キャッシュ/キュー**: Redis (8)
 - **非同期ランタイム**: Tokio 1.0
