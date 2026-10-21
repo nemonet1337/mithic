@@ -131,18 +131,17 @@ checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
 name = "apalis"
-version = "0.7.4"
+version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "504d52557a16b7b202941660f339c9182910d498cac40f93d15f6b31e6bef290"
+checksum = "c4c83691f0f26716d21207e3fd154086a19cd25f7716133fa2f1260ffd73508d"
 dependencies = [
- "apalis-core",
- "futures",
- "pin-project-lite",
+ "apalis-core 1.0.0",
+ "futures-util",
+ "pin-project",
  "serde",
  "thiserror 2.0.21",
  "tower",
  "tracing",
- "tracing-futures",
 ]
 
 [[package]]
@@ -162,12 +161,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "apalis-core"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "93a749c6487cede1a1ca503997f59fca75aeca305fcbf555d5a13606b1c7ecb1"
+dependencies = [
+ "futures-channel",
+ "futures-core",
+ "futures-sink",
+ "futures-timer",
+ "futures-util",
+ "pin-project",
+ "rand 0.10.3",
+ "thiserror 2.0.21",
+ "tower-layer",
+ "tower-service",
+ "tracing",
+]
+
+[[package]]
 name = "apalis-redis"
 version = "0.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "871367e3dfff2accda824ccc6e4f46f8f155c865065a450c466a7f2835541d55"
 dependencies = [
- "apalis-core",
+ "apalis-core 0.7.4",
  "chrono",
  "futures",
  "log",
@@ -5356,15 +5374,6 @@ checksum = "db97caf9d906fbde555dd62fa95ddba9eecfd14cb388e4f491a66d74cd5fb79a"
 dependencies = [
  "once_cell",
  "valuable",
-]
-
-[[package]]
-name = "tracing-futures"
-version = "0.2.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "97d095ae15e245a057c8e8451bab9b3ee1e1f68e9ba2b4fbc18d0ac5237835f2"
-dependencies = [
- "tracing",
 ]
 
 [[package]]
